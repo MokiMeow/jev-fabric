@@ -31,7 +31,7 @@
     "package-readmes:check": "tsx scripts/generate-package-readmes.mts --check",
     "changeset:check": "tsx scripts/check-changeset-policy.mts",
     "import:historical": "tsx scripts/import-historical.mts",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm release:check && pnpm pack:test"
+    "verify": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm release:check && pnpm pack:test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

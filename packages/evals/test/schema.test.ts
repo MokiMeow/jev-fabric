@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
@@ -151,6 +151,18 @@ describe("published JSON Schema contracts", () => {
 });
 
 it("replay and the actual importer make zero network attempts", async () => {
+  const input = await mkdtemp(join(tmpdir(), "jev-network-source-"));
+  const output = await mkdtemp(join(tmpdir(), "jev-network-output-"));
+  await Promise.all([
+    writeFile(
+      join(input, "DEEP_REGRESSION_RESULTS.json"),
+      JSON.stringify({ batch_curve: {} }),
+    ),
+    writeFile(
+      join(input, "ADVANCED_PATTERN_RESULTS.json"),
+      JSON.stringify({ performance: {} }),
+    ),
+  ]);
   const blocked = () => {
     throw new Error("network attempt trapped");
   };
@@ -172,9 +184,6 @@ it("replay and the actual importer make zero network attempts", async () => {
   net.createConnection = blocked as typeof net.createConnection;
   try {
     await expect(replayArtifacts(historicalDirectory)).resolves.toBeDefined();
-    const output = await (await import("node:fs/promises")).mkdtemp(
-      join(tmpdir(), "jev-network-trap-"),
-    );
     await expect(
       run(
         process.execPath,
@@ -182,7 +191,7 @@ it("replay and the actual importer make zero network attempts", async () => {
           "node_modules/tsx/dist/cli.mjs",
           "scripts/import-historical.mts",
           "--source",
-          "..",
+          input,
           "--output",
           output,
         ],
@@ -203,5 +212,9 @@ it("replay and the actual importer make zero network attempts", async () => {
     https.get = original.httpsGet;
     net.connect = original.connect;
     net.createConnection = original.createConnection;
+    await Promise.all([
+      rm(input, { recursive: true, force: true }),
+      rm(output, { recursive: true, force: true }),
+    ]);
   }
 });

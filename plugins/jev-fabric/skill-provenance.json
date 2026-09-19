@@ -1,0 +1,18 @@
+{
+  "provenance": "jev-fabric-adapter/v1",
+  "source": "skills/jev-fabric/SKILL.md",
+  "files": [
+    {
+      "path": "plugins/jev-fabric/skills/jev-fabric/SKILL.md",
+      "sha256": "63be4aac3ddbf2cea4bd177759d2071a1da62b57b62c633445fca5c77146de75"
+    },
+    {
+      "path": "plugins/jev-fabric/skills/jev-fabric/references/pack-selection.md",
+      "sha256": "6d494d2c8647e542151317452ef9b00ad52176b055451c942cc1521e5ad105a2"
+    },
+    {
+      "path": "plugins/jev-fabric/skills/jev-fabric/references/security-boundary.md",
+      "sha256": "2cd99fc0709abcc4eaa02949703aa40304ebe9441a19bbfa5393d6f59ff15744"
+    }
+  ]
+}

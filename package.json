@@ -1,0 +1,63 @@
+{
+  "name": "jev-fabric",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "A typed decision control plane for bounded semantic choices.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=22.14 <25"
+  },
+  "scripts": {
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "coverage": "pnpm --filter @mokimeow/jev-fabric-adapters test --coverage --coverage.include=packages/adapters/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-protocol test --coverage --coverage.include=packages/protocol/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-core test --coverage --coverage.include=packages/core/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-provider-openai-compatible test --coverage --coverage.include=packages/provider-openai-compatible/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-provider-typesafe test --coverage --coverage.include=packages/provider-typesafe/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-evals test --coverage --coverage.include=packages/evals/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-packs test --coverage --coverage.include=packs/**/pack.ts --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-mcp test --coverage --coverage.include=packages/mcp/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60 && pnpm --filter @mokimeow/jev-fabric-cli test --coverage --coverage.include=packages/cli/src/** --coverage.thresholds.lines=60 --coverage.thresholds.functions=60 --coverage.thresholds.branches=50 --coverage.thresholds.statements=60",
+    "pack:test": "node scripts/pack-smoke.mjs",
+    "examples:check": "vitest run examples/test",
+    "docs:check": "vitest run docs/test examples/test && pnpm pack:test",
+    "security:check": "tsx scripts/security-check.mts && tsx scripts/verify-workflows.mts",
+    "release:check": "vitest run scripts/test",
+    "conformance": "node scripts/mcp-cli-smoke.mjs && pnpm --filter @mokimeow/jev-fabric-cli exec jev-fabric doctor --json",
+    "adapters:check": "pnpm --filter @mokimeow/jev-fabric-adapters verify",
+    "sbom": "tsx scripts/generate-sbom.mts",
+    "release:checksums": "tsx scripts/generate-release-checksums.mts",
+    "release:state": "tsx scripts/verify-release-state.mts",
+    "package-readmes": "tsx scripts/generate-package-readmes.mts",
+    "package-readmes:check": "tsx scripts/generate-package-readmes.mts --check",
+    "changeset:check": "tsx scripts/check-changeset-policy.mts",
+    "import:historical": "tsx scripts/import-historical.mts",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm release:check && pnpm pack:test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@changesets/cli": "3.0.3",
+    "@mokimeow/jev-fabric-cli": "workspace:*",
+    "@mokimeow/jev-fabric-core": "workspace:*",
+    "@mokimeow/jev-fabric-packs": "workspace:*",
+    "@mokimeow/jev-fabric-provider-openai-compatible": "workspace:*",
+    "@mokimeow/jev-fabric-provider-typesafe": "workspace:*",
+    "@mokimeow/jev-fabric-protocol": "workspace:*",
+    "@types/node": "22.18.6",
+    "@vitest/coverage-v8": "5.0.1",
+    "fast-check": "4.10.1",
+    "pnpm": "12.4.2",
+    "tsdown": "0.23.0",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1",
+    "yaml": "2.9.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MokiMeow/jev-fabric.git"
+  },
+  "homepage": "https://github.com/MokiMeow/jev-fabric#readme",
+  "bugs": {
+    "url": "https://github.com/MokiMeow/jev-fabric/issues"
+  }
+}

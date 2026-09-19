@@ -1,0 +1,48 @@
+{
+  "name": "@mokimeow/jev-fabric-evals",
+  "version": "0.1.0-alpha.1",
+  "description": "Reproducible offline evaluation and replay for Jev Fabric.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.14 <25"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. packages/evals/test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "build": "tsdown",
+    "lint": "biome lint src test",
+    "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build"
+  },
+  "dependencies": {
+    "@mokimeow/jev-fabric-core": "workspace:*",
+    "@mokimeow/jev-fabric-protocol": "workspace:*",
+    "zod": "4.2.0"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MokiMeow/jev-fabric.git",
+    "directory": "packages/evals"
+  },
+  "homepage": "https://github.com/MokiMeow/jev-fabric#readme",
+  "bugs": {
+    "url": "https://github.com/MokiMeow/jev-fabric/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

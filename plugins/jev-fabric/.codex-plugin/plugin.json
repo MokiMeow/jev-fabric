@@ -1,0 +1,26 @@
+{
+  "name": "jev-fabric",
+  "version": "0.1.0-alpha.1",
+  "description": "Bounded, advisory Jev Fabric decisions for Codex.",
+  "author": {
+    "name": "MokiMeow",
+    "url": "https://github.com/MokiMeow"
+  },
+  "homepage": "https://github.com/MokiMeow/jev-fabric",
+  "repository": "https://github.com/MokiMeow/jev-fabric",
+  "license": "Apache-2.0",
+  "keywords": ["advisory", "decision", "mcp", "safety"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Jev Fabric",
+    "shortDescription": "Bounded advisory decisions for Codex.",
+    "longDescription": "Adds an advisory, non-executing MCP decision surface and a safety-first skill.",
+    "developerName": "MokiMeow",
+    "category": "Productivity",
+    "capabilities": ["MCP", "Skills"],
+    "defaultPrompt": [
+      "Route this bounded decision without executing an action."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "jev-fabric": {
+      "command": "jev-fabric",
+      "args": ["serve", "--transport", "stdio"]
+    }
+  }
+}

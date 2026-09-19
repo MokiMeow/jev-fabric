@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1",
+  "provenance": "jev-fabric-adapter/v1",
+  "files": [
+    {
+      "path": "claude-code/.mcp.json",
+      "sha256": "7c135a2b792d625f6ff1447c925aabc7efc4613dae761029915507b1ef870e02"
+    },
+    {
+      "path": "codex/config.toml",
+      "sha256": "04fa463a6c5460e7bcb824c7378a01debbb9234ac77ddf67362a9618263d1373"
+    },
+    {
+      "path": "compatibility.json",
+      "sha256": "cb78772218e4052d4ec4f5844dbf5b94f21aca863ace6bbd31f24955e6dc9959"
+    },
+    {
+      "path": "gemini-cli/gemini-extension.json",
+      "sha256": "31c0b330189744cdaf590a57864fbe29f5332c21f41c0b9771210e471a2fc3ea"
+    },
+    {
+      "path": "kimi-code/.kimi-code/mcp.json",
+      "sha256": "7c135a2b792d625f6ff1447c925aabc7efc4613dae761029915507b1ef870e02"
+    },
+    {
+      "path": "qwen-code/qwen-extension.json",
+      "sha256": "31c0b330189744cdaf590a57864fbe29f5332c21f41c0b9771210e471a2fc3ea"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+packages:
+  - "packages/*"
+  - "packs"
+allowBuilds:
+  esbuild: true
+  # The package manager is a pinned development prerequisite. Its install script
+  # only selects the already-locked platform binary; it is never run by pack:test.
+  pnpm: true

@@ -1,0 +1,8 @@
+name: Security reminder
+description: Direct sensitive reports to GitHub private vulnerability reporting.
+title: "security: private report required"
+labels: [security]
+body:
+  - type: markdown
+    attributes:
+      value: Do not disclose a vulnerability here. Use the private Security advisory flow instead.

@@ -1,0 +1,43 @@
+{
+  "name": "@mokimeow/jev-fabric-provider-openai-compatible",
+  "version": "0.1.0-alpha.1",
+  "description": "Strict OpenAI-compatible provider for Jev Fabric.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.14 <25"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. packages/provider-openai-compatible/test",
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "lint": "biome lint src test",
+    "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build"
+  },
+  "dependencies": {
+    "@mokimeow/jev-fabric-protocol": "workspace:*",
+    "zod": "4.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MokiMeow/jev-fabric.git",
+    "directory": "packages/provider-openai-compatible"
+  },
+  "homepage": "https://github.com/MokiMeow/jev-fabric#readme",
+  "bugs": {
+    "url": "https://github.com/MokiMeow/jev-fabric/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

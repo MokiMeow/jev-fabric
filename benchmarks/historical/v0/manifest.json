@@ -1,0 +1,96 @@
+{
+  "artifacts": {
+    "attempts": {
+      "bytes": 0,
+      "contentType": "application/jsonl",
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "schemaVersion": "1"
+    },
+    "calibration": {
+      "bytes": 144,
+      "contentType": "application/json",
+      "digest": "2ace197d10366601e005f5680d97f7189766e6840255429b7db5308590f30191",
+      "schemaVersion": "1"
+    },
+    "cases": {
+      "bytes": 0,
+      "contentType": "application/jsonl",
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "schemaVersion": "1"
+    },
+    "conformance": {
+      "bytes": 85,
+      "contentType": "application/json",
+      "digest": "8741eaa937aeee40fd303c53c16c8664eaa34f55d202088b8dabd4f7a2fda15a",
+      "schemaVersion": "1"
+    },
+    "decisions": {
+      "bytes": 0,
+      "contentType": "application/jsonl",
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "schemaVersion": "1"
+    },
+    "metrics": {
+      "bytes": 72,
+      "contentType": "application/json",
+      "digest": "f300a57e6e36d2d1a5f5352cbceac631234be5ca210d2f731febd9c391b9fb1b",
+      "schemaVersion": "1"
+    },
+    "outcomes": {
+      "bytes": 0,
+      "contentType": "application/jsonl",
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "schemaVersion": "1"
+    },
+    "report": {
+      "bytes": 811,
+      "contentType": "text/markdown",
+      "digest": "15e931319a77a20aa4f8552e8beeb188e1d5f1ca6c86465f675a4dd5b6f94a16",
+      "schemaVersion": "1"
+    }
+  },
+  "budget": {
+    "maxAttempts": 0,
+    "maxCalls": 0
+  },
+  "concurrency": 1,
+  "correction": "Prior ECE used TypeSafe confidence, not max(distribution); it is invalid as probability calibration. No ECE recomputed because this import does not export raw distributions/outcomes.",
+  "datasetDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "environment": {
+    "arch": "redacted",
+    "machine": "redacted",
+    "os": "redacted",
+    "runtime": "historical"
+  },
+  "environmentId": "historical-redacted",
+  "evidence": "local_exploratory",
+  "git": {
+    "dirty": false,
+    "sha": "historical"
+  },
+  "groupRule": "historical grouping unavailable",
+  "provenance": [
+    {
+      "name": "ADVANCED_PATTERN_RESULTS.json",
+      "sha256": "b743b3ede0967192b63030bacc6c2d3b8b6733984359c4f57e9c83dfc0487546"
+    },
+    {
+      "name": "DEEP_REGRESSION_RESULTS.json",
+      "sha256": "ea57e9c7f82a68446d2a752dc0f7f5284c5442b363c8b29ef6e63b61abf65d3b"
+    }
+  ],
+  "reportTitle": "Historical local exploratory import",
+  "runId": "historical-v0",
+  "schemaVersion": "1",
+  "seed": 1,
+  "splitRule": "historical development-only; no held-out claim",
+  "startedAt": "1970-01-01T00:00:00.000Z",
+  "versions": {
+    "model": "jev-1.13.0",
+    "pack": "historical-unversioned",
+    "package": "historical-import-v1",
+    "policy": "historical-unversioned",
+    "prompt": "historical-unversioned",
+    "provider": "typesafe-jev"
+  }
+}

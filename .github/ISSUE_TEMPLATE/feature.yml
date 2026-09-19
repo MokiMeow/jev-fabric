@@ -1,0 +1,18 @@
+name: Feature proposal
+description: Propose a bounded, evidence-backed improvement.
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and intended users
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Safety boundary and evaluation evidence
+      description: Explain packs, policy, trusted host inputs, and fail-closed behavior.
+    validations:
+      required: true

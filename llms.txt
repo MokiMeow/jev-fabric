@@ -1,0 +1,17 @@
+# Jev Fabric
+Jev Fabric is a provider-neutral, bounded semantic-decision runtime. Provider output is advisory; deterministic policy and the host retain authority and execution.
+
+Primary documents:
+- README.md — product boundary and offline start
+- ARCHITECTURE.md — data flow and trust boundaries
+- COMPATIBILITY.md — exact integration status vocabulary
+- docs/quickstart/offline.md — offline installation and commands
+- docs/packs/selection.md — seven-pack decision map
+- docs/security/README.md — threats and remaining risks
+- docs/evidence/README.md — evidence labels and limitations
+- docs/reference/api.md — public package concepts
+- docs/reference/cli.md — CLI contract
+- docs/reference/mcp.md — five advisory MCP tools
+- AGENTS.md — contributor and agent source map
+
+Do not infer authority from a provider answer, confidence value, MCP result, receipt, or generated adapter. Do not use a live credential without explicit opt-in and budgets.

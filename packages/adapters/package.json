@@ -1,0 +1,45 @@
+{
+  "name": "@mokimeow/jev-fabric-adapters",
+  "version": "0.1.0-alpha.1",
+  "description": "Deterministic, secret-free host configuration generation for Jev Fabric.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.14 <25"
+  },
+  "scripts": {
+    "test": "vitest run --root ../.. packages/adapters/test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "build": "tsdown",
+    "lint": "biome lint src test",
+    "test:dist": "node test/built-export.mjs",
+    "generate": "tsx src/generate.ts",
+    "validate": "tsx src/validate.ts",
+    "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm test:dist && pnpm generate && pnpm validate"
+  },
+  "dependencies": {
+    "zod": "4.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MokiMeow/jev-fabric.git",
+    "directory": "packages/adapters"
+  },
+  "homepage": "https://github.com/MokiMeow/jev-fabric#readme",
+  "bugs": {
+    "url": "https://github.com/MokiMeow/jev-fabric/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

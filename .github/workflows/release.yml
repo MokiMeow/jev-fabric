@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Confirm that npm package ownership and trusted publisher are configured.
+        required: true
+        type: boolean
+        default: false
+permissions: {}
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # This is deliberately default-off. The protected npm-production Environment
+    # must require human approval; npm trusted publishing is a separate npm-side
+    # control, with no long-lived registry token accepted by this workflow.
+    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && inputs.confirm }}
+    environment: npm-production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsx scripts/verify-npm-version.mts
+      - run: pnpm changeset:check
+      - run: pnpm changeset status
+      - run: pnpm release:state
+      - run: pnpm build
+      - run: pnpm pack:test -- --artifacts-dir .artifacts/packages --source-revision "$GITHUB_SHA" --source-date-epoch "$(git log -1 --format=%ct)"
+      - run: pnpm run sbom -- --artifacts-dir .artifacts/packages --output .artifacts/jev-fabric.spdx.json --source-revision "$GITHUB_SHA" --source-date-epoch "$(git log -1 --format=%ct)"
+      - run: pnpm run release:checksums -- --artifacts-dir .artifacts/packages --sbom .artifacts/jev-fabric.spdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: jev-fabric-release-evidence
+          path: |
+            .artifacts/packages
+            .artifacts/jev-fabric.spdx.json
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: .artifacts/packages/SHA256SUMS
+          sbom-path: .artifacts/jev-fabric.spdx.json
+      - run: pnpm changeset publish

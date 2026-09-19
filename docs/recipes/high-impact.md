@@ -1,0 +1,2 @@
+# Fintech and security screening
+Use decision packs only as bounded advisory signals behind static policy, domain-specific validation, audit, and an accountable human process. Never use an advisory answer to approve a payment, access grant, fraud decision, cryptographic action, sanctions decision, or security remediation. In these contexts, abstention and escalation are often the appropriate default.

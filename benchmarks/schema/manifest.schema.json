@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "environmentId",
+    "evidence",
+    "git",
+    "versions",
+    "datasetDigest",
+    "splitRule",
+    "groupRule",
+    "seed",
+    "budget",
+    "concurrency",
+    "environment",
+    "startedAt",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "environmentId": { "type": "string", "minLength": 1 },
+    "evidence": {
+      "enum": ["unit", "conformance", "replay", "local_exploratory", "live"]
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha", "dirty"],
+      "properties": {
+        "sha": { "type": "string", "minLength": 7 },
+        "dirty": { "type": "boolean" },
+        "dirtyDigest": { "type": "string" }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package", "provider", "model", "prompt", "pack", "policy"],
+      "properties": {
+        "package": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string", "minLength": 1 },
+        "pack": { "type": "string", "minLength": 1 },
+        "policy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "datasetDigest": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "splitRule": { "type": "string", "minLength": 1 },
+    "groupRule": { "type": "string", "minLength": 1 },
+    "seed": { "type": "integer", "not": { "const": 0 } },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxCalls", "maxAttempts"],
+      "properties": {
+        "maxCalls": { "type": "integer", "minimum": 0 },
+        "maxAttempts": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "concurrency": { "type": "integer", "minimum": 1 },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime", "os", "arch", "machine"],
+      "properties": {
+        "runtime": { "type": "string", "minLength": 1 },
+        "os": { "type": "string", "minLength": 1 },
+        "arch": { "type": "string", "minLength": 1 },
+        "machine": { "type": "string", "minLength": 1 }
+      }
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?Z$"
+    },
+    "reportTitle": { "type": "string", "minLength": 1 },
+    "correction": { "type": "string", "minLength": 1 },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cases",
+        "attempts",
+        "decisions",
+        "outcomes",
+        "metrics",
+        "calibration",
+        "conformance",
+        "report"
+      ],
+      "properties": {
+        "cases": { "$ref": "#/$defs/artifact" },
+        "attempts": { "$ref": "#/$defs/artifact" },
+        "decisions": { "$ref": "#/$defs/artifact" },
+        "outcomes": { "$ref": "#/$defs/artifact" },
+        "metrics": { "$ref": "#/$defs/artifact" },
+        "calibration": { "$ref": "#/$defs/artifact" },
+        "conformance": { "$ref": "#/$defs/artifact" },
+        "report": { "$ref": "#/$defs/artifact" }
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "digest", "bytes", "contentType"],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "contentType": {
+          "enum": ["application/json", "application/jsonl", "text/markdown"]
+        }
+      }
+    }
+  }
+}

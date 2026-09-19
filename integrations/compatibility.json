@@ -1,0 +1,106 @@
+{
+  "provenance": "jev-fabric-adapter/v1",
+  "advisory": true,
+  "environmentNames": [],
+  "hosts": [
+    {
+      "id": "claude-code",
+      "displayName": "Claude Code",
+      "configurationPath": "claude-code/.mcp.json",
+      "format": "mcp-json",
+      "install": {
+        "scope": "project",
+        "location": ".mcp.json"
+      },
+      "status": "NOT_RUN",
+      "capabilities": {
+        "stdio": true,
+        "http": false,
+        "skills": "NOT_GENERATED",
+        "hooks": "NOT_GENERATED"
+      },
+      "hooks": {},
+      "unsupported": ["automatic permission grants", "execution"]
+    },
+    {
+      "id": "codex",
+      "displayName": "Codex",
+      "configurationPath": "codex/config.toml",
+      "format": "toml-mcp",
+      "install": {
+        "scope": "command-line",
+        "location": "config.toml"
+      },
+      "status": "NOT_RUN",
+      "capabilities": {
+        "stdio": true,
+        "http": false,
+        "skills": "NOT_GENERATED",
+        "hooks": "UNSUPPORTED"
+      },
+      "hooks": {},
+      "unsupported": [
+        "automatic permission grants",
+        "execution",
+        "lifecycle hooks"
+      ]
+    },
+    {
+      "id": "gemini-cli",
+      "displayName": "Gemini CLI",
+      "configurationPath": "gemini-cli/gemini-extension.json",
+      "format": "gemini-extension",
+      "install": {
+        "scope": "plugin",
+        "location": "extensions/jev-fabric"
+      },
+      "status": "NOT_RUN",
+      "capabilities": {
+        "stdio": true,
+        "http": false,
+        "skills": "NOT_GENERATED",
+        "hooks": "NOT_GENERATED"
+      },
+      "hooks": {},
+      "unsupported": ["automatic permission grants", "execution"]
+    },
+    {
+      "id": "kimi-cli",
+      "displayName": "Kimi Code",
+      "configurationPath": "kimi-code/.kimi-code/mcp.json",
+      "format": "mcp-json",
+      "install": {
+        "scope": "project",
+        "location": ".kimi-code/mcp.json"
+      },
+      "status": "NOT_RUN",
+      "capabilities": {
+        "stdio": true,
+        "http": false,
+        "skills": "NOT_GENERATED",
+        "hooks": "NOT_GENERATED"
+      },
+      "hooks": {},
+      "unsupported": ["automatic permission grants", "execution"]
+    },
+    {
+      "id": "qwen-code",
+      "displayName": "Qwen Code",
+      "configurationPath": "qwen-code/qwen-extension.json",
+      "format": "qwen-extension",
+      "install": {
+        "scope": "plugin",
+        "location": "extensions/jev-fabric"
+      },
+      "status": "NOT_RUN",
+      "capabilities": {
+        "stdio": true,
+        "http": false,
+        "skills": "NOT_GENERATED",
+        "hooks": "NOT_GENERATED"
+      },
+      "hooks": {},
+      "unsupported": ["automatic permission grants", "execution"]
+    }
+  ]
+}

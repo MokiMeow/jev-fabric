@@ -127,6 +127,15 @@ remains possible. The benchmark should separately record tool discovery and
 invocation so a faster discovery path cannot hide a slower or less safe action
 path.
 
+Vercel added an [experimental bridge](https://vercel.com/changelog/webmcp-mcp-handler) in `mcp-handler@2.2.0`, observed
+2026-09-21, that registers an allowlisted subset of server tools in WebMCP and
+proxies calls with the page's session cookies. This is implementation evidence,
+not performance evidence. The Fabric bridge contract supports only a
+same-origin, host-declared read-only surface and retains no cookie, tool output,
+or browser handle. A completed benchmark must still measure discovery,
+invocation, authentication failure, cancellation, and postcondition checking
+separately.
+
 An independent community implementation, [`jev-browser` at commit
 `8d90c51b`](https://github.com/jkudish/jev-browser/commit/8d90c51bedbe7cd07596bfaa532ded019a31d2a8),
 provides useful design evidence: it batches a bounded action Choice with goal

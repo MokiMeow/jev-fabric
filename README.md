@@ -35,7 +35,7 @@ Server applications can also use the pinned [Vercel AI Gateway route](docs/provi
 | Use a terminal | [CLI reference](docs/reference/cli.md) | Offline doctor, evaluate, benchmark, replay, and bounded serve configuration. |
 | Connect an agent | [MCP reference](docs/reference/mcp.md) | Five read-only advisory tools; no tool executes or authorizes. |
 | Configure an agent host | [Adapters](docs/adapters/hosts.md) | Generated layouts for Codex, Claude Code, Gemini CLI, Qwen Code, and Kimi Code. |
-| Assist an instrumented website | [WebMCP recipe](docs/recipes/webmcp-browser.md) | Bind origin, frame, tool, schema, policy epoch, and page state; the host still executes. |
+| Assist an instrumented website | [WebMCP recipe](docs/recipes/webmcp-browser.md) | Bind origin, frame, tool, schema, policy epoch, page state, and an optional same-origin `mcp-handler` bridge; the host still executes. |
 | Route work in Blender, Unreal, Unity, Godot, or CAD | [Tool environments](docs/integrations/tool-environments.md) | Select only from adapter-declared native actions; revalidate and execute in the trusted plugin. |
 | Triage finance or market evidence | [Finance and fintech](docs/integrations/finance.md) | Route synthetic or licensed, time-bound evidence to observe, investigate, or escalate; no trading. |
 | Route a read-only market-research request | [Finance research routing](docs/integrations/finance-research-routing.md) | Propose one allowlisted analytics tool and bounded arguments; the trusted host revalidates and executes read-only. |

@@ -1,4 +1,7 @@
-import { bindWebMcpAdvisory } from "../../packages/adapters/src/index.js";
+import {
+  bindMcpHandlerWebMcpAdvisory,
+  bindWebMcpAdvisory,
+} from "../../packages/adapters/src/index.js";
 
 /**
  * Offline WebMCP compatibility example. Host policy is projected separately;
@@ -25,6 +28,25 @@ export function example() {
     toolName: hostProjection.toolName,
     inputSchema: hostProjection.inputSchema,
   });
+  const bridgeBinding = bindMcpHandlerWebMcpAdvisory(
+    {
+      ...hostProjection,
+      bridgeRevision: "mcp-handler-2.2.0",
+      endpointPath: "/api/mcp",
+      exposedTools: [hostProjection.toolName],
+      readOnlyToolNames: [hostProjection.toolName],
+      credentials: "same-origin",
+      requireSameOriginFetch: true,
+    },
+    {
+      origin: hostProjection.origin,
+      frameId: hostProjection.frameId,
+      toolName: hostProjection.toolName,
+      inputSchema: hostProjection.inputSchema,
+      scriptUrl: `${hostProjection.origin}/api/mcp?webmcp-script`,
+      readOnlyHint: true,
+    },
+  );
   let rejectedCrossOrigin = false;
   try {
     bindWebMcpAdvisory(hostProjection, {
@@ -38,7 +60,7 @@ export function example() {
   }
   if (!rejectedCrossOrigin)
     throw new Error("cross-origin metadata must abstain");
-  return { binding, rejectedCrossOrigin };
+  return { binding, bridgeBinding, rejectedCrossOrigin };
 }
 
 if (import.meta.main) console.log(JSON.stringify(example()));

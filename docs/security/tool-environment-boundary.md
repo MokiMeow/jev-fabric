@@ -84,3 +84,13 @@ out of this package. Never use arbitrary DevTools `Runtime.evaluate`, page
 scripts, selectors from untrusted pages, or visual coordinates as Jev candidates.
 Visual fallback can at most justify an advisory request for structured evidence
 or a human review; it must never invoke a browser or desktop action directly.
+
+Vercel's experimental [`mcp-handler` WebMCP bridge](https://github.com/vercel-labs/mcp-handler/blob/main/docs/WEBMCP.md) can forward calls with the
+signed-in user's cookies. Its tool allowlist limits page registration but does
+not restrict the underlying MCP endpoint, and its `readOnlyHint` is not an
+authorization fact. Use the stricter bridge binding only for an exact
+same-origin script URL and a host-reviewed allowlist whose entire exposed
+surface is read-only. The server must separately require same-origin
+cookie-authenticated fetches, authenticate every protocol request, validate the
+current session and arguments, and keep cancellation distinct from rollback.
+Tool output remains untrusted and is excluded from the binding.

@@ -10,3 +10,9 @@ Never declare generic page JavaScript, DevTools runtime evaluation, DOM selector
 from page text, visual coordinates, authentication, payment, download, upload,
 or submission as an action. Tool metadata and outputs are untrusted data. Any
 consequential WebMCP operation needs host policy and human confirmation.
+
+For Vercel's experimental `mcp-handler` bridge, use
+`bindMcpHandlerWebMcpAdvisory` only with the exact same-origin script asset and
+a host-reviewed allowlist whose entire exposed surface is read-only. The
+binding does not enforce cookie middleware, call the MCP endpoint, or turn
+`readOnlyHint` into permission.

@@ -47,7 +47,20 @@ export const choiceQuestionSchema = z
     criteria: z.record(z.string(), jsonValueSchema.nullable()),
     options: choiceOptionsSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((question, context) => {
+    const criteria = Object.keys(question.criteria);
+    const options = new Set(question.options);
+    if (
+      criteria.length !== options.size ||
+      criteria.some((key) => !options.has(key))
+    )
+      context.addIssue({
+        code: "custom",
+        message: "choice criteria must match choice options exactly",
+        path: ["criteria"],
+      });
+  });
 
 export const noulQuestionSchema = z
   .object({
@@ -63,7 +76,7 @@ export const scoreQuestionSchema = z
     id: portableIdentifierSchema,
     type: z.literal("score"),
     instructions: jsonValueSchema,
-    criteria: z.array(jsonValueSchema).min(1),
+    criteria: z.array(jsonValueSchema).min(2),
   })
   .strict();
 

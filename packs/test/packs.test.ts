@@ -46,6 +46,35 @@ describe("built-in decision packs", () => {
     );
   });
 
+  it("versions every generic Choice contract and defines criteria for exactly its options", () => {
+    const generic = builtinPacks.filter(
+      (pack) =>
+        pack.manifest.id !== "finance-surveillance" &&
+        pack.manifest.id !== "fintech-exception",
+    );
+    const candidates = [
+      { id: "candidate-one", description: "First bounded candidate" },
+      { id: "candidate-two", description: "Second bounded candidate" },
+    ];
+    for (const pack of generic) {
+      expect(pack.manifest.version, pack.manifest.id).toBe("0.2.0");
+      const implementation = pack.implementations;
+      if (!implementation)
+        throw new Error(`${pack.manifest.id}: implementation missing`);
+      const questions = implementation.questions(
+        { candidates, absoluteFit: true },
+        candidates,
+      );
+      for (const question of questions) {
+        if (question.type !== "choice") continue;
+        expect(
+          Object.keys(question.criteria).sort(),
+          `${pack.manifest.id}:${question.id}`,
+        ).toEqual([...question.options].sort());
+      }
+    }
+  });
+
   it("rejects credential-bearing state in every built-in pack before provider egress", async () => {
     let calls = 0;
     const runtime = new FabricRuntime({

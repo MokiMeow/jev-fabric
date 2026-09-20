@@ -1,4 +1,5 @@
 import { compileTypeSafeRequest } from "../../packages/provider-typesafe/src/mapping.js";
+import { builtinPacks } from "../../packs/index.js";
 import { financeSurveillancePack } from "../../packs/finance-surveillance/pack.js";
 import { describe, expect, it } from "vitest";
 
@@ -30,6 +31,37 @@ describe("finance pack native TypeSafe compatibility", () => {
         expect(Object.keys(question.criteria).sort()).toEqual(
           [...question.options].sort(),
         );
+    }
+  });
+
+  it("compiles every generic built-in pack through the native TypeSafe mapper", () => {
+    const candidates = [
+      { id: "candidate-one", description: "First bounded candidate" },
+      { id: "candidate-two", description: "Second bounded candidate" },
+    ];
+    for (const pack of builtinPacks) {
+      if (
+        pack.manifest.id === "finance-surveillance" ||
+        pack.manifest.id === "fintech-exception"
+      )
+        continue;
+      const implementation = pack.implementations;
+      if (!implementation)
+        throw new Error(`${pack.manifest.id}: implementation missing`);
+      const state = { candidates, absoluteFit: true };
+      const questions = implementation.questions(state, candidates);
+      expect(
+        () =>
+          compileTypeSafeRequest(
+            {
+              id: `${pack.manifest.id}-native-compile`,
+              state,
+              questions,
+            },
+            "jev-1.13.0",
+          ),
+        pack.manifest.id,
+      ).not.toThrow();
     }
   });
 });

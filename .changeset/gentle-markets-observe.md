@@ -4,6 +4,7 @@
 "@mokimeow/jev-fabric-evals": minor
 "@mokimeow/jev-fabric-packs": patch
 "@mokimeow/jev-fabric-provider-openai-compatible": patch
+"@mokimeow/jev-fabric-protocol": patch
 ---
 
 Add source-bound financial-text evidence, stable finance boundary errors,
@@ -109,3 +110,15 @@ recomputes all rates, deterministic timing quantiles, token/cost totals, and
 checked-in fixture remains explicitly `NOT_RUN`; this adds no performance or
 accuracy claim, and its hashes do not claim publisher or provider
 authentication.
+
+Generic route, screen, rank, verify, risk, progress, and completion packs now
+emit native-TypeSafe-compatible Choice questions whose criteria keys match the
+declared options exactly. Their question contract versions move from `0.1.0`
+to `0.2.0`; old provider caches and probability evidence must not be reused.
+The criteria now give literal, contrastive meanings for fixed outcomes and
+mark candidate descriptions as untrusted data. A release conformance test
+compiles every generic built-in pack through the native TypeSafe mapper so an
+offline-only pack cannot silently ship with a Jev-incompatible question shape.
+The shared protocol now rejects every Choice whose criteria keys are not the
+exact declared options and every Score with fewer than two ordered levels,
+moving both failures ahead of cache or provider dispatch for custom packs too.

@@ -12,7 +12,11 @@ const request = {
       id: "route-primary",
       type: "choice",
       instructions: "Choose.",
-      criteria: {},
+      criteria: {
+        allow: "Allow the bounded route.",
+        ask: "Request clarification.",
+        deny: "Deny the bounded route.",
+      },
       options: ["allow", "ask", "deny"],
     },
   ],
@@ -45,6 +49,9 @@ describe("decision answers", () => {
   });
 
   it("requires the selected option to be an argmax and exact option membership", () => {
+    expect(
+      validateDecisionResponse(request, responseWithProbability(0.8)),
+    ).toMatchObject({ answers: [{ selected: "allow" }] });
     expect(() =>
       validateDecisionResponse(request, {
         ...responseWithProbability(0.2),

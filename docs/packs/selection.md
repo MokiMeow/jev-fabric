@@ -15,6 +15,13 @@ Pick the narrowest pack that matches the question. Each pack is advisory and req
 
 Use one coherent question per stage. Batch independent questions only when they share the same bounded state; use a second stage only when new evidence or candidates are needed.
 
+Generic built-in packs use question contract `0.2.0`. Every Choice criterion is
+keyed by exactly one declared option, including `no_match` where applicable.
+This is required by the native TypeSafe mapper and gives Jev literal,
+contrastive meanings instead of an empty or unrelated criteria object. The
+contract change invalidates provider caches or evaluations produced with the
+generic `0.1.0` question shapes; do not compare their probabilities directly.
+
 ### Fixed-option proposal table
 
 The four fixed-option packs turn a validated semantic label into a conservative proposal before host policy. `allow` remains advisory; static policy can still deny it. `deny`, `escalate`, and `abstain` never grant authority.

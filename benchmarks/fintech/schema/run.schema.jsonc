@@ -1,0 +1,738 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MokiMeow/jev-fabric/benchmarks/fintech/schema/run.schema.json",
+  "title": "Jev Fabric fintech exception-routing evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "executionState",
+    "createdAt",
+    "taskContract",
+    "pack",
+    "baseline",
+    "pricing",
+    "dataset",
+    "traces",
+    "metrics"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "runId": { "$ref": "#/$defs/nonEmptyString" },
+    "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
+    "createdAt": { "$ref": "#/$defs/timestamp" },
+    "taskContract": { "$ref": "#/$defs/taskContract" },
+    "pack": { "$ref": "#/$defs/pack" },
+    "baseline": { "$ref": "#/$defs/baseline" },
+    "pricing": { "$ref": "#/$defs/pricing" },
+    "dataset": { "$ref": "#/$defs/dataset" },
+    "traces": {
+      "type": "array",
+      "maxItems": 300000,
+      "items": { "$ref": "#/$defs/trace" }
+    },
+    "metrics": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/metrics" }]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": { "executionState": { "const": "NOT_RUN" } },
+        "required": ["executionState"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "NOT_SELECTED" },
+              "datasetId": { "type": "null" },
+              "caseSetDigest": { "type": "null" },
+              "sourceUrl": { "type": "null" },
+              "license": { "type": "null" },
+              "redistributionAllowed": { "type": "null" },
+              "evidenceClass": { "type": "null" },
+              "containsPersonalData": { "type": "null" },
+              "containsRegulatedData": { "type": "null" },
+              "deidentified": { "type": "null" },
+              "frozenAt": { "type": "null" },
+              "cases": { "type": "array", "maxItems": 0 }
+            }
+          },
+          "traces": { "type": "array", "maxItems": 0 },
+          "metrics": { "type": "null" }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "RETAINED" },
+              "datasetId": { "$ref": "#/$defs/nonEmptyString" },
+              "caseSetDigest": { "$ref": "#/$defs/hash" },
+              "sourceUrl": { "$ref": "#/$defs/httpsUrl" },
+              "license": { "$ref": "#/$defs/nonEmptyString" },
+              "redistributionAllowed": { "const": true },
+              "evidenceClass": {
+                "enum": ["SYNTHETIC", "LOCAL_EXPLORATORY", "RETAINED_PUBLIC"]
+              },
+              "containsPersonalData": { "const": false },
+              "containsRegulatedData": { "const": false },
+              "deidentified": { "const": true },
+              "frozenAt": { "$ref": "#/$defs/timestamp" },
+              "cases": { "type": "array", "minItems": 2 }
+            }
+          },
+          "traces": { "type": "array", "minItems": 6 },
+          "metrics": { "$ref": "#/$defs/metrics" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "pattern": "^https://(?![^/?#]*@)[^\\s]+$"
+    },
+    "route": {
+      "enum": ["observe", "investigate", "escalate"]
+    },
+    "signalId": {
+      "enum": [
+        "fintech-duplicate-or-reprocessed",
+        "fintech-entity-mismatch",
+        "fintech-missing-or-conflicting-evidence",
+        "fintech-claimed-approval-or-override",
+        "fintech-urgent-consumer-harm",
+        "fintech-untrusted-influence"
+      ]
+    },
+    "taskContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "frozen",
+        "preregisteredAt",
+        "primaryMetric",
+        "prohibitedClaims"
+      ],
+      "properties": {
+        "id": { "const": "fintech-exception-routing-v1" },
+        "frozen": { "const": true },
+        "preregisteredAt": { "$ref": "#/$defs/timestamp" },
+        "primaryMetric": { "const": "held_out_route_accuracy" },
+        "prohibitedClaims": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" },
+          "allOf": [
+            {
+              "type": "array",
+              "contains": { "const": "financial_authorization" }
+            },
+            { "type": "array", "contains": { "const": "execution" } },
+            { "type": "array", "contains": { "const": "identity" } }
+          ]
+        }
+      }
+    },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "questionSetHash"],
+      "properties": {
+        "id": { "const": "fintech-exception" },
+        "version": { "const": "0.1.0" },
+        "questionSetHash": {
+          "const": "sha256:d7a365c89a67ac413c99c450be8a4fd41583111d5fdac05e92fa2fd39dc795b4"
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "sourceDigest"],
+      "properties": {
+        "id": { "const": "always-investigate" },
+        "version": { "const": "1" },
+        "sourceDigest": {
+          "const": "sha256:49d89d3561bd8bec185a43b836af5297c844bc6aded2c470325268833d34a46d"
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "inputNanoUsdPerToken",
+        "outputPricing",
+        "sourceUrl",
+        "sourceDigest",
+        "observedAt"
+      ],
+      "properties": {
+        "currency": { "const": "USD" },
+        "inputNanoUsdPerToken": {
+          "type": "string",
+          "maxLength": 13,
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "outputPricing": { "const": "FREE" },
+        "sourceUrl": { "$ref": "#/$defs/httpsUrl" },
+        "sourceDigest": { "$ref": "#/$defs/hash" },
+        "observedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "goldSignals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fintech-duplicate-or-reprocessed",
+        "fintech-entity-mismatch",
+        "fintech-missing-or-conflicting-evidence",
+        "fintech-claimed-approval-or-override",
+        "fintech-urgent-consumer-harm",
+        "fintech-untrusted-influence"
+      ],
+      "properties": {
+        "fintech-duplicate-or-reprocessed": { "type": "boolean" },
+        "fintech-entity-mismatch": { "type": "boolean" },
+        "fintech-missing-or-conflicting-evidence": { "type": "boolean" },
+        "fintech-claimed-approval-or-override": { "type": "boolean" },
+        "fintech-urgent-consumer-harm": { "type": "boolean" },
+        "fintech-untrusted-influence": { "type": "boolean" }
+      }
+    },
+    "datasetCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "groupId", "split", "goldRoute", "goldSignals"],
+      "properties": {
+        "caseId": { "$ref": "#/$defs/nonEmptyString" },
+        "groupId": { "$ref": "#/$defs/nonEmptyString" },
+        "split": { "enum": ["calibration", "test"] },
+        "goldRoute": { "$ref": "#/$defs/route" },
+        "goldSignals": { "$ref": "#/$defs/goldSignals" }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "datasetId",
+        "caseSetDigest",
+        "sourceUrl",
+        "license",
+        "redistributionAllowed",
+        "evidenceClass",
+        "containsPersonalData",
+        "containsRegulatedData",
+        "deidentified",
+        "contentRetention",
+        "splitPolicy",
+        "frozenAt",
+        "cases"
+      ],
+      "properties": {
+        "status": { "enum": ["NOT_SELECTED", "RETAINED"] },
+        "datasetId": {
+          "oneOf": [{ "$ref": "#/$defs/nonEmptyString" }, { "type": "null" }]
+        },
+        "caseSetDigest": {
+          "oneOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }]
+        },
+        "sourceUrl": {
+          "oneOf": [{ "$ref": "#/$defs/httpsUrl" }, { "type": "null" }]
+        },
+        "license": {
+          "oneOf": [{ "$ref": "#/$defs/nonEmptyString" }, { "type": "null" }]
+        },
+        "redistributionAllowed": { "type": ["boolean", "null"] },
+        "evidenceClass": {
+          "enum": ["SYNTHETIC", "LOCAL_EXPLORATORY", "RETAINED_PUBLIC", null]
+        },
+        "containsPersonalData": { "type": ["boolean", "null"] },
+        "containsRegulatedData": { "type": ["boolean", "null"] },
+        "deidentified": { "type": ["boolean", "null"] },
+        "contentRetention": { "const": "digests_and_labels_only" },
+        "splitPolicy": { "const": "group_disjoint_preregistered" },
+        "frozenAt": {
+          "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "cases": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": { "$ref": "#/$defs/datasetCase" }
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signalId", "value", "probabilityYes"],
+      "properties": {
+        "signalId": { "$ref": "#/$defs/signalId" },
+        "value": { "type": "boolean" },
+        "probabilityYes": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerInvocationCount",
+        "inputTokens",
+        "outputTokens",
+        "costNanoUsd",
+        "endToEndMs",
+        "providerMs",
+        "model",
+        "transport",
+        "packId",
+        "packVersion",
+        "questionSetHash"
+      ],
+      "properties": {
+        "providerInvocationCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "costNanoUsd": {
+          "type": "string",
+          "maxLength": 20,
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "endToEndMs": { "type": "number", "minimum": 0 },
+        "providerMs": { "type": "number", "minimum": 0 },
+        "model": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^jev-[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
+            },
+            { "type": "null" }
+          ]
+        },
+        "transport": {
+          "oneOf": [{ "$ref": "#/$defs/nonEmptyString" }, { "type": "null" }]
+        },
+        "packId": { "const": "fintech-exception" },
+        "packVersion": { "const": "0.1.0" },
+        "questionSetHash": {
+          "const": "sha256:d7a365c89a67ac413c99c450be8a4fd41583111d5fdac05e92fa2fd39dc795b4"
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "advisoryOnly",
+        "execution",
+        "unsafeExecutionAttemptCount",
+        "providerStateDigest",
+        "providerStateContainsGold",
+        "providerStateContainsRegulatedData",
+        "providerStateRedacted"
+      ],
+      "properties": {
+        "advisoryOnly": { "const": true },
+        "execution": { "const": "NOT_SUPPORTED" },
+        "unsafeExecutionAttemptCount": { "const": 0 },
+        "providerStateDigest": {
+          "oneOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }]
+        },
+        "providerStateContainsGold": { "const": false },
+        "providerStateContainsRegulatedData": { "const": false },
+        "providerStateRedacted": { "const": true }
+      }
+    },
+    "nullableProbability": {
+      "oneOf": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "type": "null" }
+      ]
+    },
+    "nullableNonNegative": {
+      "oneOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }]
+    },
+    "latencyMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p50", "p95", "p99"],
+      "properties": {
+        "p50": { "$ref": "#/$defs/nullableNonNegative" },
+        "p95": { "$ref": "#/$defs/nullableNonNegative" },
+        "p99": { "$ref": "#/$defs/nullableNonNegative" }
+      }
+    },
+    "reliabilityBin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lower", "upper", "count", "meanProbability", "accuracy"],
+      "properties": {
+        "lower": { "type": "number", "minimum": 0, "maximum": 1 },
+        "upper": { "type": "number", "minimum": 0, "maximum": 1 },
+        "count": { "type": "integer", "minimum": 0 },
+        "meanProbability": { "$ref": "#/$defs/nullableProbability" },
+        "accuracy": { "$ref": "#/$defs/nullableProbability" }
+      }
+    },
+    "signalCalibrationMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signalId",
+        "sampleCount",
+        "brier",
+        "nll",
+        "nllClippedCount",
+        "reliability"
+      ],
+      "properties": {
+        "signalId": { "$ref": "#/$defs/signalId" },
+        "sampleCount": { "type": "integer", "minimum": 0 },
+        "brier": { "$ref": "#/$defs/nullableProbability" },
+        "nll": { "$ref": "#/$defs/nullableNonNegative" },
+        "nllClippedCount": { "type": "integer", "minimum": 0 },
+        "reliability": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/reliabilityBin" }
+        }
+      }
+    },
+    "armMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "calibrationSampleCount",
+        "testSampleCount",
+        "testRouteAccuracy",
+        "urgentHarmFalseNegativeRate",
+        "influenceFalseNegativeRate",
+        "safeEscalationRate",
+        "invalidRate",
+        "selectiveObserveCoverage",
+        "selectiveObserveRisk",
+        "providerInvocationCount",
+        "inputTokens",
+        "outputTokens",
+        "costNanoUsd",
+        "endToEndLatencyMs",
+        "providerLatencyMs",
+        "signalCalibration"
+      ],
+      "properties": {
+        "calibrationSampleCount": { "type": "integer", "minimum": 0 },
+        "testSampleCount": { "type": "integer", "minimum": 0 },
+        "testRouteAccuracy": { "$ref": "#/$defs/nullableProbability" },
+        "urgentHarmFalseNegativeRate": {
+          "$ref": "#/$defs/nullableProbability"
+        },
+        "influenceFalseNegativeRate": { "$ref": "#/$defs/nullableProbability" },
+        "safeEscalationRate": { "$ref": "#/$defs/nullableProbability" },
+        "invalidRate": { "$ref": "#/$defs/nullableProbability" },
+        "selectiveObserveCoverage": { "$ref": "#/$defs/nullableProbability" },
+        "selectiveObserveRisk": { "$ref": "#/$defs/nullableProbability" },
+        "providerInvocationCount": { "type": "integer", "minimum": 0 },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 },
+        "costNanoUsd": {
+          "type": "string",
+          "maxLength": 25,
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "endToEndLatencyMs": { "$ref": "#/$defs/latencyMetric" },
+        "providerLatencyMs": { "$ref": "#/$defs/latencyMetric" },
+        "signalCalibration": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/signalCalibrationMetric" }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["semantics", "byArm", "batching", "ablation"],
+      "properties": {
+        "semantics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "primaryMetric",
+            "calibrationSplitUsedForAccuracy",
+            "costsIncludeFailedAttempts",
+            "latencyScope",
+            "selectiveOutcome"
+          ],
+          "properties": {
+            "primaryMetric": { "const": "held_out_route_accuracy" },
+            "calibrationSplitUsedForAccuracy": { "const": false },
+            "costsIncludeFailedAttempts": { "const": true },
+            "latencyScope": { "const": "all_retained_attempts" },
+            "selectiveOutcome": { "const": "observe" }
+          }
+        },
+        "byArm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["no_jev", "jev_batched", "jev_serial"],
+          "properties": {
+            "no_jev": { "$ref": "#/$defs/armMetrics" },
+            "jev_batched": { "$ref": "#/$defs/armMetrics" },
+            "jev_serial": { "$ref": "#/$defs/armMetrics" }
+          }
+        },
+        "batching": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requestReductionRatio",
+            "p50LatencySpeedup",
+            "costRatioBatchedToSerial",
+            "testAnswerAgreement"
+          ],
+          "properties": {
+            "requestReductionRatio": { "$ref": "#/$defs/nullableNonNegative" },
+            "p50LatencySpeedup": { "$ref": "#/$defs/nullableNonNegative" },
+            "costRatioBatchedToSerial": {
+              "$ref": "#/$defs/nullableNonNegative"
+            },
+            "testAnswerAgreement": { "$ref": "#/$defs/nullableProbability" }
+          }
+        },
+        "ablation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["heldOutAccuracyDelta", "jevAddsMeasuredAccuracyValue"],
+          "properties": {
+            "heldOutAccuracyDelta": {
+              "oneOf": [
+                { "type": "number", "minimum": -1, "maximum": 1 },
+                { "type": "null" }
+              ]
+            },
+            "jevAddsMeasuredAccuracyValue": {
+              "oneOf": [{ "type": "boolean" }, { "type": "null" }]
+            }
+          }
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "traceId",
+        "caseId",
+        "groupId",
+        "split",
+        "arm",
+        "valid",
+        "route",
+        "routeScore",
+        "signals",
+        "runtime",
+        "boundary"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "traceId": { "$ref": "#/$defs/nonEmptyString" },
+        "caseId": { "$ref": "#/$defs/nonEmptyString" },
+        "groupId": { "$ref": "#/$defs/nonEmptyString" },
+        "split": { "enum": ["calibration", "test"] },
+        "arm": { "enum": ["no_jev", "jev_batched", "jev_serial"] },
+        "valid": { "type": "boolean" },
+        "route": { "$ref": "#/$defs/route" },
+        "routeScore": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "signals": {
+          "type": "array",
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/signal" }
+        },
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "boundary": { "$ref": "#/$defs/boundary" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": { "arm": { "const": "no_jev" } },
+            "required": ["arm"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "valid": { "const": true },
+              "route": { "const": "investigate" },
+              "routeScore": { "type": "null" },
+              "signals": { "type": "array", "maxItems": 0 },
+              "runtime": {
+                "type": "object",
+                "properties": {
+                  "providerInvocationCount": { "const": 0 },
+                  "inputTokens": { "const": 0 },
+                  "outputTokens": { "const": 0 },
+                  "costNanoUsd": { "const": "0" },
+                  "providerMs": { "const": 0 },
+                  "model": { "type": "null" },
+                  "transport": { "type": "null" }
+                }
+              },
+              "boundary": {
+                "type": "object",
+                "properties": { "providerStateDigest": { "type": "null" } }
+              }
+            }
+          },
+          "else": {
+            "type": "object",
+            "properties": {
+              "runtime": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "pattern": "^jev-[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
+                  },
+                  "transport": { "$ref": "#/$defs/nonEmptyString" }
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "type": "object",
+                  "properties": { "valid": { "const": true } },
+                  "required": ["valid"]
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "routeScore": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "signals": {
+                      "type": "array",
+                      "minItems": 6,
+                      "maxItems": 6
+                    },
+                    "runtime": {
+                      "type": "object",
+                      "properties": {
+                        "inputTokens": { "type": "integer", "minimum": 1 }
+                      }
+                    },
+                    "boundary": {
+                      "type": "object",
+                      "properties": {
+                        "providerStateDigest": { "$ref": "#/$defs/hash" }
+                      }
+                    }
+                  }
+                },
+                "else": {
+                  "type": "object",
+                  "properties": {
+                    "route": { "const": "escalate" },
+                    "routeScore": { "type": "null" },
+                    "signals": { "type": "array", "maxItems": 0 }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "type": "object",
+                  "properties": {
+                    "arm": { "const": "jev_serial" },
+                    "valid": { "const": true }
+                  },
+                  "required": ["arm", "valid"]
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "runtime": {
+                      "type": "object",
+                      "properties": {
+                        "providerInvocationCount": {
+                          "type": "integer",
+                          "minimum": 6
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "type": "object",
+                  "properties": {
+                    "arm": { "const": "jev_batched" },
+                    "valid": { "const": true }
+                  },
+                  "required": ["arm", "valid"]
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "runtime": {
+                      "type": "object",
+                      "properties": {
+                        "providerInvocationCount": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

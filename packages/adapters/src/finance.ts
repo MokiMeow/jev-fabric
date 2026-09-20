@@ -133,6 +133,7 @@ export const financeVisualMutationSchema = z.enum([
   "missing_source_date",
   "missing_units",
   "swapped_series_legend",
+  "reversed_time_axis",
   "truncated_zero_baseline",
 ]);
 export type FinanceVisualMutation = z.infer<typeof financeVisualMutationSchema>;
@@ -146,9 +147,10 @@ const financeVisualMutationRoutes = {
   missing_source_date: "investigate",
   missing_units: "investigate",
   swapped_series_legend: "escalate",
+  reversed_time_axis: "escalate",
   truncated_zero_baseline: "escalate",
 } as const satisfies Record<FinanceVisualMutation, string>;
-const financeVisualRendererSchema = z
+const financeVisualRendererV1Schema = z
   .object({
     id: z.literal("finance.canonical-svg"),
     version: z.literal("1"),
@@ -156,6 +158,25 @@ const financeVisualRendererSchema = z
     mutationPolicyId: z.literal("finance.visual-mutations.v1"),
   })
   .strict();
+const financeVisualRendererV2Schema = z
+  .object({
+    id: z.literal("finance.canonical-svg"),
+    version: z.literal("2"),
+    schemaVersion: z.literal("1"),
+    mutationPolicyId: z.literal("finance.visual-mutations.v2"),
+  })
+  .strict();
+const financeVisualRendererSchema = z.union([
+  financeVisualRendererV1Schema,
+  financeVisualRendererV2Schema,
+]);
+const financeVisualV1Mutations = new Set<FinanceVisualMutation>([
+  "faithful_render",
+  "missing_source_date",
+  "missing_units",
+  "swapped_series_legend",
+  "truncated_zero_baseline",
+]);
 
 export const trustedMarketSignalSchema = z
   .object({
@@ -199,6 +220,17 @@ const trustedFinanceProjectionPayloadSchema = z
         artifactBindingHash: hashSchema,
       })
       .strict()
+      .superRefine((value, context) => {
+        if (
+          value.renderer.version === "1" &&
+          !financeVisualV1Mutations.has(value.mutationId)
+        )
+          context.addIssue({
+            code: "custom",
+            message: "visual mutation is not supported by renderer version 1",
+            path: ["mutationId"],
+          });
+      })
       .optional(),
     text: z
       .object({

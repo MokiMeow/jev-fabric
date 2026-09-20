@@ -29,7 +29,9 @@ import {
 } from "../lib/verify.mjs";
 import {
   FINANCE_CHART_RENDERER,
+  FINANCE_CHART_RENDERER_V1,
   renderFinanceChart,
+  renderFinanceChartV1,
 } from "../visual/render.mjs";
 
 const fixtureRoot = join(
@@ -979,6 +981,27 @@ test("binds compiled visual mutations to their artifact and gold route", async (
     () => verify(forgedHashes),
     /visual compiler output mismatch/u,
   );
+});
+
+test("rebuilds retained renderer-v1 visual evidence with its frozen policy", async () => {
+  const fixture = await createFixture();
+  const cases = await readJsonLines(join(fixture.dataset, "cases.jsonl"));
+  for (const benchmarkCase of cases) {
+    if (benchmarkCase.track !== "visual_evidence") continue;
+    const rendered = renderFinanceChartV1(
+      benchmarkCase.visualArtifact.compilerInput,
+    );
+    assert.deepEqual(rendered.renderer, FINANCE_CHART_RENDERER_V1);
+    benchmarkCase.trustedProjection.visual.renderer = rendered.renderer;
+    benchmarkCase.trustedProjection.visual.artifactBindingHash =
+      rendered.artifactBindingHash;
+    resealBenchmarkCase(benchmarkCase);
+  }
+  await writeCanonicalJsonLines(join(fixture.dataset, "cases.jsonl"), cases);
+  await refreshManifest(fixture.dataset);
+
+  const result = await verify(fixture);
+  assert.ok((result as { caseCount: number }).caseCount > 0);
 });
 
 test("rejects extra raw case fields before rights classification", async () => {

@@ -6,6 +6,7 @@ export const FINANCE_VISUAL_MUTATIONS = [
   "missing_source_date",
   "missing_units",
   "swapped_series_legend",
+  "reversed_time_axis",
   "truncated_zero_baseline",
 ] as const;
 
@@ -17,15 +18,27 @@ export const FINANCE_VISUAL_MUTATION_ROUTES = Object.freeze({
   missing_source_date: "investigate",
   missing_units: "investigate",
   swapped_series_legend: "escalate",
+  reversed_time_axis: "escalate",
   truncated_zero_baseline: "escalate",
 } as const satisfies Record<FinanceVisualMutation, FinanceVisualRoute>);
 
-export const FINANCE_CHART_RENDERER = Object.freeze({
+export const FINANCE_CHART_RENDERER_V1 = Object.freeze({
   id: "finance.canonical-svg",
   version: "1",
   schemaVersion: "1",
   mutationPolicyId: "finance.visual-mutations.v1",
 } as const);
+
+export const FINANCE_CHART_RENDERER = Object.freeze({
+  id: "finance.canonical-svg",
+  version: "2",
+  schemaVersion: "1",
+  mutationPolicyId: "finance.visual-mutations.v2",
+} as const);
+
+export type FinanceChartRenderer =
+  | typeof FINANCE_CHART_RENDERER_V1
+  | typeof FINANCE_CHART_RENDERER;
 
 export interface RenderedFinanceChart {
   readonly schemaVersion: "1";
@@ -37,7 +50,7 @@ export interface RenderedFinanceChart {
   readonly sourceBindingHash: string;
   /** Seals the renderer, policy, source, image, mutation, and expected route. */
   readonly artifactBindingHash: string;
-  readonly renderer: typeof FINANCE_CHART_RENDERER;
+  readonly renderer: FinanceChartRenderer;
   readonly axisBounds: Readonly<{
     minimum: number;
     maximum: number;
@@ -113,8 +126,24 @@ const utf8Encoder = new TextEncoder();
  * The input is treated as untrusted data and is never executed or fetched.
  */
 export function renderFinanceChart(input: unknown): RenderedFinanceChart {
+  return renderFinanceChartWithRenderer(input, FINANCE_CHART_RENDERER);
+}
+
+/** Rebuilds retained renderer-v1 artifacts without granting v1 new mutations. */
+export function renderFinanceChartV1(input: unknown): RenderedFinanceChart {
+  return renderFinanceChartWithRenderer(input, FINANCE_CHART_RENDERER_V1);
+}
+
+function renderFinanceChartWithRenderer(
+  input: unknown,
+  renderer: FinanceChartRenderer,
+): RenderedFinanceChart {
   const chart = normalizeChart(input);
   validateMutationApplicability(chart);
+  if (renderer.version === "1" && chart.mutationId === "reversed_time_axis")
+    throw new TypeError(
+      "reversed_time_axis requires finance canonical SVG renderer v2",
+    );
 
   const values = chart.series.flatMap((series) =>
     series.points.map((point) => point.value),
@@ -127,7 +156,7 @@ export function renderFinanceChart(input: unknown): RenderedFinanceChart {
   const artifactBindingHash = sha256(
     canonicalJson({
       schemaVersion: "1",
-      renderer: FINANCE_CHART_RENDERER,
+      renderer,
       sourceBindingHash,
       imageHash,
       mutationId: chart.mutationId,
@@ -144,7 +173,7 @@ export function renderFinanceChart(input: unknown): RenderedFinanceChart {
     imageHash,
     sourceBindingHash,
     artifactBindingHash,
-    renderer: FINANCE_CHART_RENDERER,
+    renderer,
     axisBounds: Object.freeze({
       minimum: bounds.minimum,
       maximum: bounds.maximum,
@@ -375,9 +404,12 @@ function renderSvg(
   if (xMaximum <= xMinimum)
     throw new TypeError("chart timestamps must span a non-zero range");
 
-  const x = (epochMs: number) =>
-    PLOT_LEFT +
-    ((epochMs - xMinimum) / (xMaximum - xMinimum)) * (PLOT_RIGHT - PLOT_LEFT);
+  const x = (epochMs: number) => {
+    const fraction = (epochMs - xMinimum) / (xMaximum - xMinimum);
+    return chart.mutationId === "reversed_time_axis"
+      ? PLOT_RIGHT - fraction * (PLOT_RIGHT - PLOT_LEFT)
+      : PLOT_LEFT + fraction * (PLOT_RIGHT - PLOT_LEFT);
+  };
   const y = (value: number) =>
     PLOT_BOTTOM -
     ((value - bounds.minimum) / (bounds.maximum - bounds.minimum)) *
@@ -424,7 +456,11 @@ function renderSvg(
   const xTickCount = 5;
   for (let index = 0; index < xTickCount; index += 1) {
     const fraction = index / (xTickCount - 1);
-    const epochMs = Math.round(xMinimum + fraction * (xMaximum - xMinimum));
+    const epochMs = Math.round(
+      chart.mutationId === "reversed_time_axis"
+        ? xMaximum - fraction * (xMaximum - xMinimum)
+        : xMinimum + fraction * (xMaximum - xMinimum),
+    );
     const coordinate = PLOT_LEFT + fraction * (PLOT_RIGHT - PLOT_LEFT);
     lines.push(
       `  <line x1="${decimal(coordinate)}" y1="${PLOT_BOTTOM}" x2="${decimal(coordinate)}" y2="${PLOT_BOTTOM + 5}" stroke="#374151" stroke-width="1"/>`,

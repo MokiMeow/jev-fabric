@@ -5,8 +5,10 @@ import Ajv2020Module, { type ValidateFunction } from "ajv/dist/2020.js";
 import { computeFinanceProjectionBindingHash } from "../../../../packages/adapters/src/index.js";
 import {
   FINANCE_CHART_RENDERER,
+  FINANCE_CHART_RENDERER_V1,
   FINANCE_VISUAL_MUTATION_ROUTES,
   renderFinanceChart,
+  renderFinanceChartV1,
 } from "../visual/render.mjs";
 import {
   assertCanonicalHttpsUrl,
@@ -1415,7 +1417,13 @@ function verifyVisualArtifactBinding(
     visual.renderer,
     "trustedProjection.visual.renderer",
   );
-  if (canonicalJson(renderer) !== canonicalJson(FINANCE_CHART_RENDERER))
+  const rendererJson = canonicalJson(renderer);
+  const isRendererV1 =
+    rendererJson === canonicalJson(FINANCE_CHART_RENDERER_V1);
+  const isRendererV2 = rendererJson === canonicalJson(FINANCE_CHART_RENDERER);
+  if (!isRendererV1 && !isRendererV2)
+    throw new TypeError(`visual renderer binding mismatch for ${caseId}`);
+  if (isRendererV1 && mutationId === "reversed_time_axis")
     throw new TypeError(`visual renderer binding mismatch for ${caseId}`);
   const imageHash = digest(
     visual.imageHash,
@@ -1432,7 +1440,7 @@ function verifyVisualArtifactBinding(
   const expectedArtifactBindingHash = sha256(
     canonicalJson({
       schemaVersion: "1",
-      renderer: FINANCE_CHART_RENDERER,
+      renderer,
       sourceBindingHash,
       imageHash,
       mutationId,
@@ -1457,7 +1465,9 @@ function verifyVisualArtifactBinding(
     throw new TypeError(`visual artifact is not retained: ${svgPath}`);
   visualAssetPaths.add(svgPath);
 
-  const rendered = renderFinanceChart(retained.compilerInput);
+  const rendered = isRendererV1
+    ? renderFinanceChartV1(retained.compilerInput)
+    : renderFinanceChart(retained.compilerInput);
   if (
     rendered.schemaVersion !== visual.schemaVersion ||
     canonicalJson(rendered.renderer) !== canonicalJson(renderer) ||

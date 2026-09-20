@@ -67,7 +67,7 @@ annotations marked as untrusted:
 - `artifactBindingHash` covers the image and source-binding hashes together
   with `mutationId`, `expectedRoute`, the output schema, the fixed
   `finance.canonical-svg` renderer version, and the
-  `finance.visual-mutations.v1` policy identifier. Relabeling a retained SVG
+  `finance.visual-mutations.v2` policy identifier. Relabeling a retained SVG
   therefore invalidates its artifact binding.
 
 The focused test pins a reviewed faithful-render golden for all three hashes.
@@ -75,7 +75,7 @@ Intentional renderer or policy changes must update the version and golden in a
 reviewable change.
 
 The compiler implements exactly the mutations in
-`../policies/visual-mutations.v1.json`:
+`../policies/visual-mutations.v2.json`:
 
 | Mutation | Expected route | Deterministic effect |
 | --- | --- | --- |
@@ -83,7 +83,13 @@ The compiler implements exactly the mutations in
 | `missing_source_date` | `investigate` | Omits only the visible source date. |
 | `missing_units` | `investigate` | Omits only the visible y-axis units. |
 | `swapped_series_legend` | `escalate` | Swaps the first two canonical legend labels without changing plotted series. |
+| `reversed_time_axis` | `escalate` | Reverses both chronological x coordinates and visible date ticks while preserving source points. |
 | `truncated_zero_baseline` | `escalate` | Uses a positive lower bound; it is valid only for strictly positive source values. |
+
+Renderer v1 and its five-mutation policy remain accepted by the trusted adapter
+and finance pack for existing retained artifacts. New compiler output uses
+renderer v2; a v1 artifact cannot claim the v2-only `reversed_time_axis`
+mutation.
 
 Run the focused offline checks with:
 

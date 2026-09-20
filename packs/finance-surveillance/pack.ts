@@ -74,12 +74,20 @@ const financeSignalBuckets = new Set([
 ]);
 const portableSignalId = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const sha256Hash = /^sha256:[a-f0-9]{64}$/u;
-const financeVisualRenderer = {
-  id: "finance.canonical-svg",
-  mutationPolicyId: "finance.visual-mutations.v1",
-  schemaVersion: "1",
-  version: "1",
-} as const;
+const financeVisualRenderers = [
+  {
+    id: "finance.canonical-svg",
+    mutationPolicyId: "finance.visual-mutations.v1",
+    schemaVersion: "1",
+    version: "1",
+  },
+  {
+    id: "finance.canonical-svg",
+    mutationPolicyId: "finance.visual-mutations.v2",
+    schemaVersion: "1",
+    version: "2",
+  },
+] as const;
 const financeStateKeys = new Set([
   "contractVersion",
   "advisoryOnly",
@@ -1003,9 +1011,13 @@ function projectFinanceState(
             new Set(["id", "mutationPolicyId", "schemaVersion", "version"]),
             "finance visual renderer",
           );
-          for (const [key, expected] of Object.entries(financeVisualRenderer))
-            if (dataProperty(renderer, key) !== expected)
-              throw new TypeError("finance visual renderer is invalid");
+          const normalizedRenderer = financeVisualRenderers.find((candidate) =>
+            Object.entries(candidate).every(
+              ([key, expected]) => dataProperty(renderer, key) === expected,
+            ),
+          );
+          if (normalizedRenderer === undefined)
+            throw new TypeError("finance visual renderer is invalid");
           const annotations = plainStringArray(
             dataProperty(visualRecord, "annotations"),
             "finance visual annotations",
@@ -1032,7 +1044,7 @@ function projectFinanceState(
             sourceBindingHash,
             annotationHash,
             schemaVersion: "1" as const,
-            renderer: financeVisualRenderer,
+            renderer: normalizedRenderer,
             annotations,
             trust,
           };

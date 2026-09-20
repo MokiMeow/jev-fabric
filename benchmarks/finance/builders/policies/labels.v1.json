@@ -35,7 +35,11 @@
   },
   "visualEvidence": {
     "routes": {
-      "escalate": ["swapped_series_legend", "truncated_zero_baseline"],
+      "escalate": [
+        "swapped_series_legend",
+        "reversed_time_axis",
+        "truncated_zero_baseline"
+      ],
       "investigate": ["missing_source_date", "missing_units"],
       "observe": ["faithful_render"]
     },

@@ -296,9 +296,9 @@ describe("built-in decision packs", () => {
         schemaVersion: "1",
         renderer: {
           id: "finance.canonical-svg",
-          version: "1",
+          version: "2",
           schemaVersion: "1",
-          mutationPolicyId: "finance.visual-mutations.v1",
+          mutationPolicyId: "finance.visual-mutations.v2",
         },
         annotationHash: sha256(JSON.stringify(["routine"])),
         annotations: ["routine"],
@@ -332,6 +332,22 @@ describe("built-in decision packs", () => {
     expect(projected.visual).not.toHaveProperty("mutationId");
     expect(projected.visual).not.toHaveProperty("expectedRoute");
     expect(projected.visual).not.toHaveProperty("artifactBindingHash");
+
+    expect(() =>
+      implementation.projector.project(
+        {
+          ...state,
+          visual: {
+            ...state.visual,
+            renderer: {
+              ...state.visual.renderer,
+              mutationPolicyId: "finance.visual-mutations.v1",
+            },
+          },
+        },
+        { nowEpochMs: Date.parse(at) },
+      ),
+    ).toThrow(/renderer is invalid/u);
 
     expect(() =>
       implementation.projector.project(

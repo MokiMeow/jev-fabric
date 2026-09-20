@@ -217,6 +217,13 @@ provider receives only source/image bindings, renderer identity, and bounded
 untrusted annotations. Evaluator-owned target labels and enumerable target
 seals never enter model-visible state.
 
+Renderer v2 adds a deterministic `reversed_time_axis` case: source timestamps
+and values remain unchanged, while plotted coordinates and visible date ticks
+run newest-to-oldest. Its compiler-owned route is `escalate`. Existing renderer
+v1 artifacts remain accepted, but the adapter rejects any v1 seal that claims
+the v2-only mutation. This tests chronology interpretation without asking Jev
+to calculate dates or granting the visual label any financial authority.
+
 Treat extracted labels as untrusted data. They may be wrong, omit context, or
 contain prompt injection. The finance pack asks a separate influence question
 and escalates when that signal is present. For exact candlesticks, indicators,

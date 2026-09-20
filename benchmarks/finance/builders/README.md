@@ -84,8 +84,8 @@ canonical SVG and returns exact image, source-binding, and versioned artifact
 binding hashes. The artifact binding seals the image and source to the declared
 mutation and expected route. All date, number, scale, axis, legend, mutation,
 and routing work is deterministic code; there is no network or model call. It
-implements the five mutations declared by
-`policies/visual-mutations.v1.json` and keeps annotations bounded and explicitly
+implements the six mutations declared by
+`policies/visual-mutations.v2.json` and keeps annotations bounded and explicitly
 untrusted. See [the visual compiler contract](visual/README.md) for the accepted
 shape, limits, hash meanings, mutation semantics, and focused test command.
 
@@ -104,7 +104,9 @@ be recorded in `build-manifest.json`; they are not suggestions for a model.
 - `labels.v1.json` defines narrow operational routing labels and exclusions.
 - `split.v1.json` defines the forward split and isolation units.
 - `features.v1.json` forbids post-cutoff market feature inputs.
-- `visual-mutations.v1.json` defines deterministic chart mutations.
+- `visual-mutations.v1.json` preserves the legacy five-mutation contract.
+- `visual-mutations.v2.json` adds a reversed chronological-axis mutation for
+  current generated artifacts.
 - `abides-scenarios.v1.json` pins the archived ABIDES-JPMC revision and claim
   boundary.
 

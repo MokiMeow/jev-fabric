@@ -17,20 +17,29 @@ const visualRenderer = {
   schemaVersion: "1",
   mutationPolicyId: "finance.visual-mutations.v1",
 } as const;
+const visualRendererV2 = {
+  id: "finance.canonical-svg",
+  version: "2",
+  schemaVersion: "1",
+  mutationPolicyId: "finance.visual-mutations.v2",
+} as const;
 const visualArtifactBindingHash = (
   imageHash: string,
   sourceBindingHash: string,
+  renderer: typeof visualRenderer | typeof visualRendererV2 = visualRenderer,
+  mutationId = "faithful_render",
+  expectedRoute = "observe",
 ) =>
   sha256(
     JSON.stringify({
-      expectedRoute: "observe",
+      expectedRoute,
       imageHash,
-      mutationId: "faithful_render",
+      mutationId,
       renderer: {
-        id: visualRenderer.id,
-        mutationPolicyId: visualRenderer.mutationPolicyId,
-        schemaVersion: visualRenderer.schemaVersion,
-        version: visualRenderer.version,
+        id: renderer.id,
+        mutationPolicyId: renderer.mutationPolicyId,
+        schemaVersion: renderer.schemaVersion,
+        version: renderer.version,
       },
       schemaVersion: "1",
       sourceBindingHash,
@@ -222,6 +231,56 @@ describe("finance advisory evidence boundary", () => {
     expect(result.visual).not.toHaveProperty("expectedRoute");
     expect(result.visual).not.toHaveProperty("artifactBindingHash");
     expect(JSON.stringify(result)).not.toContain("faithful_render");
+  });
+
+  it("accepts renderer v2 reversed-time evidence but rejects that mutation under v1", () => {
+    const imageHash = hash("e");
+    const sourceBindingHash = hash("f");
+    const v2 = sealFinanceProjection({
+      ...trustedProjection,
+      visual: {
+        ...trustedProjection.visual,
+        imageHash,
+        sourceBindingHash,
+        renderer: visualRendererV2,
+        mutationId: "reversed_time_axis",
+        expectedRoute: "escalate",
+        artifactBindingHash: visualArtifactBindingHash(
+          imageHash,
+          sourceBindingHash,
+          visualRendererV2,
+          "reversed_time_axis",
+          "escalate",
+        ),
+      },
+    });
+    const result = bindFinanceAdvisoryEvidence(
+      v2,
+      { annotations: ["Chronology runs newest to oldest"] },
+      Date.parse(at) + 500,
+    );
+
+    expect(result.visual?.renderer).toEqual(visualRendererV2);
+    expect(result.visual).not.toHaveProperty("mutationId");
+    expect(result.visual).not.toHaveProperty("expectedRoute");
+    expect(() =>
+      sealFinanceProjection({
+        ...trustedProjection,
+        visual: {
+          ...trustedProjection.visual,
+          renderer: visualRenderer,
+          mutationId: "reversed_time_axis",
+          expectedRoute: "escalate",
+          artifactBindingHash: visualArtifactBindingHash(
+            imageHash,
+            sourceBindingHash,
+            visualRenderer,
+            "reversed_time_axis",
+            "escalate",
+          ),
+        },
+      }),
+    ).toThrow(/not supported by renderer version 1/u);
   });
 
   it("rejects stale, future, and look-ahead observations before provider use", () => {

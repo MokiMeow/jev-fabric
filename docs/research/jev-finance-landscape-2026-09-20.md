@@ -517,7 +517,7 @@ SVGs. Quarterly ZIP URLs can be replaced, so the source ZIP must be hashed and
 size-locked before offline generation. Resolve units, periods, duplicates, and
 amendments in code; every point binds to an accession and accepted date. A
 useful first frozen slice is 60 issuer-disjoint base charts per split, at most
-two series and 4–12 points each, expanded through the five existing deterministic
+two series and 4–12 points each, expanded through the six deterministic
 render/mutation variants. All variants of a base chart remain in one split.
 The [Data.gov record](https://catalog.data.gov/dataset/financial-statement-data-sets)
 currently labels the dataset for public access, but the retained manifest must

@@ -154,10 +154,45 @@
               ],
               "properties": {
                 "id": { "const": "finance.canonical-svg" },
-                "version": { "const": "1" },
+                "version": { "enum": ["1", "2"] },
                 "schemaVersion": { "const": "1" },
-                "mutationPolicyId": { "const": "finance.visual-mutations.v1" }
-              }
+                "mutationPolicyId": {
+                  "enum": [
+                    "finance.visual-mutations.v1",
+                    "finance.visual-mutations.v2"
+                  ]
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "type": "object",
+                    "properties": { "version": { "const": "1" } }
+                  },
+                  "then": {
+                    "type": "object",
+                    "properties": {
+                      "mutationPolicyId": {
+                        "const": "finance.visual-mutations.v1"
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "type": "object",
+                    "properties": { "version": { "const": "2" } }
+                  },
+                  "then": {
+                    "type": "object",
+                    "properties": {
+                      "mutationPolicyId": {
+                        "const": "finance.visual-mutations.v2"
+                      }
+                    }
+                  }
+                }
+              ]
             },
             "mutationId": {
               "enum": [
@@ -165,6 +200,7 @@
                 "missing_source_date",
                 "missing_units",
                 "swapped_series_legend",
+                "reversed_time_axis",
                 "truncated_zero_baseline"
               ]
             },
@@ -172,7 +208,26 @@
               "enum": ["observe", "investigate", "escalate"]
             },
             "artifactBindingHash": { "$ref": "#/$defs/hash" }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "type": "object",
+                "properties": {
+                  "renderer": {
+                    "type": "object",
+                    "properties": { "version": { "const": "1" } }
+                  }
+                }
+              },
+              "then": {
+                "type": "object",
+                "properties": {
+                  "mutationId": { "not": { "const": "reversed_time_axis" } }
+                }
+              }
+            }
+          ]
         },
         "text": {
           "type": "object",
@@ -485,6 +540,7 @@
             "missing_source_date",
             "missing_units",
             "swapped_series_legend",
+            "reversed_time_axis",
             "truncated_zero_baseline"
           ]
         },

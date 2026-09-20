@@ -7,10 +7,12 @@ import fc from "fast-check";
 import { canonicalJson, sha256 } from "../../lib/canonical.mjs";
 import {
   FINANCE_CHART_RENDERER,
+  FINANCE_CHART_RENDERER_V1,
   FINANCE_VISUAL_MUTATION_ROUTES,
   FINANCE_VISUAL_MUTATIONS,
   type FinanceVisualMutation,
   renderFinanceChart,
+  renderFinanceChartV1,
 } from "../render.mjs";
 
 const visualRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,7 +21,7 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 test("matches every declared mutation and expected route in policy", async () => {
   const policy = JSON.parse(
     await readFile(
-      join(visualRoot, "..", "policies", "visual-mutations.v1.json"),
+      join(visualRoot, "..", "policies", "visual-mutations.v2.json"),
       "utf8",
     ),
   ) as {
@@ -34,7 +36,7 @@ test("matches every declared mutation and expected route in policy", async () =>
   );
 });
 
-test("renders all five mutations with stable source bindings and declared routes", () => {
+test("renders all six mutations with stable source bindings and declared routes", () => {
   const results = new Map(
     FINANCE_VISUAL_MUTATIONS.map((mutationId) => {
       const result = renderFinanceChart(chart(mutationId));
@@ -66,7 +68,7 @@ test("renders all five mutations with stable source bindings and declared routes
 
   assert.equal(
     new Set([...results.values()].map((value) => value.imageHash)).size,
-    5,
+    6,
   );
   assert.equal(
     new Set([...results.values()].map((value) => value.sourceBindingHash)).size,
@@ -75,7 +77,7 @@ test("renders all five mutations with stable source bindings and declared routes
   assert.equal(
     new Set([...results.values()].map((value) => value.artifactBindingHash))
       .size,
-    5,
+    6,
   );
   assert.match(results.get("faithful_render")?.svg ?? "", /USD millions/u);
   assert.match(results.get("faithful_render")?.svg ?? "", /2024-08-01/u);
@@ -107,14 +109,47 @@ test("renders all five mutations with stable source bindings and declared routes
   );
   assert.equal(
     faithfulResult.artifactBindingHash,
-    "sha256:b39551ca0a53c7ca22d682d1d8cafb9d84421a157c7e55a0a1540175d0ac7b12",
+    "sha256:9eb46a194d1a43ec13025b892714e02acd0da101e2a9edd30cc32172ca2eb2a7",
     "reviewed artifact-binding golden changed",
   );
 
   const faithful = results.get("faithful_render")?.svg ?? "";
   const swapped = results.get("swapped_series_legend")?.svg ?? "";
+  const reversed = results.get("reversed_time_axis")?.svg ?? "";
   assert.ok(faithful.indexOf("Expenses") < faithful.indexOf("Revenue"));
   assert.ok(swapped.indexOf("Revenue") < swapped.indexOf("Expenses"));
+  assert.ok(faithful.indexOf("2024-01-01") < faithful.indexOf("2024-07-01"));
+  assert.ok(reversed.indexOf("2024-07-01") < reversed.indexOf("2024-01-01"));
+  assert.notEqual(reversed, faithful);
+});
+
+test("rebuilds legacy v1 artifacts without admitting v2-only mutations", () => {
+  const input = chart("faithful_render");
+  const current = renderFinanceChart(input);
+  const legacy = renderFinanceChartV1(input);
+
+  assert.deepEqual(legacy.renderer, FINANCE_CHART_RENDERER_V1);
+  assert.equal(legacy.svg, current.svg);
+  assert.equal(legacy.imageHash, current.imageHash);
+  assert.equal(legacy.sourceBindingHash, current.sourceBindingHash);
+  assert.notEqual(legacy.artifactBindingHash, current.artifactBindingHash);
+  assert.equal(
+    legacy.artifactBindingHash,
+    sha256(
+      canonicalJson({
+        schemaVersion: "1",
+        renderer: FINANCE_CHART_RENDERER_V1,
+        sourceBindingHash: legacy.sourceBindingHash,
+        imageHash: legacy.imageHash,
+        mutationId: legacy.mutationId,
+        expectedRoute: legacy.expectedRoute,
+      }),
+    ),
+  );
+  assert.throws(
+    () => renderFinanceChartV1(chart("reversed_time_axis")),
+    /requires finance canonical SVG renderer v2/u,
+  );
 });
 
 test("escapes display markup and never embeds URLs, scripts, or annotations", () => {

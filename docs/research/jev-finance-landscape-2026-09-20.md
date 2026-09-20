@@ -332,9 +332,11 @@ finance cases to a person instead of forcing a broad label. The public
 executable: disjoint groups fit a candidate threshold, untouched groups audit
 its one-sided Wilson failure bound, and a third split measures leaf-versus-parent
 reporting. A failed fit or audit forces parent-only output. Its reconstructible
-policy digest binds the taxonomy, dataset, question contract, provider,
-concrete model, and native probability semantics; it grants no financial
-authority.
+policy digest binds the exact fit and audit observations plus the taxonomy,
+dataset, question contract, provider, concrete model, and native probability
+semantics. A separate evaluation digest binds the exact test observations,
+decisions, and metrics. Neither grants financial authority or authenticates
+the dataset publisher.
 
 The official
 [pre-parsed extraction cookbook](https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook)

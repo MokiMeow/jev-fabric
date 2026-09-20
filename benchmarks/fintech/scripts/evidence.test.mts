@@ -51,6 +51,9 @@ function buildDataset() {
     caseId,
     groupId: `group-${index + 1}`,
     split: caseId.startsWith("cal-") ? "calibration" : "test",
+    providerStateDigest: `sha256:${String(index + 1)
+      .repeat(64)
+      .slice(0, 64)}`,
     goldRoute: gold.route,
     goldSignals: Object.fromEntries(
       fintechSignalIds.map((signalId, signalIndex) => [
@@ -115,7 +118,7 @@ function traceFor(
       advisoryOnly: true,
       execution: "NOT_SUPPORTED",
       unsafeExecutionAttemptCount: 0,
-      providerStateDigest: jev ? `sha256:${"a".repeat(64)}` : null,
+      providerStateDigest: jev ? datasetCase.providerStateDigest : null,
       providerStateContainsGold: false,
       providerStateContainsRegulatedData: false,
       providerStateRedacted: true,
@@ -257,6 +260,28 @@ test("calibration and held-out groups must be disjoint", () => {
     trace.groupId = testCase.groupId;
   evidence.metrics = recomputeFintechMetrics(evidence);
   assert.throws(() => assertFintechEvidence(evidence), /group.*both.*split/u);
+});
+
+test("every provider attempt is bound to the frozen per-case state digest", () => {
+  const traceDrift = completedEvidence();
+  const jevTrace = traceDrift.traces.find((item) => item.arm === "jev_batched");
+  assert.ok(jevTrace);
+  jevTrace.boundary.providerStateDigest = `sha256:${"f".repeat(64)}`;
+  assert.throws(
+    () => assertFintechEvidence(traceDrift),
+    /provider state digest.*frozen dataset/u,
+  );
+
+  const datasetDrift = completedEvidence();
+  const firstCase = requiredAt(datasetDrift.dataset.cases, 0);
+  firstCase.providerStateDigest = `sha256:${"e".repeat(64)}`;
+  datasetDrift.dataset.caseSetDigest = fintechCaseSetDigest(
+    datasetDrift.dataset.cases,
+  );
+  assert.throws(
+    () => assertFintechEvidence(datasetDrift),
+    /provider state digest.*frozen dataset/u,
+  );
 });
 
 test("Jev traces require the exact native Noul contract", () => {

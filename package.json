@@ -20,7 +20,7 @@
     "pack:test": "node scripts/pack-smoke.mjs",
     "examples:check": "vitest run examples/test",
     "docs:check": "vitest run docs/test examples/test && pnpm pack:test",
-    "benchmark:check": "tsc --noEmit -p benchmarks/fintech/tsconfig.json && node --test benchmarks/tool-environments/scripts/validate-and-report.test.mjs && tsx --test benchmarks/finance/scripts/drivers.test.mts benchmarks/finance/scripts/runner.test.mts benchmarks/finance/builders/test/verify.test.mts benchmarks/finance/builders/visual/test/render.test.mts benchmarks/fintech/scripts/evidence.test.mts && node benchmarks/tool-environments/scripts/validate-and-report.mjs && tsx benchmarks/finance/scripts/validate.mts && tsx benchmarks/fintech/scripts/validate.mts",
+    "benchmark:check": "tsc --noEmit -p benchmarks/fintech/tsconfig.json && node --test benchmarks/tool-environments/scripts/validate-and-report.test.mjs && tsx --test benchmarks/finance/scripts/drivers.test.mts benchmarks/finance/scripts/runner.test.mts benchmarks/finance/builders/test/verify.test.mts benchmarks/finance/builders/visual/test/render.test.mts benchmarks/fintech/scripts/evidence.test.mts benchmarks/fintech/scripts/runner.test.mts && node benchmarks/tool-environments/scripts/validate-and-report.mjs && tsx benchmarks/finance/scripts/validate.mts && tsx benchmarks/fintech/scripts/validate.mts",
     "security:check": "tsx scripts/security-check.mts && tsx scripts/verify-workflows.mts",
     "release:check": "vitest run scripts/test",
     "conformance": "node scripts/mcp-cli-smoke.mjs && pnpm --filter @mokimeow/jev-fabric-cli exec jev-fabric doctor --json",

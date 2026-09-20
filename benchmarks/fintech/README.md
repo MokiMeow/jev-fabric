@@ -45,6 +45,8 @@ The executable contract in `scripts/evidence.mts` rejects an artifact unless:
 
 - the task was preregistered and the dataset frozen before the run;
 - calibration and test groups are disjoint;
+- every case commits to the exact provider-visible projected-state digest and
+  each attempted Jev arm matches that frozen digest;
 - every case has exactly one no-Jev, batched, and serial trace;
 - the batched and serial arms use the same concrete Jev version, transport,
   pack, and question-set hash;
@@ -98,22 +100,48 @@ validate the committed `NOT_RUN` artifact.
 
 ## Running a real comparison
 
-This directory currently provides the measurement contract and offline
-verifier, not a credential-reading live runner. A runner must be supplied as a
-reviewed, credentialless worker that:
+`scripts/runner.mts` is the credential-isolated library runner. It does not
+read environment variables, construct a network client, accept an endpoint, or
+write an artifact. The host supplies already-reviewed cases and an injected
+`FintechMeasuredEvaluator`; `createFintechMeasuredEvaluator` can wrap the
+repository's pinned native TypeSafe provider after the trusted host constructs
+it with a newly issued server-side credential.
+
+Before any request, the runner projects every case through the exact
+`fintech-exception` pack, freezes the provider-state digest, and rejects stale,
+authority-bearing, bypassed, or malformed cases. During execution it:
+
+- runs the deterministic baseline with zero provider calls;
+- compares one six-question batch with six independent serial requests;
+- bounds case concurrency, attempts, request count, per-call deadline, and
+  aggregate input tokens;
+- reserves a conservative input-token allowance before each concurrent call so
+  parallel work cannot overshoot the declared budget;
+- records every metered malformed retry in calls, tokens, latency, and cost;
+- fails the entire run on unmetered transport errors or provider/model/semantics
+  drift instead of fabricating zero-cost evidence; and
+- retains only labels, state digests, probabilities, and accounting—never raw
+  case notes or provider state.
+
+The host remains responsible for a reviewed run envelope that:
 
 1. freezes a rights-reviewed, group-disjoint dataset before execution;
 2. keeps labels and dataset identity outside provider-visible state;
-3. uses the exact `fintech-exception` projection and question contract;
+3. uses a pinned native TypeSafe provider and the runner's exact projection and
+   question contract;
 4. records every attempt, retry, token, duration, concrete response model, and
    reviewed price—not merely successful calls;
 5. runs all three arms on every case under the same host/network conditions;
-6. emits the strict artifact shape accepted here; and
+6. writes the returned artifact only after `assertFintechEvidence` succeeds;
+   the runner performs this assertion before returning; and
 7. has no payment, account, order-entry, identity, or compliance-action tool.
 
-Use a newly issued secret from an environment variable or managed secret store.
-Never place a credential in the artifact, command line, repository, trace, or
-provider-visible state.
+This runner is intentionally not a live CLI. Use a newly issued secret from an
+environment variable or managed secret store in the trusted host process.
+Never place a credential in the artifact, command line, repository, trace, test
+fixture, or provider-visible state. A thrown provider error is not publishable
+measurement evidence unless the provider can return exact usage for that
+attempt; the runner therefore aborts on such errors.
 
 ## Why the no-Jev arm is mandatory
 

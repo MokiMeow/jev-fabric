@@ -29,19 +29,20 @@ const maxTokensPerTrace = 10_000_000;
 const maxDatasetCases = 100_000;
 const maxTraces = maxDatasetCases * arms.length;
 
-type FintechArm = (typeof arms)[number];
-type FintechRoute = (typeof routes)[number];
-type FintechSignalId = (typeof fintechSignalIds)[number];
+export type FintechArm = (typeof arms)[number];
+export type FintechRoute = (typeof routes)[number];
+export type FintechSignalId = (typeof fintechSignalIds)[number];
 
-interface FintechDatasetCase {
+export interface FintechDatasetCase {
   readonly caseId: string;
   readonly groupId: string;
   readonly split: "calibration" | "test";
+  readonly providerStateDigest: string;
   readonly goldRoute: FintechRoute;
   readonly goldSignals: Readonly<Record<FintechSignalId, boolean>>;
 }
 
-interface FintechTrace {
+export interface FintechTrace {
   readonly schemaVersion: "1";
   readonly traceId: string;
   readonly caseId: string;
@@ -80,7 +81,7 @@ interface FintechTrace {
   };
 }
 
-interface FintechEvidence {
+export interface FintechEvidence {
   readonly schemaVersion: "1";
   readonly runId: string;
   readonly executionState: "NOT_RUN" | "COMPLETED";
@@ -170,7 +171,7 @@ interface ArmMetrics {
   readonly signalCalibration: readonly SignalCalibrationMetric[];
 }
 
-interface FintechMetrics {
+export interface FintechMetrics {
   readonly semantics: Readonly<{
     primaryMetric: "held_out_route_accuracy";
     calibrationSplitUsedForAccuracy: false;
@@ -874,7 +875,14 @@ function validateDataset(
     const datasetCase = record(item, "dataset case");
     exactKeys(
       datasetCase,
-      ["caseId", "groupId", "split", "goldRoute", "goldSignals"],
+      [
+        "caseId",
+        "groupId",
+        "split",
+        "providerStateDigest",
+        "goldRoute",
+        "goldSignals",
+      ],
       "dataset case",
     );
     nonEmptyString(datasetCase.caseId, "case id");
@@ -887,6 +895,11 @@ function validateDataset(
     invariant(
       datasetCase.split === "calibration" || datasetCase.split === "test",
       "dataset case split is invalid",
+    );
+    invariant(
+      typeof datasetCase.providerStateDigest === "string" &&
+        sha256Pattern.test(datasetCase.providerStateDigest),
+      "dataset provider state digest is invalid",
     );
     invariant(
       routes.includes(datasetCase.goldRoute as FintechRoute),
@@ -1051,6 +1064,7 @@ function validateBoundary(
   value: unknown,
   arm: FintechArm,
   providerInvocationCount: number,
+  providerStateDigest: string,
 ): void {
   const boundary = record(value, "trace boundary");
   exactKeys(
@@ -1095,8 +1109,9 @@ function validateBoundary(
   else
     invariant(
       typeof boundary.providerStateDigest === "string" &&
-        sha256Pattern.test(boundary.providerStateDigest),
-      "provider state digest is invalid",
+        sha256Pattern.test(boundary.providerStateDigest) &&
+        boundary.providerStateDigest === providerStateDigest,
+      "provider state digest does not match the frozen dataset",
     );
 }
 
@@ -1153,7 +1168,12 @@ function validateTrace(
     pack,
     inputNanoUsdPerToken,
   );
-  validateBoundary(trace.boundary, arm, runtime.providerInvocationCount);
+  validateBoundary(
+    trace.boundary,
+    arm,
+    runtime.providerInvocationCount,
+    datasetCase.providerStateDigest,
+  );
   if (arm === "no_jev") {
     invariant(
       trace.valid === true,

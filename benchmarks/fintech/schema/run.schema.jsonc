@@ -224,11 +224,19 @@
     "datasetCase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caseId", "groupId", "split", "goldRoute", "goldSignals"],
+      "required": [
+        "caseId",
+        "groupId",
+        "split",
+        "providerStateDigest",
+        "goldRoute",
+        "goldSignals"
+      ],
       "properties": {
         "caseId": { "$ref": "#/$defs/nonEmptyString" },
         "groupId": { "$ref": "#/$defs/nonEmptyString" },
         "split": { "enum": ["calibration", "test"] },
+        "providerStateDigest": { "$ref": "#/$defs/hash" },
         "goldRoute": { "$ref": "#/$defs/route" },
         "goldSignals": { "$ref": "#/$defs/goldSignals" }
       }

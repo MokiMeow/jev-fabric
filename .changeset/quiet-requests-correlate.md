@@ -15,3 +15,6 @@ and one retained provenance slot for every metered provider attempt.
 Add a group-disjoint hierarchical-confidence evaluator for finance document
 taxonomies. It fits and independently audits a version-bound threshold before
 allowing leaf labels, otherwise falling back to deterministic parent labels.
+Reject non-primitive leaf identifiers and hash bindings before any coercive
+operation, and reject proxied, sparse, extended, or oversized observation
+arrays.

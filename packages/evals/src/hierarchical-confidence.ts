@@ -303,7 +303,15 @@ function validateRows(
   input: readonly HierarchicalConfidenceObservation[],
   hierarchy: Readonly<Record<string, string>>,
 ): readonly HierarchicalConfidenceObservation[] {
-  if (!Array.isArray(input)) throw new TypeError("rows must be an array");
+  if (
+    !Array.isArray(input) ||
+    isProxy(input) ||
+    Object.getPrototypeOf(input) !== Array.prototype
+  )
+    throw new TypeError("rows must be a plain array");
+  if (input.length > 1_000_000)
+    throw new TypeError("rows exceed the hierarchical confidence limit");
+  assertPlainRowsArray(input);
   const ids = new Set<string>();
   const groupSplits = new Map<string, string>();
   return Object.freeze(
@@ -319,6 +327,8 @@ function validateRows(
       if (oldSplit !== undefined && oldSplit !== row.split)
         throw new TypeError(`group crosses splits: ${row.groupId}`);
       groupSplits.set(row.groupId, row.split);
+      requiredIdentifier(row.goldLeaf, `row ${index} goldLeaf`);
+      requiredIdentifier(row.predictedLeaf, `row ${index} predictedLeaf`);
       if (!(row.goldLeaf in hierarchy) || !(row.predictedLeaf in hierarchy))
         throw new TypeError(`row ${index} contains an unknown hierarchy leaf`);
       if (
@@ -330,6 +340,22 @@ function validateRows(
       return Object.freeze({ ...row });
     }),
   );
+}
+
+function assertPlainRowsArray(
+  rows: readonly HierarchicalConfidenceObservation[],
+): void {
+  const descriptors = Object.getOwnPropertyDescriptors(rows);
+  const allowed = new Set(["length"]);
+  for (let index = 0; index < rows.length; index += 1) {
+    const key = String(index);
+    allowed.add(key);
+    const descriptor = descriptors[key];
+    if (!descriptor?.enumerable || !("value" in descriptor))
+      throw new TypeError("rows must not contain holes or accessors");
+  }
+  if (Reflect.ownKeys(descriptors).some((key) => !allowed.has(String(key))))
+    throw new TypeError("rows must not contain extra properties");
 }
 
 function validateConfig(
@@ -353,10 +379,8 @@ function validateConfig(
   unitInterval(input.maximumGroupFailureRisk, "maximumGroupFailureRisk");
   positiveInteger(input.minimumFitGroups, "minimumFitGroups");
   positiveInteger(input.minimumAuditGroups, "minimumAuditGroups");
-  if (!hashPattern.test(input.datasetHash))
-    throw new TypeError("datasetHash must be a SHA-256 digest");
-  if (!hashPattern.test(input.questionSetHash))
-    throw new TypeError("questionSetHash must be a SHA-256 digest");
+  requiredHash(input.datasetHash, "datasetHash");
+  requiredHash(input.questionSetHash, "questionSetHash");
   requiredIdentifier(input.providerId, "providerId");
   requiredIdentifier(input.modelVersion, "modelVersion");
   if (movingModelAlias.test(input.modelVersion))
@@ -410,6 +434,11 @@ function requiredIdentifier(
 ): asserts value is string {
   if (typeof value !== "string" || !identifierPattern.test(value))
     throw new TypeError(`${name} is invalid`);
+}
+
+function requiredHash(value: unknown, name: string): asserts value is string {
+  if (typeof value !== "string" || !hashPattern.test(value))
+    throw new TypeError(`${name} must be a SHA-256 digest`);
 }
 
 function unitInterval(value: unknown, name: string): asserts value is number {

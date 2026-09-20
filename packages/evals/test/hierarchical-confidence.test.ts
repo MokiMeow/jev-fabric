@@ -268,4 +268,48 @@ describe("evaluateHierarchicalConfidence", () => {
       } as unknown as HierarchicalConfidenceConfig),
     ).toThrow(/fields are invalid/u);
   });
+
+  it("rejects coercible leaf and hash objects without invoking them", () => {
+    const hostile = Object.freeze({
+      toString: () => {
+        throw new Error("must not be invoked");
+      },
+    });
+    const rows = evidenceRows();
+    const first = rows[0];
+    if (!first) throw new Error("hostile fixture missing");
+    rows[0] = {
+      ...first,
+      goldLeaf: hostile as unknown as string,
+    };
+    expect(() => evaluateHierarchicalConfidence(rows, config)).toThrow(
+      /goldLeaf is invalid/u,
+    );
+    expect(() =>
+      evaluateHierarchicalConfidence(evidenceRows(), {
+        ...config,
+        datasetHash: hostile as unknown as string,
+      }),
+    ).toThrow(/datasetHash must be a SHA-256 digest/u);
+  });
+
+  it("rejects proxied, sparse, and extended observation arrays", () => {
+    expect(() =>
+      evaluateHierarchicalConfidence(new Proxy(evidenceRows(), {}), config),
+    ).toThrow(/rows must be a plain array/u);
+
+    const sparse = evidenceRows();
+    delete sparse[0];
+    expect(() => evaluateHierarchicalConfidence(sparse, config)).toThrow(
+      /holes or accessors/u,
+    );
+
+    const extended = evidenceRows() as HierarchicalConfidenceObservation[] & {
+      extra?: boolean;
+    };
+    extended.extra = true;
+    expect(() => evaluateHierarchicalConfidence(extended, config)).toThrow(
+      /extra properties/u,
+    );
+  });
 });

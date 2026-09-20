@@ -1,6 +1,10 @@
 ---
 "@mokimeow/jev-fabric-provider-typesafe": patch
 "@mokimeow/jev-fabric-evals": patch
+"@mokimeow/jev-fabric-adapters": patch
+"@mokimeow/jev-fabric-mcp": patch
+"@mokimeow/jev-fabric-protocol": patch
+"@mokimeow/jev-fabric-provider-openai-compatible": patch
 ---
 
 Retain a domain-separated SHA-256 digest of the official TypeSafe SDK request
@@ -20,3 +24,6 @@ operation, and reject proxied, sparse, extended, or oversized observation
 arrays.
 Independently bind the exact fit, audit, and test observation sets with
 order-invariant hashes, plus a separate digest over the test evaluation.
+
+Update public runtime validation dependencies to Zod 4.6.5 after exercising
+the complete schema, package, benchmark, and release compatibility gates.

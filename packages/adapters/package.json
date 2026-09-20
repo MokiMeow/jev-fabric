@@ -28,7 +28,7 @@
     "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm test:dist && pnpm generate && pnpm validate"
   },
   "dependencies": {
-    "zod": "4.2.0"
+    "zod": "4.6.5"
   },
   "repository": {
     "type": "git",

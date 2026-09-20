@@ -630,3 +630,38 @@ not retained release evidence. See the
 [request-shape](https://github.com/typesafe-ai/typesafe-sdk-js/issues/6) and
 [cancellation](https://github.com/typesafe-ai/typesafe-sdk-js/issues/2)
 reports.
+
+## 21 September model-card and chart-integrity addendum
+
+The official model page checked on 21 September still resolves `jev-latest` and
+`jev-preview` to `jev-1.13.0`. It documents text-only input, a 64k aggregate
+request budget, a 32k state-plus-longest-question budget, input pricing of
+$42 per billion tokens with output free, and dynamically adjustable service
+limits. These are dated vendor facts, not retained measurements from Fabric.
+Production evidence must continue to bind the returned concrete model and an
+explicit price snapshot rather than assuming an alias or service limit is
+stable. See [models](https://docs.typesafe.ai/models).
+
+The newly published official
+[Jev 1.13 jaggedness note](https://docs.typesafe.ai/model-jaggedness/jev-1.13)
+strengthens Fabric's existing split of responsibilities: Jev is not a
+calculator, reads dates as text rather than ordered quantities, can lose
+accuracy in irrelevant state, and does not guarantee arithmetic identities
+between separately phrased questions. Finance integrations therefore compute
+dates, scales, counts, prices, returns, and structural invariants in code; Jev
+receives compact semantic buckets and independent questions only.
+
+Recent controlled chart research provides a second reason not to delegate
+visual integrity to a model. The
+[VisDeception paper](https://arxiv.org/abs/2607.22600) pairs 1,600 faithful and
+misleading charts across eight tactics while holding source data constant and
+reports substantial model vulnerability. The SEC's
+[Plain English Handbook](https://www.sec.gov/pdf/handbook.pdf) separately warns
+that non-zero baselines and inconsistent scales can distort comparisons. These
+sources motivate a deterministic `undisclosed_log_scale` mutation rather than
+a Jev question about numeric geometry. Renderer v3 applies the nonlinear
+coordinate transform, retains the original values and source binding, seals
+the exact SVG, and assigns `escalate` in code. Renderer v1 and v2 remain
+replayable under their frozen mutation sets. This adds evaluation coverage; it
+does not measure Jev visual accuracy or turn extracted chart text into trading
+authority.

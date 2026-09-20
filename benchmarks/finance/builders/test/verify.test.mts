@@ -30,8 +30,10 @@ import {
 import {
   FINANCE_CHART_RENDERER,
   FINANCE_CHART_RENDERER_V1,
+  FINANCE_CHART_RENDERER_V2,
   renderFinanceChart,
   renderFinanceChartV1,
+  renderFinanceChartV2,
 } from "../visual/render.mjs";
 
 const fixtureRoot = join(
@@ -983,25 +985,28 @@ test("binds compiled visual mutations to their artifact and gold route", async (
   );
 });
 
-test("rebuilds retained renderer-v1 visual evidence with its frozen policy", async () => {
-  const fixture = await createFixture();
-  const cases = await readJsonLines(join(fixture.dataset, "cases.jsonl"));
-  for (const benchmarkCase of cases) {
-    if (benchmarkCase.track !== "visual_evidence") continue;
-    const rendered = renderFinanceChartV1(
-      benchmarkCase.visualArtifact.compilerInput,
-    );
-    assert.deepEqual(rendered.renderer, FINANCE_CHART_RENDERER_V1);
-    benchmarkCase.trustedProjection.visual.renderer = rendered.renderer;
-    benchmarkCase.trustedProjection.visual.artifactBindingHash =
-      rendered.artifactBindingHash;
-    resealBenchmarkCase(benchmarkCase);
-  }
-  await writeCanonicalJsonLines(join(fixture.dataset, "cases.jsonl"), cases);
-  await refreshManifest(fixture.dataset);
+test("rebuilds retained renderer-v1 and v2 visual evidence with frozen policies", async () => {
+  for (const [renderer, render] of [
+    [FINANCE_CHART_RENDERER_V1, renderFinanceChartV1],
+    [FINANCE_CHART_RENDERER_V2, renderFinanceChartV2],
+  ] as const) {
+    const fixture = await createFixture();
+    const cases = await readJsonLines(join(fixture.dataset, "cases.jsonl"));
+    for (const benchmarkCase of cases) {
+      if (benchmarkCase.track !== "visual_evidence") continue;
+      const rendered = render(benchmarkCase.visualArtifact.compilerInput);
+      assert.deepEqual(rendered.renderer, renderer);
+      benchmarkCase.trustedProjection.visual.renderer = rendered.renderer;
+      benchmarkCase.trustedProjection.visual.artifactBindingHash =
+        rendered.artifactBindingHash;
+      resealBenchmarkCase(benchmarkCase);
+    }
+    await writeCanonicalJsonLines(join(fixture.dataset, "cases.jsonl"), cases);
+    await refreshManifest(fixture.dataset);
 
-  const result = await verify(fixture);
-  assert.ok((result as { caseCount: number }).caseCount > 0);
+    const result = await verify(fixture);
+    assert.ok((result as { caseCount: number }).caseCount > 0);
+  }
 });
 
 test("rejects extra raw case fields before rights classification", async () => {

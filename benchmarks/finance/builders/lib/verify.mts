@@ -6,9 +6,11 @@ import { computeFinanceProjectionBindingHash } from "../../../../packages/adapte
 import {
   FINANCE_CHART_RENDERER,
   FINANCE_CHART_RENDERER_V1,
+  FINANCE_CHART_RENDERER_V2,
   FINANCE_VISUAL_MUTATION_ROUTES,
   renderFinanceChart,
   renderFinanceChartV1,
+  renderFinanceChartV2,
 } from "../visual/render.mjs";
 import {
   assertCanonicalHttpsUrl,
@@ -1420,10 +1422,17 @@ function verifyVisualArtifactBinding(
   const rendererJson = canonicalJson(renderer);
   const isRendererV1 =
     rendererJson === canonicalJson(FINANCE_CHART_RENDERER_V1);
-  const isRendererV2 = rendererJson === canonicalJson(FINANCE_CHART_RENDERER);
-  if (!isRendererV1 && !isRendererV2)
+  const isRendererV2 =
+    rendererJson === canonicalJson(FINANCE_CHART_RENDERER_V2);
+  const isRendererV3 = rendererJson === canonicalJson(FINANCE_CHART_RENDERER);
+  if (!isRendererV1 && !isRendererV2 && !isRendererV3)
     throw new TypeError(`visual renderer binding mismatch for ${caseId}`);
-  if (isRendererV1 && mutationId === "reversed_time_axis")
+  if (
+    (isRendererV1 &&
+      (mutationId === "reversed_time_axis" ||
+        mutationId === "undisclosed_log_scale")) ||
+    (isRendererV2 && mutationId === "undisclosed_log_scale")
+  )
     throw new TypeError(`visual renderer binding mismatch for ${caseId}`);
   const imageHash = digest(
     visual.imageHash,
@@ -1467,7 +1476,9 @@ function verifyVisualArtifactBinding(
 
   const rendered = isRendererV1
     ? renderFinanceChartV1(retained.compilerInput)
-    : renderFinanceChart(retained.compilerInput);
+    : isRendererV2
+      ? renderFinanceChartV2(retained.compilerInput)
+      : renderFinanceChart(retained.compilerInput);
   if (
     rendered.schemaVersion !== visual.schemaVersion ||
     canonicalJson(rendered.renderer) !== canonicalJson(renderer) ||

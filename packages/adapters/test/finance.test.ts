@@ -23,10 +23,19 @@ const visualRendererV2 = {
   schemaVersion: "1",
   mutationPolicyId: "finance.visual-mutations.v2",
 } as const;
+const visualRendererV3 = {
+  id: "finance.canonical-svg",
+  version: "3",
+  schemaVersion: "1",
+  mutationPolicyId: "finance.visual-mutations.v3",
+} as const;
 const visualArtifactBindingHash = (
   imageHash: string,
   sourceBindingHash: string,
-  renderer: typeof visualRenderer | typeof visualRendererV2 = visualRenderer,
+  renderer:
+    | typeof visualRenderer
+    | typeof visualRendererV2
+    | typeof visualRendererV3 = visualRenderer,
   mutationId = "faithful_render",
   expectedRoute = "observe",
 ) =>
@@ -230,6 +239,7 @@ describe("finance advisory evidence boundary", () => {
     expect(result.visual).not.toHaveProperty("mutationId");
     expect(result.visual).not.toHaveProperty("expectedRoute");
     expect(result.visual).not.toHaveProperty("artifactBindingHash");
+    expect(result.visual).not.toHaveProperty("imageHash");
     expect(JSON.stringify(result)).not.toContain("faithful_render");
   });
 
@@ -281,6 +291,56 @@ describe("finance advisory evidence boundary", () => {
         },
       }),
     ).toThrow(/not supported by renderer version 1/u);
+  });
+
+  it("accepts renderer v3 undisclosed-log evidence but rejects that mutation under v2", () => {
+    const imageHash = hash("e");
+    const sourceBindingHash = hash("f");
+    const v3 = sealFinanceProjection({
+      ...trustedProjection,
+      visual: {
+        ...trustedProjection.visual,
+        imageHash,
+        sourceBindingHash,
+        renderer: visualRendererV3,
+        mutationId: "undisclosed_log_scale",
+        expectedRoute: "escalate",
+        artifactBindingHash: visualArtifactBindingHash(
+          imageHash,
+          sourceBindingHash,
+          visualRendererV3,
+          "undisclosed_log_scale",
+          "escalate",
+        ),
+      },
+    });
+    const result = bindFinanceAdvisoryEvidence(
+      v3,
+      { annotations: ["Displayed spacing is nonlinear but unlabeled"] },
+      Date.parse(at) + 500,
+    );
+
+    expect(result.visual?.renderer).toEqual(visualRendererV3);
+    expect(result.visual).not.toHaveProperty("mutationId");
+    expect(result.visual).not.toHaveProperty("expectedRoute");
+    expect(() =>
+      sealFinanceProjection({
+        ...trustedProjection,
+        visual: {
+          ...trustedProjection.visual,
+          renderer: visualRendererV2,
+          mutationId: "undisclosed_log_scale",
+          expectedRoute: "escalate",
+          artifactBindingHash: visualArtifactBindingHash(
+            imageHash,
+            sourceBindingHash,
+            visualRendererV2,
+            "undisclosed_log_scale",
+            "escalate",
+          ),
+        },
+      }),
+    ).toThrow(/not supported by renderer version 2/u);
   });
 
   it("rejects stale, future, and look-ahead observations before provider use", () => {

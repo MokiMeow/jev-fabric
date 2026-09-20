@@ -3,6 +3,6 @@
 "@mokimeow/jev-fabric-packs": minor
 ---
 
-Add a versioned reversed-time-axis finance visual mutation, retain renderer v1
-compatibility, and keep evaluator-owned mutation targets out of Jev-visible
-state.
+Add versioned reversed-time-axis and undisclosed-log-scale finance visual
+mutations, retain renderer v1/v2 compatibility, and keep evaluator-owned
+mutation targets and deterministic image hashes out of Jev-visible state.

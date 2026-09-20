@@ -290,15 +290,14 @@ describe("built-in decision packs", () => {
         mode: "structured_extraction",
         extractorId: "chart-parser",
         extractorVersion: "1.0.0",
-        imageHash: `sha256:${"5".repeat(64)}`,
         axesVerified: true,
         sourceBindingHash: `sha256:${"6".repeat(64)}`,
         schemaVersion: "1",
         renderer: {
           id: "finance.canonical-svg",
-          version: "2",
+          version: "3",
           schemaVersion: "1",
-          mutationPolicyId: "finance.visual-mutations.v2",
+          mutationPolicyId: "finance.visual-mutations.v3",
         },
         annotationHash: sha256(JSON.stringify(["routine"])),
         annotations: ["routine"],
@@ -332,6 +331,7 @@ describe("built-in decision packs", () => {
     expect(projected.visual).not.toHaveProperty("mutationId");
     expect(projected.visual).not.toHaveProperty("expectedRoute");
     expect(projected.visual).not.toHaveProperty("artifactBindingHash");
+    expect(projected.visual).not.toHaveProperty("imageHash");
 
     expect(() =>
       implementation.projector.project(
@@ -479,7 +479,6 @@ describe("built-in decision packs", () => {
     const validVisual = {
       mode: "structured_extraction",
       axesVerified: true,
-      imageHash: `sha256:${"2".repeat(64)}`,
       sourceBindingHash: `sha256:${"3".repeat(64)}`,
       schemaVersion: "1",
       renderer: {
@@ -586,10 +585,10 @@ describe("built-in decision packs", () => {
         ...fullState,
         visual: {
           ...validVisual,
-          imageHash: "not-a-hash",
+          imageHash: `sha256:${"2".repeat(64)}`,
         },
       }),
-    ).toThrow(/imageHash must be a SHA-256/u);
+    ).toThrow(/unsupported field/u);
     expect(() =>
       project({
         ...fullState,

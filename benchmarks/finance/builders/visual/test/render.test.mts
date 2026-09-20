@@ -8,11 +8,13 @@ import { canonicalJson, sha256 } from "../../lib/canonical.mjs";
 import {
   FINANCE_CHART_RENDERER,
   FINANCE_CHART_RENDERER_V1,
+  FINANCE_CHART_RENDERER_V2,
   FINANCE_VISUAL_MUTATION_ROUTES,
   FINANCE_VISUAL_MUTATIONS,
   type FinanceVisualMutation,
   renderFinanceChart,
   renderFinanceChartV1,
+  renderFinanceChartV2,
 } from "../render.mjs";
 
 const visualRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,7 +23,7 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 test("matches every declared mutation and expected route in policy", async () => {
   const policy = JSON.parse(
     await readFile(
-      join(visualRoot, "..", "policies", "visual-mutations.v2.json"),
+      join(visualRoot, "..", "policies", "visual-mutations.v3.json"),
       "utf8",
     ),
   ) as {
@@ -36,7 +38,7 @@ test("matches every declared mutation and expected route in policy", async () =>
   );
 });
 
-test("renders all six mutations with stable source bindings and declared routes", () => {
+test("renders all seven mutations with stable source bindings and declared routes", () => {
   const results = new Map(
     FINANCE_VISUAL_MUTATIONS.map((mutationId) => {
       const result = renderFinanceChart(chart(mutationId));
@@ -68,7 +70,7 @@ test("renders all six mutations with stable source bindings and declared routes"
 
   assert.equal(
     new Set([...results.values()].map((value) => value.imageHash)).size,
-    6,
+    7,
   );
   assert.equal(
     new Set([...results.values()].map((value) => value.sourceBindingHash)).size,
@@ -77,7 +79,7 @@ test("renders all six mutations with stable source bindings and declared routes"
   assert.equal(
     new Set([...results.values()].map((value) => value.artifactBindingHash))
       .size,
-    6,
+    7,
   );
   assert.match(results.get("faithful_render")?.svg ?? "", /USD millions/u);
   assert.match(results.get("faithful_render")?.svg ?? "", /2024-08-01/u);
@@ -109,30 +111,53 @@ test("renders all six mutations with stable source bindings and declared routes"
   );
   assert.equal(
     faithfulResult.artifactBindingHash,
-    "sha256:9eb46a194d1a43ec13025b892714e02acd0da101e2a9edd30cc32172ca2eb2a7",
+    "sha256:3334839921c65284cefb3bccfbe077806cd894920030b9b4d0d49a7c7f998e85",
     "reviewed artifact-binding golden changed",
   );
 
   const faithful = results.get("faithful_render")?.svg ?? "";
   const swapped = results.get("swapped_series_legend")?.svg ?? "";
   const reversed = results.get("reversed_time_axis")?.svg ?? "";
+  const undisclosedLog = results.get("undisclosed_log_scale")?.svg ?? "";
   assert.ok(faithful.indexOf("Expenses") < faithful.indexOf("Revenue"));
   assert.ok(swapped.indexOf("Revenue") < swapped.indexOf("Expenses"));
   assert.ok(faithful.indexOf("2024-01-01") < faithful.indexOf("2024-07-01"));
   assert.ok(reversed.indexOf("2024-07-01") < reversed.indexOf("2024-01-01"));
   assert.notEqual(reversed, faithful);
+  assert.notEqual(undisclosedLog, faithful);
 });
 
-test("rebuilds legacy v1 artifacts without admitting v2-only mutations", () => {
+test("keeps visible linear ticks while changing only plotted log geometry", () => {
+  const faithful = renderFinanceChart(chart("faithful_render"));
+  const undisclosedLog = renderFinanceChart(chart("undisclosed_log_scale"));
+  const removePathGeometry = (svg: string) =>
+    svg.replace(/<path d="[^"]+"/gu, '<path d="<geometry>"');
+
+  assert.notEqual(undisclosedLog.svg, faithful.svg);
+  assert.equal(
+    removePathGeometry(undisclosedLog.svg),
+    removePathGeometry(faithful.svg),
+  );
+  assert.equal(undisclosedLog.sourceBindingHash, faithful.sourceBindingHash);
+  assert.notEqual(undisclosedLog.imageHash, faithful.imageHash);
+});
+
+test("rebuilds legacy v1 and v2 artifacts without admitting newer mutations", () => {
   const input = chart("faithful_render");
   const current = renderFinanceChart(input);
   const legacy = renderFinanceChartV1(input);
+  const legacyV2 = renderFinanceChartV2(input);
 
   assert.deepEqual(legacy.renderer, FINANCE_CHART_RENDERER_V1);
   assert.equal(legacy.svg, current.svg);
   assert.equal(legacy.imageHash, current.imageHash);
   assert.equal(legacy.sourceBindingHash, current.sourceBindingHash);
   assert.notEqual(legacy.artifactBindingHash, current.artifactBindingHash);
+  assert.deepEqual(legacyV2.renderer, FINANCE_CHART_RENDERER_V2);
+  assert.equal(legacyV2.svg, current.svg);
+  assert.equal(legacyV2.imageHash, current.imageHash);
+  assert.equal(legacyV2.sourceBindingHash, current.sourceBindingHash);
+  assert.notEqual(legacyV2.artifactBindingHash, current.artifactBindingHash);
   assert.equal(
     legacy.artifactBindingHash,
     sha256(
@@ -148,7 +173,15 @@ test("rebuilds legacy v1 artifacts without admitting v2-only mutations", () => {
   );
   assert.throws(
     () => renderFinanceChartV1(chart("reversed_time_axis")),
-    /requires finance canonical SVG renderer v2/u,
+    /requires a newer finance canonical SVG renderer/u,
+  );
+  assert.throws(
+    () => renderFinanceChartV1(chart("undisclosed_log_scale")),
+    /requires a newer finance canonical SVG renderer/u,
+  );
+  assert.throws(
+    () => renderFinanceChartV2(chart("undisclosed_log_scale")),
+    /requires finance canonical SVG renderer v3/u,
   );
 });
 

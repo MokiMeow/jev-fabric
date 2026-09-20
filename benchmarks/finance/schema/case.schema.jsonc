@@ -154,12 +154,13 @@
               ],
               "properties": {
                 "id": { "const": "finance.canonical-svg" },
-                "version": { "enum": ["1", "2"] },
+                "version": { "enum": ["1", "2", "3"] },
                 "schemaVersion": { "const": "1" },
                 "mutationPolicyId": {
                   "enum": [
                     "finance.visual-mutations.v1",
-                    "finance.visual-mutations.v2"
+                    "finance.visual-mutations.v2",
+                    "finance.visual-mutations.v3"
                   ]
                 }
               },
@@ -191,6 +192,20 @@
                       }
                     }
                   }
+                },
+                {
+                  "if": {
+                    "type": "object",
+                    "properties": { "version": { "const": "3" } }
+                  },
+                  "then": {
+                    "type": "object",
+                    "properties": {
+                      "mutationPolicyId": {
+                        "const": "finance.visual-mutations.v3"
+                      }
+                    }
+                  }
                 }
               ]
             },
@@ -201,6 +216,7 @@
                 "missing_units",
                 "swapped_series_legend",
                 "reversed_time_axis",
+                "undisclosed_log_scale",
                 "truncated_zero_baseline"
               ]
             },
@@ -223,7 +239,30 @@
               "then": {
                 "type": "object",
                 "properties": {
-                  "mutationId": { "not": { "const": "reversed_time_axis" } }
+                  "mutationId": {
+                    "not": {
+                      "enum": ["reversed_time_axis", "undisclosed_log_scale"]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "type": "object",
+                "properties": {
+                  "renderer": {
+                    "type": "object",
+                    "properties": { "version": { "const": "2" } }
+                  }
+                }
+              },
+              "then": {
+                "type": "object",
+                "properties": {
+                  "mutationId": {
+                    "not": { "const": "undisclosed_log_scale" }
+                  }
                 }
               }
             }
@@ -541,6 +580,7 @@
             "missing_units",
             "swapped_series_legend",
             "reversed_time_axis",
+            "undisclosed_log_scale",
             "truncated_zero_baseline"
           ]
         },

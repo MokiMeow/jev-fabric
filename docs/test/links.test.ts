@@ -24,6 +24,7 @@ const official = new Set([
   "https://freecad.github.io/",
   "https://www.finra.org/",
   "https://www.sec.gov/",
+  "https://arxiv.org/",
   "https://catalog.data.gov/",
   "https://www.nist.gov/",
   "https://itl.nist.gov/",

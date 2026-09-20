@@ -87,6 +87,12 @@ const financeVisualRenderers = [
     schemaVersion: "1",
     version: "2",
   },
+  {
+    id: "finance.canonical-svg",
+    mutationPolicyId: "finance.visual-mutations.v3",
+    schemaVersion: "1",
+    version: "3",
+  },
 ] as const;
 const financeStateKeys = new Set([
   "contractVersion",
@@ -128,7 +134,6 @@ const financeVisualStateKeys = new Set([
   "mode",
   "extractorId",
   "extractorVersion",
-  "imageHash",
   "axesVerified",
   "sourceBindingHash",
   "schemaVersion",
@@ -177,7 +182,6 @@ interface FinanceState {
     readonly bucket?: string;
   }[];
   readonly visual?: {
-    readonly imageHash?: string;
     readonly sourceBindingHash?: string;
     readonly annotationHash?: string;
     readonly annotations?: readonly string[];
@@ -985,11 +989,6 @@ function projectFinanceState(
             throw new TypeError(
               "finance visual mode and verified axes are required",
             );
-          const imageHash = requiredHash(
-            visualRecord,
-            "imageHash",
-            "finance visual state",
-          );
           const sourceBindingHash = requiredHash(
             visualRecord,
             "sourceBindingHash",
@@ -1040,7 +1039,6 @@ function projectFinanceState(
               "finance visual trust must be untrusted_data_only",
             );
           return {
-            imageHash,
             sourceBindingHash,
             annotationHash,
             schemaVersion: "1" as const,

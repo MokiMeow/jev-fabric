@@ -383,21 +383,21 @@ test("provider-visible visual state excludes evaluator-owned target labels", asy
       });
     },
   });
+  const hostSideImageHash = hash("5");
   const state: FinanceAdvisoryState = {
     ...financeState(),
     visual: {
       mode: "structured_extraction",
       extractorId: "chart-parser",
       extractorVersion: "1.0.0",
-      imageHash: hash("5"),
       axesVerified: true,
       sourceBindingHash: hash("6"),
       schemaVersion: "1",
       renderer: {
         id: "finance.canonical-svg",
-        version: "2",
+        version: "3",
         schemaVersion: "1",
-        mutationPolicyId: "finance.visual-mutations.v2",
+        mutationPolicyId: "finance.visual-mutations.v3",
       },
       annotationHash: `sha256:${createHash("sha256")
         .update(JSON.stringify(["routine"]))
@@ -414,6 +414,8 @@ test("provider-visible visual state excludes evaluator-owned target labels", asy
   assert.equal(serialized.includes("mutationId"), false);
   assert.equal(serialized.includes("expectedRoute"), false);
   assert.equal(serialized.includes("artifactBindingHash"), false);
+  assert.equal(serialized.includes("imageHash"), false);
+  assert.equal(serialized.includes(hostSideImageHash), false);
   assert.equal(serialized.includes("projectionBindingHash"), false);
   assert.equal(serialized.includes("counterfactual"), false);
   assert.equal(serialized.includes("wrong_instrument"), false);
@@ -429,6 +431,7 @@ test("provider-visible visual state excludes evaluator-owned target labels", asy
     missing_units: "investigate",
     swapped_series_legend: "escalate",
     reversed_time_axis: "escalate",
+    undisclosed_log_scale: "escalate",
     truncated_zero_baseline: "escalate",
   } as const;
   for (const [mutationId, expectedRoute] of Object.entries(
@@ -438,7 +441,7 @@ test("provider-visible visual state excludes evaluator-owned target labels", asy
       .update(
         JSON.stringify({
           expectedRoute,
-          imageHash: state.visual?.imageHash,
+          imageHash: hostSideImageHash,
           mutationId,
           renderer: state.visual?.renderer,
           schemaVersion: state.visual?.schemaVersion,

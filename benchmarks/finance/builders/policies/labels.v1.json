@@ -38,6 +38,7 @@
       "escalate": [
         "swapped_series_legend",
         "reversed_time_axis",
+        "undisclosed_log_scale",
         "truncated_zero_baseline"
       ],
       "investigate": ["missing_source_date", "missing_units"],

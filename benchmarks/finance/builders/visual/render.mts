@@ -7,6 +7,7 @@ export const FINANCE_VISUAL_MUTATIONS = [
   "missing_units",
   "swapped_series_legend",
   "reversed_time_axis",
+  "undisclosed_log_scale",
   "truncated_zero_baseline",
 ] as const;
 
@@ -19,6 +20,7 @@ export const FINANCE_VISUAL_MUTATION_ROUTES = Object.freeze({
   missing_units: "investigate",
   swapped_series_legend: "escalate",
   reversed_time_axis: "escalate",
+  undisclosed_log_scale: "escalate",
   truncated_zero_baseline: "escalate",
 } as const satisfies Record<FinanceVisualMutation, FinanceVisualRoute>);
 
@@ -29,15 +31,23 @@ export const FINANCE_CHART_RENDERER_V1 = Object.freeze({
   mutationPolicyId: "finance.visual-mutations.v1",
 } as const);
 
-export const FINANCE_CHART_RENDERER = Object.freeze({
+export const FINANCE_CHART_RENDERER_V2 = Object.freeze({
   id: "finance.canonical-svg",
   version: "2",
   schemaVersion: "1",
   mutationPolicyId: "finance.visual-mutations.v2",
 } as const);
 
+export const FINANCE_CHART_RENDERER = Object.freeze({
+  id: "finance.canonical-svg",
+  version: "3",
+  schemaVersion: "1",
+  mutationPolicyId: "finance.visual-mutations.v3",
+} as const);
+
 export type FinanceChartRenderer =
   | typeof FINANCE_CHART_RENDERER_V1
+  | typeof FINANCE_CHART_RENDERER_V2
   | typeof FINANCE_CHART_RENDERER;
 
 export interface RenderedFinanceChart {
@@ -134,15 +144,28 @@ export function renderFinanceChartV1(input: unknown): RenderedFinanceChart {
   return renderFinanceChartWithRenderer(input, FINANCE_CHART_RENDERER_V1);
 }
 
+/** Rebuilds retained renderer-v2 artifacts without granting v2 new mutations. */
+export function renderFinanceChartV2(input: unknown): RenderedFinanceChart {
+  return renderFinanceChartWithRenderer(input, FINANCE_CHART_RENDERER_V2);
+}
+
 function renderFinanceChartWithRenderer(
   input: unknown,
   renderer: FinanceChartRenderer,
 ): RenderedFinanceChart {
   const chart = normalizeChart(input);
   validateMutationApplicability(chart);
-  if (renderer.version === "1" && chart.mutationId === "reversed_time_axis")
+  if (
+    renderer.version === "1" &&
+    (chart.mutationId === "reversed_time_axis" ||
+      chart.mutationId === "undisclosed_log_scale")
+  )
     throw new TypeError(
-      "reversed_time_axis requires finance canonical SVG renderer v2",
+      `${chart.mutationId} requires a newer finance canonical SVG renderer`,
+    );
+  if (renderer.version === "2" && chart.mutationId === "undisclosed_log_scale")
+    throw new TypeError(
+      "undisclosed_log_scale requires finance canonical SVG renderer v3",
     );
 
   const values = chart.series.flatMap((series) =>
@@ -338,13 +361,14 @@ function validateMutationApplicability(chart: NormalizedChart): void {
   if (chart.mutationId === "swapped_series_legend" && chart.series.length < 2)
     throw new TypeError("swapped_series_legend requires at least two series");
   if (
-    chart.mutationId === "truncated_zero_baseline" &&
+    (chart.mutationId === "truncated_zero_baseline" ||
+      chart.mutationId === "undisclosed_log_scale") &&
     chart.series.some((series) =>
       series.points.some((point) => point.value <= 0),
     )
   )
     throw new TypeError(
-      "truncated_zero_baseline requires strictly positive source values",
+      `${chart.mutationId} requires strictly positive source values`,
     );
 }
 
@@ -410,10 +434,14 @@ function renderSvg(
       ? PLOT_RIGHT - fraction * (PLOT_RIGHT - PLOT_LEFT)
       : PLOT_LEFT + fraction * (PLOT_RIGHT - PLOT_LEFT);
   };
-  const y = (value: number) =>
-    PLOT_BOTTOM -
-    ((value - bounds.minimum) / (bounds.maximum - bounds.minimum)) *
-      (PLOT_BOTTOM - PLOT_TOP);
+  const y = (value: number) => {
+    const span = bounds.maximum - bounds.minimum;
+    const fraction =
+      chart.mutationId === "undisclosed_log_scale"
+        ? Math.log1p(value - bounds.minimum) / Math.log1p(span)
+        : (value - bounds.minimum) / span;
+    return PLOT_BOTTOM - fraction * (PLOT_BOTTOM - PLOT_TOP);
+  };
 
   const legendLabels = chart.series.map((series) => series.label);
   if (chart.mutationId === "swapped_series_legend") {

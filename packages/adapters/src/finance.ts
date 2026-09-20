@@ -134,6 +134,7 @@ export const financeVisualMutationSchema = z.enum([
   "missing_units",
   "swapped_series_legend",
   "reversed_time_axis",
+  "undisclosed_log_scale",
   "truncated_zero_baseline",
 ]);
 export type FinanceVisualMutation = z.infer<typeof financeVisualMutationSchema>;
@@ -148,6 +149,7 @@ const financeVisualMutationRoutes = {
   missing_units: "investigate",
   swapped_series_legend: "escalate",
   reversed_time_axis: "escalate",
+  undisclosed_log_scale: "escalate",
   truncated_zero_baseline: "escalate",
 } as const satisfies Record<FinanceVisualMutation, string>;
 const financeVisualRendererV1Schema = z
@@ -166,9 +168,18 @@ const financeVisualRendererV2Schema = z
     mutationPolicyId: z.literal("finance.visual-mutations.v2"),
   })
   .strict();
+const financeVisualRendererV3Schema = z
+  .object({
+    id: z.literal("finance.canonical-svg"),
+    version: z.literal("3"),
+    schemaVersion: z.literal("1"),
+    mutationPolicyId: z.literal("finance.visual-mutations.v3"),
+  })
+  .strict();
 const financeVisualRendererSchema = z.union([
   financeVisualRendererV1Schema,
   financeVisualRendererV2Schema,
+  financeVisualRendererV3Schema,
 ]);
 const financeVisualV1Mutations = new Set<FinanceVisualMutation>([
   "faithful_render",
@@ -176,6 +187,10 @@ const financeVisualV1Mutations = new Set<FinanceVisualMutation>([
   "missing_units",
   "swapped_series_legend",
   "truncated_zero_baseline",
+]);
+const financeVisualV2Mutations = new Set<FinanceVisualMutation>([
+  ...financeVisualV1Mutations,
+  "reversed_time_axis",
 ]);
 
 export const trustedMarketSignalSchema = z
@@ -221,13 +236,19 @@ const trustedFinanceProjectionPayloadSchema = z
       })
       .strict()
       .superRefine((value, context) => {
+        const supportedMutations =
+          value.renderer.version === "1"
+            ? financeVisualV1Mutations
+            : value.renderer.version === "2"
+              ? financeVisualV2Mutations
+              : undefined;
         if (
-          value.renderer.version === "1" &&
-          !financeVisualV1Mutations.has(value.mutationId)
+          supportedMutations !== undefined &&
+          !supportedMutations.has(value.mutationId)
         )
           context.addIssue({
             code: "custom",
-            message: "visual mutation is not supported by renderer version 1",
+            message: `visual mutation is not supported by renderer version ${value.renderer.version}`,
             path: ["mutationId"],
           });
       })
@@ -341,7 +362,6 @@ export const financeAdvisoryStateSchema = z
         mode: z.literal("structured_extraction"),
         extractorId: identifierSchema,
         extractorVersion: z.string().min(1).max(128),
-        imageHash: hashSchema,
         axesVerified: z.literal(true),
         sourceBindingHash: hashSchema,
         schemaVersion: z.literal("1"),
@@ -694,7 +714,6 @@ function bindVisual(
     mode: trusted.mode,
     extractorId: trusted.extractorId,
     extractorVersion: trusted.extractorVersion,
-    imageHash: trusted.imageHash,
     axesVerified: trusted.axesVerified,
     sourceBindingHash: trusted.sourceBindingHash,
     schemaVersion: trusted.schemaVersion,

@@ -238,6 +238,20 @@ filtering irrelevant state; warns that state is not automatically treated as
 hostile; and reserves generation for a generative model. These are now treated
 as implementation constraints, not merely prompting advice.
 
+That audit exposed one concrete contract defect in Fabric's financial-text
+question: `none` was defined as a clear absence of every supported claim, while
+the criteria explicitly said it was not for uncertainty between two listed
+claims. With no ambiguity option, a literal model could be forced into false
+specificity. Finance pack `0.2.0` therefore adds `unclear`, maps it only to
+`investigate`, and requires new calibration and question-set evidence. This is
+a schema-level abstention path, not a prompt asking the model to estimate its
+own correctness. A follow-up adversarial review found that documentation alone
+was insufficient: a driver could pair that selection with `observe`, and a
+caller could supply a stale but well-formed question hash. Fabric now derives
+the contract hash from the actual question shapes, checks the pack version
+before execution, and independently refuses any route less restrictive than
+the retained atomic selections.
+
 Community work on [jev-align](https://github.com/sutro-sh/jev-align) suggests a
 useful future evaluation loop: retain disagreements and ambiguous examples,
 label them, and test revised instructions on a frozen holdout. Fabric will not

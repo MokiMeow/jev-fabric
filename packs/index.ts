@@ -27,4 +27,7 @@ export const builtinPacks = Object.freeze([
   financeSurveillancePack,
 ]);
 
-export { financeSurveillancePack } from "./finance-surveillance/pack.js";
+export {
+  financeSurveillancePack,
+  financeSurveillanceQuestionSetHash,
+} from "./finance-surveillance/pack.js";

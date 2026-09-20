@@ -35,6 +35,7 @@ import {
   type FinanceRouteProbabilities,
   type FinanceTrack,
   financeArchitectures,
+  financeAtomicEvidenceRoute,
   financeAtomicMetrics,
   financeObserveGateFormulaId,
   financeObserveGateMetrics,
@@ -45,7 +46,10 @@ import {
   stableJson,
   validateFinanceObserveGatePolicyArtifact,
 } from "../../../packages/evals/src/index.js";
-import { financeSurveillancePack } from "../../../packs/finance-surveillance/pack.js";
+import {
+  financeSurveillancePack,
+  financeSurveillanceQuestionSetHash,
+} from "../../../packs/finance-surveillance/pack.js";
 import {
   assertSafeRelativePath,
   canonicalJson,
@@ -843,6 +847,7 @@ function validateRetainedAtomicEvidence(
       trace.observeSupportFactorCount === (support?.factorCount ?? 0),
     "finance retained observe-support score is inconsistent",
   );
+  assertRouteCoversAtomicEvidence(trace.ungatedRoute as FinanceRoute, ledgers);
   if (trace.evaluationSplit === "calibration")
     invariant(
       trace.observeGateStatus === "CALIBRATION" &&
@@ -1834,6 +1839,7 @@ function validateDriverResult(
       ),
     `${architecture} atomic evidence coverage is invalid`,
   );
+  assertRouteCoversAtomicEvidence(value.predictedRoute, value.atomicEvidence);
   invariant(
     (value.inputTokens === null) === (value.outputTokens === null),
     "finance input and output token accounting must be measured or unknown together",
@@ -1854,6 +1860,24 @@ function validateDriverResult(
       "finance costNanoUsd must be a non-negative integer string",
     );
   validateComponentAccounting(value, architecture, architectureRuntime);
+}
+
+const financeRouteRank: Readonly<Record<FinanceRoute, number>> = {
+  observe: 0,
+  investigate: 1,
+  escalate: 2,
+};
+
+function assertRouteCoversAtomicEvidence(
+  route: FinanceRoute,
+  ledgers: readonly FinanceAtomicEvidenceLedger[],
+): void {
+  const atomicRoute = financeAtomicEvidenceRoute(ledgers);
+  invariant(
+    atomicRoute === null ||
+      financeRouteRank[route] >= financeRouteRank[atomicRoute],
+    "finance driver route is less restrictive than its atomic evidence route",
+  );
 }
 
 function validateComponentAccounting(
@@ -2275,6 +2299,10 @@ function validateRuntime(runtime: FinanceRuntimeProvenance): void {
   );
   for (const key of ["questionSetHash", "featureSetHash"] as const)
     invariant(/^sha256:[a-f0-9]{64}$/u.test(runtime[key]), `${key} is invalid`);
+  invariant(
+    runtime.questionSetHash === financeSurveillanceQuestionSetHash,
+    "finance runtime question-set hash does not match the finance-surveillance pack",
+  );
   for (const key of ["policyVersion", "hardware", "region"] as const)
     invariant(runtime[key].length > 0, `${key} is required`);
   invariant(
@@ -2367,6 +2395,13 @@ function validateRuntime(runtime: FinanceRuntimeProvenance): void {
       }
     }
   }
+  invariant(
+    runtime.architectures.jev_advisory.combinerId ===
+      financeSurveillancePack.manifest.id &&
+      runtime.architectures.jev_advisory.combinerVersion ===
+        financeSurveillancePack.manifest.version,
+    "finance-surveillance pack version is inconsistent with Jev advisory provenance",
+  );
   invariant(
     canonicalCompactJson(
       runtime.architectures.host_model_only.components[0],

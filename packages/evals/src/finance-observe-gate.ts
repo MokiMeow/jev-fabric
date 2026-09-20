@@ -265,6 +265,45 @@ export function financeObserveSupport(
   });
 }
 
+/** Derives the least-permissive semantic route selected by atomic evidence. */
+export function financeAtomicEvidenceRoute(
+  ledgers: readonly FinanceAtomicEvidenceLedger[],
+): FinanceRoute | null {
+  assertPlainArray(ledgers, "finance atomic ledgers");
+  if (ledgers.length === 0) return null;
+  let route: FinanceRoute = "observe";
+  for (const ledger of ledgers) {
+    validateLedger(ledger);
+    for (const question of ledger.questions) {
+      const escalates =
+        (question.questionId === "finance-route" &&
+          question.selected === "escalate") ||
+        (question.questionId === "finance-anomaly" &&
+          question.selected === "concerning") ||
+        (question.questionId === "finance-evidence-quality" &&
+          question.selected === "insufficient") ||
+        (question.questionId === "finance-untrusted-influence" &&
+          question.selected === "present") ||
+        (question.questionId.startsWith(financeCitationQuestionPrefix) &&
+          question.selected === "contradicts");
+      if (escalates) return "escalate";
+      const investigates =
+        (question.questionId === "finance-route" &&
+          question.selected === "investigate") ||
+        (question.questionId === "finance-anomaly" &&
+          question.selected === "unclear") ||
+        (question.questionId === "finance-evidence-quality" &&
+          question.selected === "conflicted") ||
+        (claimPrefix(question.questionId) !== null &&
+          question.selected !== "none") ||
+        (question.questionId.startsWith(financeCitationQuestionPrefix) &&
+          question.selected === "insufficient_context");
+      if (investigates) route = "investigate";
+    }
+  }
+  return route;
+}
+
 export function combineFinanceObserveSupport(
   ledgers: readonly FinanceAtomicEvidenceLedger[],
 ): FinanceObserveSupport | null {
@@ -812,6 +851,7 @@ function questionOptions(questionId: string): readonly string[] {
       "accounting_or_control_issue",
       "legal_or_regulatory_contingency",
       "none",
+      "unclear",
     ];
   if (questionId.startsWith(financeCitationQuestionPrefix))
     return ["supports", "contradicts", "insufficient_context"];

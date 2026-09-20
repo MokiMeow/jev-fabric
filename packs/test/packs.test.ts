@@ -12,6 +12,7 @@ import {
   builtinPacks,
   completionPack,
   financeSurveillancePack,
+  financeSurveillanceQuestionSetHash,
   progressPack,
   rankPack,
   riskPack,
@@ -36,6 +37,13 @@ describe("built-in decision packs", () => {
       fixturePackIds,
     );
     expect(new Set(builtinPacks.map((pack) => pack.manifest.id)).size).toBe(8);
+  });
+
+  it("versions the finance question contract when its fixed claim vocabulary changes", () => {
+    expect(financeSurveillancePack.manifest.version).toBe("0.2.0");
+    expect(financeSurveillanceQuestionSetHash).toMatch(
+      /^sha256:[a-f0-9]{64}$/u,
+    );
   });
 
   it("rejects credential-bearing state in every built-in pack before provider egress", async () => {
@@ -399,6 +407,7 @@ describe("built-in decision packs", () => {
         "accounting_or_control_issue",
         "legal_or_regulatory_contingency",
         "none",
+        "unclear",
       ],
     });
     expect(JSON.stringify(claimQuestions)).not.toContain("buy order");
@@ -698,6 +707,7 @@ describe("built-in decision packs", () => {
       "accounting_or_control_issue",
       "legal_or_regulatory_contingency",
       "none",
+      "unclear",
     ] as const;
     const interpret = implementation.interpret as unknown as (
       answers: readonly import("@mokimeow/jev-fabric-protocol").DecisionAnswer[],
@@ -789,6 +799,29 @@ describe("built-in decision packs", () => {
     expect(noClaim).toMatchObject({
       selectedId: "observe",
       proposedOutcome: "route",
+    });
+
+    const unclearClaim = interpret(
+      [
+        ...baseAnswers(),
+        choice("finance-text-claim:outlook", "unclear", claimOptions, 0.4),
+      ],
+      candidates,
+      { probabilitySemantics: "native_calibrated" },
+    );
+    expect(unclearClaim).toMatchObject({
+      selectedId: "investigate",
+      proposedOutcome: "ask",
+      metadata: {
+        malformedAnswer: false,
+        textClaims: [
+          {
+            candidateId: "outlook",
+            provisionalFine: "unclear",
+            provisionalParent: "unclear",
+          },
+        ],
+      },
     });
 
     const missingNativeConfidence = interpret(

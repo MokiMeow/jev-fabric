@@ -47,6 +47,7 @@ const financeClaimLabels = [
   "accounting_or_control_issue",
   "legal_or_regulatory_contingency",
   "none",
+  "unclear",
 ] as const;
 const canonicalFinanceSchemaRoot = join(
   dirname(fileURLToPath(import.meta.url)),

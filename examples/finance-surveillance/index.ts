@@ -128,6 +128,7 @@ export const example = () => {
         "accounting_or_control_issue",
         "legal_or_regulatory_contingency",
         "none",
+        "unclear",
       ]),
       choice("finance-text-citation:publication-note", "supports", [
         "supports",

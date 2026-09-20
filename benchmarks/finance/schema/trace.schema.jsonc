@@ -575,7 +575,8 @@
         "liquidity_or_going_concern",
         "accounting_or_control_issue",
         "legal_or_regulatory_contingency",
-        "none"
+        "none",
+        "unclear"
       ],
       "properties": {
         "performance_change": { "$ref": "#/$defs/probability" },
@@ -583,7 +584,8 @@
         "liquidity_or_going_concern": { "$ref": "#/$defs/probability" },
         "accounting_or_control_issue": { "$ref": "#/$defs/probability" },
         "legal_or_regulatory_contingency": { "$ref": "#/$defs/probability" },
-        "none": { "$ref": "#/$defs/probability" }
+        "none": { "$ref": "#/$defs/probability" },
+        "unclear": { "$ref": "#/$defs/probability" }
       }
     },
     "citationProbabilities": {
@@ -603,7 +605,8 @@
         "liquidity_or_going_concern",
         "accounting_or_control_issue",
         "legal_or_regulatory_contingency",
-        "none"
+        "none",
+        "unclear"
       ]
     },
     "citationLabel": {

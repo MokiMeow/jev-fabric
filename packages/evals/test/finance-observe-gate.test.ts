@@ -4,6 +4,7 @@ import {
   assertFinanceGoldRouteAlignment,
   combineFinanceObserveSupport,
   createFinanceObserveGatePolicyArtifact,
+  financeAtomicEvidenceRoute,
   financeAtomicMetrics,
   financeObserveGateMetrics,
   financeObserveSupport,
@@ -75,6 +76,7 @@ function ledger(
           accounting_or_control_issue: 0.01,
           legal_or_regulatory_contingency: 0.01,
           none: 0.94,
+          unclear: 0,
         },
         "item_1",
       ),
@@ -94,6 +96,43 @@ describe("finance.observe-gate.v1", () => {
       score: 0.7,
       factorCount: 10,
     });
+  });
+
+  it("treats an unclear claim as non-observe evidence", () => {
+    const unclear = structuredClone(ledger("jev")) as unknown as MutableLedger;
+    const claim = unclear.questions[4];
+    if (claim === undefined) throw new Error("fixture omitted claim question");
+    claim.selected = "unclear";
+    claim.probabilities = {
+      performance_change: 0.01,
+      guidance_or_outlook_change: 0.01,
+      liquidity_or_going_concern: 0.01,
+      accounting_or_control_issue: 0.01,
+      legal_or_regulatory_contingency: 0.01,
+      none: 0.2,
+      unclear: 0.75,
+    };
+    expect(financeObserveSupport(unclear)).toEqual({
+      score: 0.2,
+      factorCount: 5,
+    });
+    expect(financeAtomicEvidenceRoute([unclear])).toBe("investigate");
+  });
+
+  it("takes the most restrictive route selected across atomic ledgers", () => {
+    const host = structuredClone(ledger("host")) as unknown as MutableLedger;
+    const jev = structuredClone(ledger("jev")) as unknown as MutableLedger;
+    const anomaly = jev.questions[1];
+    if (anomaly === undefined)
+      throw new Error("fixture omitted anomaly question");
+    anomaly.selected = "concerning";
+    anomaly.probabilities = {
+      routine: 0.1,
+      concerning: 0.8,
+      unclear: 0.1,
+    };
+    expect(financeAtomicEvidenceRoute([host, jev])).toBe("escalate");
+    expect(financeAtomicEvidenceRoute([])).toBeNull();
   });
 
   it("requires exact dynamic candidate identity and complete base coverage", () => {

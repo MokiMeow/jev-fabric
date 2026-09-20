@@ -409,7 +409,8 @@
         "liquidity_or_going_concern",
         "accounting_or_control_issue",
         "legal_or_regulatory_contingency",
-        "none"
+        "none",
+        "unclear"
       ]
     },
     "visualCompilerInput": {

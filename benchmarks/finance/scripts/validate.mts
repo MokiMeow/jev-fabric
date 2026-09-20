@@ -13,6 +13,10 @@ import {
   stableJson,
 } from "../../../packages/evals/src/index.js";
 import {
+  financeSurveillancePack,
+  financeSurveillanceQuestionSetHash,
+} from "../../../packs/finance-surveillance/pack.js";
+import {
   type ArchitectureRuntimePricing,
   type FinanceBenchmarkCase,
   type FinanceCounterfactualTrace,
@@ -1084,6 +1088,10 @@ function validateRuntimeProvenance(runtime: FinanceRuntimeProvenance): void {
       Number.isSafeInteger(runtime.timeoutMs),
     "completed finance run requires runtime provenance",
   );
+  invariant(
+    runtime.questionSetHash === financeSurveillanceQuestionSetHash,
+    "completed finance run question-set hash does not match the finance-surveillance pack",
+  );
   const expectedRoles: Record<string, readonly string[]> = {
     deterministic_only: ["deterministic"],
     host_model_only: ["host"],
@@ -1129,6 +1137,13 @@ function validateRuntimeProvenance(runtime: FinanceRuntimeProvenance): void {
       }
     }
   }
+  invariant(
+    runtime.architectures.jev_advisory.combinerId ===
+      financeSurveillancePack.manifest.id &&
+      runtime.architectures.jev_advisory.combinerVersion ===
+        financeSurveillancePack.manifest.version,
+    "completed finance run finance-surveillance pack version is inconsistent",
+  );
   invariant(
     stableJson(runtime.architectures.host_model_only.components[0]) ===
       stableJson(runtime.architectures.host_plus_jev.components[0]),

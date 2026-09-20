@@ -87,6 +87,19 @@ The semantic result retains only the candidate id and fixed labels, explicitly
 named `provisionalFine` and `provisionalParent`; it never copies or generates a
 financial fact.
 
+The vocabulary also contains `unclear`, which is distinct from `none`.
+`unclear` is required when the bounded excerpt is insufficient or genuinely
+ambiguous between listed categories, and it always upgrades the route to
+`investigate`. This avoids forcing Jev's literal classifier into false
+specificity. Adding that option changes the complete probability simplex, so
+pack `0.2.0` must use a newly derived question-set hash. Do not reuse a cache,
+observe-gate threshold, calibration result, or policy artifact fitted against
+the `0.1.0` vocabulary. Fabric derives a canonical digest from all three
+question shapes (base, uncited claim, and cited claim) and rejects mismatched
+runtime provenance before provider execution. The benchmark also recomposes a
+minimum route from retained atomic selections, so no threshold or
+driver-supplied route can turn `unclear` back into `observe`.
+
 For each claim-bearing candidate, the pack also asks one focused Choice question
 that compares only its exact `claim` and `excerpt` paths. `contradicts` escalates,
 `insufficient_context` investigates, and `supports` never grants authority or

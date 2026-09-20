@@ -887,6 +887,30 @@ test("requires exact finance observe-gate atomic coverage and bindings", async (
   );
 });
 
+test("accepts an explicit unclear financial-text label only on an investigation route", async () => {
+  const fixture = await createFixture();
+  const cases = await readJsonLines(join(fixture.dataset, "cases.jsonl"));
+  const unclearCase = cases.find(
+    (benchmarkCase) =>
+      benchmarkCase.track === "financial_text_triage" &&
+      benchmarkCase.split === "test" &&
+      benchmarkCase.lookaheadProbe === false,
+  );
+  assert.ok(unclearCase);
+  unclearCase.goldAtomic[4].label = "unclear";
+  unclearCase.goldRoute = "investigate";
+  await writeCanonicalJsonLines(join(fixture.dataset, "cases.jsonl"), cases);
+  await refreshManifest(fixture.dataset);
+
+  const result = await verify(fixture);
+  assert.ok((result as { caseCount: number }).caseCount > 0);
+
+  unclearCase.goldRoute = "observe";
+  await writeCanonicalJsonLines(join(fixture.dataset, "cases.jsonl"), cases);
+  await refreshManifest(fixture.dataset);
+  await assert.rejects(() => verify(fixture), /atomic gold route mismatch/u);
+});
+
 test("binds compiled visual mutations to their artifact and gold route", async () => {
   const wrongRoute = await createFixture();
   const wrongRouteCases = await readJsonLines(

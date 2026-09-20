@@ -45,6 +45,7 @@ const claimOptions = [
   "accounting_or_control_issue",
   "legal_or_regulatory_contingency",
   "none",
+  "unclear",
 ] as const;
 const claimParents = {
   performance_change: "operating_results",
@@ -53,6 +54,7 @@ const claimParents = {
   accounting_or_control_issue: "reporting_integrity",
   legal_or_regulatory_contingency: "contingency",
   none: "none",
+  unclear: "unclear",
 } as const satisfies Record<(typeof claimOptions)[number], string>;
 const claimQuestionPrefix = "finance-text-claim:";
 const claimWithCitationQuestionPrefix = "finance-text-claim-cited:";
@@ -189,7 +191,7 @@ interface FinanceInterpretContext {
 export const financeSurveillancePack = definePack(
   {
     id: "finance-surveillance",
-    version: "0.1.0",
+    version: "0.2.0",
     riskTier: "critical",
     limits: {
       maxStateBytes: 32_768,
@@ -240,6 +242,65 @@ export const financeSurveillancePack = definePack(
     interpret,
   },
 );
+
+/**
+ * Canonical digest of every fixed finance question shape, including the
+ * uncited-claim and cited-claim variants. Benchmark policies bind this value;
+ * changing instructions, criteria, option order, or pack version changes it.
+ */
+export const financeSurveillanceQuestionSetHash = financeQuestionSetHash();
+
+function financeQuestionSetHash(): `sha256:${string}` {
+  const contractCandidates = actions.map(({ id, description }) => ({
+    id,
+    description,
+  }));
+  const excerpt = "Canonical finance question-contract excerpt.";
+  const claim = "Canonical finance question-contract claim.";
+  const uncitedState = {
+    text: {
+      mode: "bounded_excerpts",
+      trust: "untrusted_data_only",
+      candidates: [
+        {
+          id: "contract.uncited",
+          excerpt,
+          excerptHash: sha256Text(excerpt),
+        },
+      ],
+    },
+  };
+  const citedState = {
+    text: {
+      mode: "bounded_excerpts",
+      trust: "untrusted_data_only",
+      candidates: [
+        {
+          id: "contract.cited",
+          excerpt,
+          excerptHash: sha256Text(excerpt),
+          claim,
+          claimHash: sha256Text(claim),
+          sourceSpan: {
+            byteStart: 0,
+            byteEnd: Buffer.byteLength(excerpt, "utf8"),
+            sectionHash: sha256Text(excerpt),
+          },
+        },
+      ],
+    },
+  };
+  return `sha256:${sha256Digest(
+    {
+      packId: financeSurveillancePack.manifest.id,
+      packVersion: financeSurveillancePack.manifest.version,
+      base: questions({}, contractCandidates),
+      uncited: questions(uncitedState, contractCandidates),
+      cited: questions(citedState, contractCandidates),
+    },
+    "jev-fabric/finance-surveillance-question-contract/v1",
+  )}`;
+}
 
 function questions(
   state: unknown,
@@ -372,6 +433,11 @@ function claimQuestions(state: unknown): readonly DecisionQuestion[] {
       none: {
         what: "The excerpt clearly fits none of the other fixed claim categories",
         notFor: "Uncertainty between two listed categories",
+      },
+      unclear: {
+        what: "The excerpt is insufficient or genuinely ambiguous between listed claim categories",
+        notFor:
+          "An excerpt that clearly fits one category or clearly fits none",
       },
     },
     options: claimOptions,

@@ -18,6 +18,15 @@ temporal isolation, and bounded reads.
 
 Financial text now uses ordered, hash-bound excerpt candidates and a fixed
 provisional claim taxonomy; non-empty claims remain investigation-only. The
+taxonomy now distinguishes `unclear` from `none`: genuinely ambiguous or
+insufficient excerpts route to investigation instead of being forced into a
+substantive category. This question-contract change bumps the finance pack to
+`0.2.0` and requires a new question-set hash and freshly fitted policies; old
+caches and thresholds must not be reused. The pack exports a canonical digest
+over its base, uncited-claim, and cited-claim question shapes; the finance
+runner and offline validator reject stale digests or pack versions before
+execution and prevent a driver or fitted threshold from downgrading an atomic
+`unclear` selection to `observe`. The
 benchmark builder also includes a deterministic, inert SVG compiler with
 reviewed source, image, and versioned artifact seals for five visual mutations.
 Those seals now govern the retained benchmark label and are revalidated by the

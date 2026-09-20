@@ -23,6 +23,10 @@ import {
   type FinanceTrack,
   stableJson,
 } from "../../../packages/evals/src/index.js";
+import {
+  financeSurveillancePack,
+  financeSurveillanceQuestionSetHash,
+} from "../../../packs/finance-surveillance/pack.js";
 import { canonicalJson, sha256 } from "../builders/lib/canonical.mjs";
 import {
   FINANCE_CHART_RENDERER,
@@ -407,6 +411,7 @@ function fixtureAtomicEvidence(
         accounting_or_control_issue: 0.04,
         legal_or_regulatory_contingency: 0.04,
         none: 0.8,
+        unclear: 0,
       },
       candidateId: binding.candidateId,
       evidenceHash: binding.evidenceHash,
@@ -578,7 +583,7 @@ const component = (
 });
 
 const runtime: FinanceRuntimeProvenance = {
-  questionSetHash: hash("3"),
+  questionSetHash: financeSurveillanceQuestionSetHash,
   policyVersion: "1",
   featureSetHash: hash("4"),
   hardware: "fixture-cpu",
@@ -598,8 +603,8 @@ const runtime: FinanceRuntimeProvenance = {
     },
     jev_advisory: {
       components: [component("jev", "native_calibrated")],
-      combinerId: "finance-surveillance-pack",
-      combinerVersion: "0.1.0",
+      combinerId: financeSurveillancePack.manifest.id,
+      combinerVersion: financeSurveillancePack.manifest.version,
     },
     host_plus_jev: {
       components: [
@@ -1084,6 +1089,107 @@ test("concurrency does not change canonical retained traces", async () => {
   }
 });
 
+test("rejects an observe route that contradicts an unclear atomic claim", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    await assert.rejects(
+      runFinanceBenchmark({
+        runId: "finance-unclear-route",
+        dataset,
+        runtime,
+        runtimeEvidence,
+        observeGate,
+        drivers: {
+          ...drivers,
+          jev_advisory: (state, context) => {
+            const ledger = fixtureAtomicEvidence(
+              "jev",
+              state,
+              context.questionSetHash,
+            );
+            const questions = ledger.questions.map((question) =>
+              question.questionId.startsWith("finance-text-claim:")
+                ? {
+                    ...question,
+                    selected: "unclear",
+                    probabilities: {
+                      performance_change: 0.01,
+                      guidance_or_outlook_change: 0.01,
+                      liquidity_or_going_concern: 0.01,
+                      accounting_or_control_issue: 0.01,
+                      legal_or_regulatory_contingency: 0.01,
+                      none: 0.2,
+                      unclear: 0.75,
+                    },
+                  }
+                : question,
+            );
+            return {
+              ...predicted,
+              atomicEvidence: [{ ...ledger, questions }],
+              componentAccounting: [
+                {
+                  role: "jev",
+                  inputTokens: 10,
+                  outputTokens: 2,
+                  costNanoUsd: "5000",
+                },
+              ],
+            };
+          },
+        },
+        now: () => 100,
+      }),
+      /atomic evidence route/u,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("rejects stale finance question contracts before driver execution", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    await assert.rejects(
+      runFinanceBenchmark({
+        runId: "finance-stale-question-contract",
+        dataset,
+        drivers,
+        runtime: { ...runtime, questionSetHash: hash("9") },
+        runtimeEvidence,
+        observeGate,
+        now: () => 100,
+      }),
+      /question-set hash/u,
+    );
+    await assert.rejects(
+      runFinanceBenchmark({
+        runId: "finance-stale-pack-version",
+        dataset,
+        drivers,
+        runtime: {
+          ...runtime,
+          architectures: {
+            ...runtime.architectures,
+            jev_advisory: {
+              ...runtime.architectures.jev_advisory,
+              combinerVersion: "0.1.0",
+            },
+          },
+        },
+        runtimeEvidence,
+        observeGate,
+        now: () => 100,
+      }),
+      /finance-surveillance pack version/u,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("rejects digest drift, split leakage, and unsafe driver output", async () => {
   const digestFixture = await datasetDirectory();
   try {
@@ -1433,6 +1539,7 @@ test("recomputation rejects self-consistent atomic evidence rebound away from da
           accounting_or_control_issue: 0.04,
           legal_or_regulatory_contingency: 0.04,
           none: 0.8,
+          unclear: 0,
         },
         candidateId: "forged-candidate",
         evidenceHash: hash("9"),

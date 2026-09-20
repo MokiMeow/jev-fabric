@@ -16,6 +16,20 @@ authorization, or permission to trade. The committed fixture remains strictly
 `NOT_RUN`: its policy set, threshold inputs, atomic metrics, and performance
 metrics are null or empty and make no observe-gate claim.
 
+Finance pack `0.2.0` adds `unclear` as an explicit financial-text claim label.
+It is non-observe evidence and composes to `investigate`; it is not another
+spelling of `none`. Because the additional option changes every claim
+probability distribution, a run must derive a new question-set hash and fit new
+policies. The validator binds policies to pack version and question-set hash;
+results or thresholds from the `0.1.0` vocabulary are not comparable or
+reusable. The benchmark derives the canonical hash from the pack's base,
+uncited-claim, and cited-claim question shapes and rejects caller-supplied
+stale hashes or a mismatched Jev pack version before any driver executes.
+Independently, it derives the minimum permissible route from every retained
+atomic selection: `unclear` and every other non-`none` claim require at least
+`investigate`, even when a driver reports `observe` or a low fitted threshold
+would otherwise accept it.
+
 ## What the runner measures
 
 The tracks are market surveillance, structured visual evidence, and bounded

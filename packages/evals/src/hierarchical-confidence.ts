@@ -49,6 +49,8 @@ export interface HierarchicalConfidencePartitionEvidence {
 
 export interface HierarchicalConfidencePolicyBindings {
   readonly hierarchy: Readonly<Record<string, string>>;
+  readonly thresholdFitSetHash: `sha256:${string}`;
+  readonly riskAuditSetHash: `sha256:${string}`;
   readonly maximumGroupFailureRisk: number;
   readonly minimumFitGroups: number;
   readonly minimumAuditGroups: number;
@@ -93,8 +95,10 @@ export interface HierarchicalConfidenceMetrics {
 
 export interface HierarchicalConfidenceEvaluation {
   readonly policy: HierarchicalConfidencePolicy;
+  readonly testSetHash: `sha256:${string}`;
   readonly decisions: readonly HierarchicalConfidenceDecision[];
   readonly metrics: HierarchicalConfidenceMetrics;
+  readonly evaluationHash: `sha256:${string}`;
 }
 
 const rowKeys = [
@@ -140,6 +144,9 @@ export function evaluateHierarchicalConfidence(
   if (auditRows.length === 0)
     throw new TypeError("risk-audit rows are required");
   if (testRows.length === 0) throw new TypeError("test rows are required");
+  const thresholdFitSetHash = observationSetHash(fitRows, "threshold-fit");
+  const riskAuditSetHash = observationSetHash(auditRows, "risk-audit");
+  const testSetHash = observationSetHash(testRows, "test");
 
   const candidates = [...new Set(fitRows.map(({ confidence }) => confidence))]
     .sort((left, right) => left - right)
@@ -180,6 +187,8 @@ export function evaluateHierarchicalConfidence(
   const effectiveThreshold = reason === null ? fittedThreshold : null;
   const bindings: HierarchicalConfidencePolicyBindings = Object.freeze({
     hierarchy: config.hierarchy,
+    thresholdFitSetHash,
+    riskAuditSetHash,
     maximumGroupFailureRisk: config.maximumGroupFailureRisk,
     minimumFitGroups: config.minimumFitGroups,
     minimumAuditGroups: config.minimumAuditGroups,
@@ -216,12 +225,42 @@ export function evaluateHierarchicalConfidence(
   });
   const decisions = testRows
     .map((row) => decision(row, config.hierarchy, effectiveThreshold))
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort((left, right) => compareIdentifier(left.id, right.id));
+  const frozenDecisions = Object.freeze(decisions);
+  const frozenMetrics = Object.freeze(metrics(frozenDecisions));
+  const evaluationCore = {
+    policyHash: policy.policyHash,
+    testSetHash,
+    decisions: frozenDecisions,
+    metrics: frozenMetrics,
+  };
   return Object.freeze({
     policy,
-    decisions: Object.freeze(decisions),
-    metrics: Object.freeze(metrics(decisions)),
+    testSetHash,
+    decisions: frozenDecisions,
+    metrics: frozenMetrics,
+    evaluationHash: `sha256:${sha256Digest(
+      evaluationCore,
+      "jev-fabric/hierarchical-confidence-evaluation/v1",
+    )}`,
   });
+}
+
+function observationSetHash(
+  rows: readonly HierarchicalConfidenceObservation[],
+  partition: "threshold-fit" | "risk-audit" | "test",
+): `sha256:${string}` {
+  const ordered = [...rows].sort((left, right) =>
+    compareIdentifier(left.id, right.id),
+  );
+  return `sha256:${sha256Digest(
+    ordered,
+    `jev-fabric/hierarchical-confidence-${partition}-set/v1`,
+  )}`;
+}
+
+function compareIdentifier(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function partitionEvidence(

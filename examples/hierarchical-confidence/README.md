@@ -7,6 +7,7 @@ partition. The second requires more audited groups than the data supports, so
 every test result falls back to its deterministic parent label.
 
 Run `pnpm exec tsx examples/hierarchical-confidence/index.ts` from a built
-checkout. The output includes reconstructible policy bindings and a
-domain-separated policy hash. It is evaluator-contract evidence, not live Jev
+checkout. The output includes reconstructible policy bindings, exact partition
+hashes, a domain-separated policy hash, and a separate evaluation hash over the
+test evidence and results. It is evaluator-contract evidence, not live Jev
 accuracy, calibration, financial advice, or authority to act.

@@ -149,9 +149,12 @@ only then applied to `test`. Above the audited threshold it reports the leaf;
 otherwise it deterministically reports the leaf's parent. If fitting or audit
 coverage fails, every test result falls back to its parent.
 
-Policies bind the hierarchy, dataset and question-set hashes, provider,
-concrete model version, and `native_calibrated` probability semantics. Moving
-model aliases and non-native confidence are rejected. TypeSafe confidence is
+Policies bind the hierarchy, dataset and question-set hashes, exact fit and
+audit observation hashes, provider, concrete model version, and
+`native_calibrated` probability semantics. A separate evaluation digest binds
+the exact test observations, decisions, and metrics. These internally computed
+observation hashes are invariant to input order. Moving model aliases and
+non-native confidence are rejected. TypeSafe confidence is
 distribution concentration—not correctness probability—so do not reuse the
 official cookbook's example cutoff or its earlier-model results as a production
 policy. The current docs still require a threshold evaluated on the target

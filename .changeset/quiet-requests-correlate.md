@@ -18,3 +18,5 @@ allowing leaf labels, otherwise falling back to deterministic parent labels.
 Reject non-primitive leaf identifiers and hash bindings before any coercive
 operation, and reject proxied, sparse, extended, or oversized observation
 arrays.
+Independently bind the exact fit, audit, and test observation sets with
+order-invariant hashes, plus a separate digest over the test evaluation.

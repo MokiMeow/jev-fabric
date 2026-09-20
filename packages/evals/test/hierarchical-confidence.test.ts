@@ -91,6 +91,8 @@ describe("evaluateHierarchicalConfidence", () => {
       },
       bindings: {
         hierarchy,
+        thresholdFitSetHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        riskAuditSetHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
         datasetHash: hash("a"),
         questionSetHash: hash("b"),
         providerId: "typesafe",
@@ -99,6 +101,8 @@ describe("evaluateHierarchicalConfidence", () => {
       },
     });
     expect(result.policy.policyHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(result.testSetHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(result.evaluationHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(result.decisions).toEqual([
       expect.objectContaining({
         id: "test-leaf-correct",
@@ -201,6 +205,38 @@ describe("evaluateHierarchicalConfidence", () => {
 
     expect(replay.policy.policyHash).toBe(first.policy.policyHash);
     expect(changed.policy.policyHash).not.toBe(first.policy.policyHash);
+  });
+
+  it("binds exact partitions while remaining invariant to input order", () => {
+    const rows = evidenceRows();
+    const first = evaluateHierarchicalConfidence(rows, config);
+    const reordered = evaluateHierarchicalConfidence(
+      [...rows].reverse(),
+      config,
+    );
+    expect(reordered.policy.policyHash).toBe(first.policy.policyHash);
+    expect(reordered.testSetHash).toBe(first.testSetHash);
+    expect(reordered.evaluationHash).toBe(first.evaluationHash);
+
+    const changedTestRows = evidenceRows().map((item) =>
+      item.id === "test-leaf-correct" ? { ...item, confidence: 0.91 } : item,
+    );
+    const changedTest = evaluateHierarchicalConfidence(changedTestRows, config);
+    expect(changedTest.policy.policyHash).toBe(first.policy.policyHash);
+    expect(changedTest.testSetHash).not.toBe(first.testSetHash);
+    expect(changedTest.evaluationHash).not.toBe(first.evaluationHash);
+
+    const changedAuditRows = evidenceRows().map((item) =>
+      item.id === "audit-low-0" ? { ...item, confidence: 0.31 } : item,
+    );
+    const changedAudit = evaluateHierarchicalConfidence(
+      changedAuditRows,
+      config,
+    );
+    expect(changedAudit.policy.bindings.riskAuditSetHash).not.toBe(
+      first.policy.bindings.riskAuditSetHash,
+    );
+    expect(changedAudit.policy.policyHash).not.toBe(first.policy.policyHash);
   });
 
   it("rejects split leakage, duplicate rows, and malformed confidence", () => {

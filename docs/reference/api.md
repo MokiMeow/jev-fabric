@@ -71,5 +71,8 @@ measured; unavailable calibration and accounting remain explicit.
 threshold on one group-disjoint split, audits its group failure risk on a
 second split, and evaluates leaf-versus-parent fallback on a third. The policy
 hash binds the hierarchy, dataset, question contract, provider, concrete model,
-and native probability semantics. Missing support or a failed audit produces
-parent-only results; the evaluator never grants application authority.
+and native probability semantics. Internally derived, order-invariant hashes
+also bind the exact fit, audit, and test observations; a separate evaluation
+digest binds the policy, test set, decisions, and metrics. Missing support or a
+failed audit produces parent-only results; the evaluator never grants
+application authority.

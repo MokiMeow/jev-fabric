@@ -1,25 +1,29 @@
 import { createHash } from "node:crypto";
-import { lstat, open, readFile } from "node:fs/promises";
+import { lstat, open, readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import {
   aggregateFinanceBenchmarkTraces,
+  type FinanceBenchmarkCell,
+  type FinanceBenchmarkTrace,
   financeArchitectures,
   financeTracks,
   stableJson,
-  type FinanceBenchmarkCell,
-  type FinanceBenchmarkTrace,
 } from "../../../packages/evals/src/index.js";
 import {
+  type ArchitectureRuntimePricing,
+  type FinanceBenchmarkCase,
+  type FinanceRuntimeEvidence,
+  type FinanceRuntimeProvenance,
   financeCaseStateDigest,
   loadFinanceDataset,
-  type FinanceRuntimeProvenance,
-  type FinanceBenchmarkCase,
 } from "./run.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const maximumArtifactBytes = 100 * 1024 * 1024;
+const maximumRuntimeEvidenceFiles = 32;
+const maximumRuntimeEvidenceBytes = 64 * 1024;
 
 interface FinanceRunDataset {
   readonly status: "NOT_SELECTED" | "RETAINED";
@@ -46,8 +50,10 @@ interface FinanceRunRow {
   readonly sampleCount: number;
   readonly calibrationStatus: "NOT_RUN" | "measured" | "unavailable";
   readonly calibrationReason: "no_measured_route_question_distributions" | null;
-  readonly accountingStatus: "NOT_RUN" | "MEASURED" | "UNMETERED";
-  readonly accountingReason: "unmetered_attempt" | null;
+  readonly tokenAccountingStatus: "NOT_RUN" | "MEASURED" | "UNMETERED";
+  readonly tokenAccountingReason: "unmetered_attempt" | null;
+  readonly costAccountingStatus: "NOT_RUN" | "MEASURED" | "UNMETERED";
+  readonly costAccountingReason: "unmetered_attempt" | null;
   readonly metrics: Readonly<Record<FinanceRunMetricName, number | null>>;
 }
 
@@ -93,8 +99,10 @@ export function validateFinanceRun(value: unknown): void {
       invariant(
         row.calibrationStatus === "NOT_RUN" &&
           row.calibrationReason === null &&
-          row.accountingStatus === "NOT_RUN" &&
-          row.accountingReason === null,
+          row.tokenAccountingStatus === "NOT_RUN" &&
+          row.tokenAccountingReason === null &&
+          row.costAccountingStatus === "NOT_RUN" &&
+          row.costAccountingReason === null,
         `NOT_RUN row ${key} cannot claim measurement status`,
       );
       invariant(
@@ -147,21 +155,35 @@ export function validateFinanceRun(value: unknown): void {
           row.metrics.routeQuestionEce === null,
         `completed row ${key} must explain unavailable calibration`,
       );
-    if (row.accountingStatus === "MEASURED")
+    if (row.tokenAccountingStatus === "MEASURED")
       invariant(
-        row.accountingReason === null &&
+        row.tokenAccountingReason === null &&
           Number.isSafeInteger(row.metrics.inputTokens) &&
           row.metrics.inputTokens >= 0 &&
-          finite(row.metrics.estimatedCostUsd),
-        `completed row ${key} has invalid accounting evidence`,
+          Number.isSafeInteger(row.metrics.outputTokens) &&
+          row.metrics.outputTokens >= 0,
+        `completed row ${key} has invalid token accounting evidence`,
       );
     else
       invariant(
-        row.accountingStatus === "UNMETERED" &&
-          row.accountingReason === "unmetered_attempt" &&
+        row.tokenAccountingStatus === "UNMETERED" &&
+          row.tokenAccountingReason === "unmetered_attempt" &&
           row.metrics.inputTokens === null &&
+          row.metrics.outputTokens === null,
+        `completed row ${key} must preserve unknown token accounting`,
+      );
+    if (row.costAccountingStatus === "MEASURED")
+      invariant(
+        row.costAccountingReason === null &&
+          finite(row.metrics.estimatedCostUsd),
+        `completed row ${key} has invalid cost accounting evidence`,
+      );
+    else
+      invariant(
+        row.costAccountingStatus === "UNMETERED" &&
+          row.costAccountingReason === "unmetered_attempt" &&
           row.metrics.estimatedCostUsd === null,
-        `completed row ${key} must preserve unknown accounting`,
+        `completed row ${key} must preserve unknown cost accounting`,
       );
   }
   if (run.executionState === "NOT_RUN") {
@@ -221,6 +243,7 @@ export function validateFinanceRun(value: unknown): void {
 export async function validateFinanceArtifactDirectory(
   directory: string,
 ): Promise<void> {
+  await validateArtifactLayout(directory);
   const runPath = join(directory, "run.json");
   const tracesPath = join(directory, "traces.jsonl");
   await Promise.all([
@@ -260,6 +283,7 @@ export async function validateFinanceArtifactDirectory(
     stableJson(run.dataset) === stableJson(expectedDataset),
     "finance run dataset metadata does not match its retained manifest",
   );
+  await validateRetainedRuntimeEvidence(directory, run.runtime);
   const traceText = new TextDecoder("utf-8", { fatal: true }).decode(
     traceBytes,
   );
@@ -281,6 +305,7 @@ export async function validateFinanceArtifactDirectory(
   });
   const testCases = dataset.cases.filter((entry) => entry.split === "test");
   validateTraceCoverage(run, traces, testCases);
+  validateTracePricing(run, traces);
   const rows = aggregateFinanceBenchmarkTraces(
     traces as unknown as readonly FinanceBenchmarkTrace[],
   );
@@ -288,6 +313,333 @@ export async function validateFinanceArtifactDirectory(
     stableJson(rows) === stableJson(run.rows),
     "finance aggregate rows do not match retained traces",
   );
+}
+
+async function validateArtifactLayout(directory: string): Promise<void> {
+  const expected = new Map<string, "file" | "directory">([
+    ["cases.jsonl", "file"],
+    ["dataset-manifest.json", "file"],
+    ["evidence", "directory"],
+    ["run.json", "file"],
+    ["traces.jsonl", "file"],
+  ]);
+  const entries = await readdir(directory, { withFileTypes: true });
+  invariant(
+    entries.length === expected.size &&
+      entries.every((entry) => expected.has(entry.name)),
+    "finance artifact directory has an unexpected file set",
+  );
+  for (const entry of entries) {
+    const kind = expected.get(entry.name);
+    invariant(
+      !entry.isSymbolicLink() &&
+        ((kind === "file" && entry.isFile()) ||
+          (kind === "directory" && entry.isDirectory())),
+      `finance artifact ${entry.name} has an invalid file type`,
+    );
+  }
+}
+
+async function validateRetainedRuntimeEvidence(
+  directory: string,
+  runtime: FinanceRuntimeProvenance,
+): Promise<void> {
+  const required = requiredRuntimeEvidence(runtime);
+  invariant(
+    required.size <= maximumRuntimeEvidenceFiles,
+    `finance runtime evidence exceeds ${maximumRuntimeEvidenceFiles} files`,
+  );
+  const evidenceDirectory = join(directory, "evidence");
+  const entries = await readdir(evidenceDirectory, { withFileTypes: true });
+  const expectedNames = new Set(
+    [...required.keys()].map(
+      (digest) => `${digest.slice("sha256:".length)}.json`,
+    ),
+  );
+  invariant(
+    entries.length === expectedNames.size &&
+      entries.every((entry) => expectedNames.has(entry.name)),
+    "finance runtime evidence file set does not match runtime provenance",
+  );
+  for (const entry of entries) {
+    invariant(
+      entry.isFile() && !entry.isSymbolicLink(),
+      `finance runtime evidence ${entry.name} must be a regular non-symlink file`,
+    );
+    const path = join(evidenceDirectory, entry.name);
+    const bytes = await boundedRead(path, maximumRuntimeEvidenceBytes);
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    let evidence: FinanceRuntimeEvidence;
+    try {
+      evidence = JSON.parse(text) as FinanceRuntimeEvidence;
+    } catch (cause) {
+      throw new TypeError(
+        `finance runtime evidence ${entry.name} is not valid JSON`,
+        { cause },
+      );
+    }
+    validateRuntimeEvidenceDocument(evidence);
+    invariant(
+      text === stableJson(evidence),
+      `finance runtime evidence ${entry.name} is not canonical JSON`,
+    );
+    const digest = sha256(bytes);
+    invariant(
+      entry.name === `${digest.slice("sha256:".length)}.json`,
+      `finance runtime evidence ${entry.name} does not match its content hash`,
+    );
+    const expected = required.get(digest);
+    invariant(
+      expected !== undefined && stableJson(evidence) === stableJson(expected),
+      `finance runtime evidence ${entry.name} does not match runtime provenance`,
+    );
+  }
+}
+
+function requiredRuntimeEvidence(
+  runtime: FinanceRuntimeProvenance,
+): Map<string, FinanceRuntimeEvidence> {
+  const required = new Map<string, FinanceRuntimeEvidence>();
+  for (const architecture of financeArchitectures) {
+    for (const component of runtime.architectures[architecture].components) {
+      if (component.pricing !== null) {
+        addRequiredRuntimeEvidence(required, component.pricing.priceHash, {
+          schemaVersion: "1",
+          kind: "pricing",
+          inputNanoUsdPerToken: component.pricing.inputNanoUsdPerToken,
+          outputNanoUsdPerToken: component.pricing.outputNanoUsdPerToken,
+          sourceUrl: component.pricing.sourceUrl,
+          observedAt: component.pricing.observedAt,
+          priceVersion: component.pricing.priceVersion,
+        });
+      }
+      if (component.modelVersionEvidence.kind === "external_attestation") {
+        addRequiredRuntimeEvidence(
+          required,
+          component.modelVersionEvidence.evidenceHash,
+          {
+            schemaVersion: "1",
+            kind: "model_version",
+            sourceUrl: component.modelVersionEvidence.sourceUrl,
+            observedAt: component.modelVersionEvidence.observedAt,
+            providerId: component.providerId,
+            modelId: component.modelId,
+            modelVersion: component.modelVersion,
+            responseModel: component.responseModel,
+          },
+        );
+      }
+    }
+  }
+  return required;
+}
+
+function addRequiredRuntimeEvidence(
+  required: Map<string, FinanceRuntimeEvidence>,
+  claimedHash: string,
+  evidence: FinanceRuntimeEvidence,
+): void {
+  const canonicalHash = sha256(new TextEncoder().encode(stableJson(evidence)));
+  invariant(
+    claimedHash === canonicalHash,
+    `finance runtime evidence ${claimedHash} does not match its canonical metadata`,
+  );
+  const existing = required.get(claimedHash);
+  invariant(
+    existing === undefined || stableJson(existing) === stableJson(evidence),
+    `finance runtime evidence ${claimedHash} is bound to conflicting metadata`,
+  );
+  required.set(claimedHash, evidence);
+}
+
+function validateRuntimeEvidenceDocument(
+  evidence: FinanceRuntimeEvidence,
+): void {
+  invariant(
+    evidence !== null && typeof evidence === "object",
+    "finance runtime evidence must be an object",
+  );
+  if (evidence.kind === "pricing") {
+    exactPlainObject(
+      evidence,
+      [
+        "inputNanoUsdPerToken",
+        "kind",
+        "observedAt",
+        "outputNanoUsdPerToken",
+        "priceVersion",
+        "schemaVersion",
+        "sourceUrl",
+      ],
+      "finance pricing evidence",
+    );
+    validateRuntimePricing(
+      {
+        inputNanoUsdPerToken: evidence.inputNanoUsdPerToken,
+        outputNanoUsdPerToken: evidence.outputNanoUsdPerToken,
+        sourceUrl: evidence.sourceUrl,
+        observedAt: evidence.observedAt,
+        priceVersion: evidence.priceVersion,
+        priceHash: sha256(new TextEncoder().encode(stableJson(evidence))),
+      },
+      "retained evidence",
+    );
+    boundedEvidenceString(evidence.priceVersion, "priceVersion");
+  } else {
+    exactPlainObject(
+      evidence,
+      [
+        "kind",
+        "modelId",
+        "modelVersion",
+        "observedAt",
+        "providerId",
+        "responseModel",
+        "schemaVersion",
+        "sourceUrl",
+      ],
+      "finance model version evidence",
+    );
+    validateCanonicalEvidenceUrl(evidence.sourceUrl);
+    const observedAt = Date.parse(evidence.observedAt);
+    invariant(
+      Number.isFinite(observedAt) &&
+        new Date(observedAt).toISOString() === evidence.observedAt,
+      "finance model version evidence observedAt is invalid",
+    );
+    for (const [label, value] of [
+      ["providerId", evidence.providerId],
+      ["modelId", evidence.modelId],
+      ["modelVersion", evidence.modelVersion],
+      ["responseModel", evidence.responseModel],
+    ] as const)
+      boundedEvidenceString(value, label);
+  }
+  invariant(
+    evidence.schemaVersion === "1" && evidence.sourceUrl.length <= 2_048,
+    "finance runtime evidence metadata is invalid",
+  );
+}
+
+function exactPlainObject(
+  value: unknown,
+  expectedKeys: readonly string[],
+  label: string,
+): asserts value is Record<string, unknown> {
+  invariant(
+    value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.getPrototypeOf(value) === Object.prototype,
+    `${label} must be a plain object`,
+  );
+  const keys = Reflect.ownKeys(value);
+  invariant(
+    keys.length === expectedKeys.length &&
+      keys.every(
+        (key) => typeof key === "string" && expectedKeys.includes(key),
+      ),
+    `${label} has unexpected fields`,
+  );
+}
+
+function boundedEvidenceString(value: string, label: string): void {
+  invariant(
+    typeof value === "string" && value.length > 0 && value.length <= 256,
+    `finance runtime evidence ${label} is invalid`,
+  );
+}
+
+function validateCanonicalEvidenceUrl(value: string): void {
+  let source: URL;
+  try {
+    source = new URL(value);
+  } catch {
+    throw new TypeError("finance runtime evidence source is invalid");
+  }
+  invariant(
+    source.protocol === "https:" &&
+      source.username === "" &&
+      source.password === "" &&
+      source.search === "" &&
+      source.hash === "" &&
+      source.toString() === value,
+    "finance runtime evidence source must be canonical credential-free HTTPS",
+  );
+}
+
+function validateTracePricing(
+  run: FinanceRunDocument,
+  traces: readonly Record<string, unknown>[],
+): void {
+  for (const trace of traces) {
+    const architecture = trace.architecture;
+    invariant(
+      typeof architecture === "string" &&
+        financeArchitectures.includes(
+          architecture as (typeof financeArchitectures)[number],
+        ),
+      "finance trace architecture is invalid",
+    );
+    const accounting = trace.componentAccounting;
+    invariant(
+      Array.isArray(accounting),
+      "finance trace component accounting is missing",
+    );
+    if (trace.status === "rejected_lookahead") {
+      invariant(
+        accounting.length === 0 && trace.costNanoUsd === "0",
+        "rejected lookahead cannot claim provider cost",
+      );
+      continue;
+    }
+    if (architecture === "deterministic_only") {
+      invariant(
+        accounting.length === 0 &&
+          trace.inputTokens === 0 &&
+          trace.outputTokens === 0 &&
+          trace.costNanoUsd === "0",
+        "deterministic finance trace accounting must be zero",
+      );
+      continue;
+    }
+    const runtime =
+      run.runtime.architectures[
+        architecture as (typeof financeArchitectures)[number]
+      ];
+    invariant(
+      accounting.length === runtime.components.length,
+      `finance ${architecture} component accounting is incomplete`,
+    );
+    for (const [index, raw] of accounting.entries()) {
+      const item = raw as {
+        readonly role?: unknown;
+        readonly inputTokens?: unknown;
+        readonly outputTokens?: unknown;
+        readonly costNanoUsd?: unknown;
+      };
+      const component = runtime.components[index];
+      invariant(
+        component !== undefined && item.role === component.role,
+        `finance ${architecture} accounting role does not match runtime provenance`,
+      );
+      const expectedCost =
+        item.inputTokens === null ||
+        item.outputTokens === null ||
+        component.pricing === null
+          ? null
+          : (
+              BigInt(item.inputTokens as number) *
+                BigInt(component.pricing.inputNanoUsdPerToken) +
+              BigInt(item.outputTokens as number) *
+                BigInt(component.pricing.outputNanoUsdPerToken)
+            ).toString();
+      invariant(
+        item.costNanoUsd === expectedCost,
+        `finance ${architecture} cost does not match retained pricing`,
+      );
+    }
+  }
 }
 
 function validateTraceCoverage(
@@ -371,17 +723,125 @@ function validateRuntimeProvenance(runtime: FinanceRuntimeProvenance): void {
     invariant(
       value.components.length === expectedRoles[architecture]?.length &&
         value.components.every(
-          (component: Record<string, unknown>, index: number) =>
+          (component, index) =>
             component.role === expectedRoles[architecture]?.[index] &&
             [
               component.providerId,
               component.modelId,
               component.modelVersion,
+              component.responseModel,
             ].every((field) => typeof field === "string" && field.length > 0),
         ),
       `finance ${architecture} component provenance is invalid`,
     );
+    for (const component of value.components) {
+      if (component.role === "deterministic")
+        invariant(
+          component.pricing === null &&
+            component.probabilitySemantics === "none" &&
+            component.modelVersionEvidence.kind === "response_exact" &&
+            component.responseModel === component.modelVersion,
+          "deterministic finance provenance cannot claim external model evidence, pricing, or probabilities",
+        );
+      else {
+        validateModelVersionEvidence(component, architecture);
+        if (component.pricing !== null)
+          validateRuntimePricing(component.pricing, architecture);
+      }
+    }
   }
+  invariant(
+    stableJson(runtime.architectures.host_model_only.components[0]) ===
+      stableJson(runtime.architectures.host_plus_jev.components[0]),
+    "finance host component provenance differs across architectures",
+  );
+  invariant(
+    stableJson(runtime.architectures.jev_advisory.components[0]) ===
+      stableJson(runtime.architectures.host_plus_jev.components[1]),
+    "finance Jev component provenance differs across architectures",
+  );
+}
+
+function validateModelVersionEvidence(
+  component: FinanceRuntimeProvenance["architectures"][keyof FinanceRuntimeProvenance["architectures"]]["components"][number],
+  architecture: string,
+): void {
+  const evidence = component.modelVersionEvidence;
+  invariant(
+    evidence !== null && typeof evidence === "object",
+    `finance ${architecture} model version evidence is missing`,
+  );
+  if (evidence.kind === "response_exact") {
+    invariant(
+      Reflect.ownKeys(evidence).length === 1 &&
+        component.responseModel === component.modelVersion,
+      `finance ${architecture} response-exact model version is invalid`,
+    );
+    return;
+  }
+  invariant(
+    evidence.kind === "external_attestation" &&
+      Reflect.ownKeys(evidence).length === 4 &&
+      /^sha256:[a-f0-9]{64}$/u.test(evidence.evidenceHash),
+    `finance ${architecture} external model version evidence is invalid`,
+  );
+  let source: URL;
+  try {
+    source = new URL(evidence.sourceUrl);
+  } catch {
+    throw new TypeError(
+      `finance ${architecture} model version source is invalid`,
+    );
+  }
+  const observedAt = Date.parse(evidence.observedAt);
+  invariant(
+    source.protocol === "https:" &&
+      source.username === "" &&
+      source.password === "" &&
+      source.search === "" &&
+      source.hash === "" &&
+      source.toString() === evidence.sourceUrl &&
+      Number.isFinite(observedAt) &&
+      new Date(observedAt).toISOString() === evidence.observedAt,
+    `finance ${architecture} model version attestation is not canonical`,
+  );
+}
+
+function validateRuntimePricing(
+  pricing: ArchitectureRuntimePricing,
+  architecture: string,
+): void {
+  invariant(
+    /^(0|[1-9][0-9]*)$/u.test(pricing.inputNanoUsdPerToken) &&
+      /^(0|[1-9][0-9]*)$/u.test(pricing.outputNanoUsdPerToken),
+    `finance ${architecture} pricing amounts are invalid`,
+  );
+  let source: URL;
+  try {
+    source = new URL(pricing.sourceUrl);
+  } catch {
+    throw new TypeError(`finance ${architecture} pricing source is invalid`);
+  }
+  invariant(
+    source.protocol === "https:" &&
+      source.username === "" &&
+      source.password === "" &&
+      source.search === "" &&
+      source.hash === "" &&
+      source.toString() === pricing.sourceUrl,
+    `finance ${architecture} pricing source must be canonical credential-free HTTPS`,
+  );
+  const observedAt = Date.parse(pricing.observedAt);
+  invariant(
+    Number.isFinite(observedAt) &&
+      new Date(observedAt).toISOString() === pricing.observedAt,
+    `finance ${architecture} pricing observedAt is invalid`,
+  );
+  invariant(
+    pricing.priceVersion.length > 0 &&
+      /^sha256:[a-f0-9]{64}$/u.test(pricing.priceHash),
+    `finance ${architecture} pricing version or hash is invalid`,
+  );
 }
 
 export function validateAgainstSchema(

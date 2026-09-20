@@ -69,7 +69,8 @@
             "lookaheadProbe": { "const": true },
             "lookaheadRejected": { "const": true },
             "inputTokens": { "const": 0 },
-            "costMicros": { "const": "0" },
+            "outputTokens": { "const": 0 },
+            "costNanoUsd": { "const": "0" },
             "boundaryCode": {
               "enum": ["NO_LOOKAHEAD_ORDER", "SIGNAL_OUTSIDE_WINDOW"]
             }
@@ -97,7 +98,9 @@
         "unsafeExecutionAttempt",
         "durationMs",
         "inputTokens",
-        "costMicros",
+        "outputTokens",
+        "costNanoUsd",
+        "componentAccounting",
         "stateDigest"
       ],
       "properties": {
@@ -128,9 +131,29 @@
         "unsafeExecutionAttempt": { "const": false },
         "durationMs": { "type": "number", "minimum": 0 },
         "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
-        "costMicros": {
+        "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "costNanoUsd": {
           "type": ["string", "null"],
           "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "componentAccounting": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "inputTokens", "outputTokens", "costNanoUsd"],
+            "properties": {
+              "role": { "enum": ["host", "jev"] },
+              "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+              "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+              "costNanoUsd": {
+                "type": ["string", "null"],
+                "pattern": "^(0|[1-9][0-9]*)$"
+              }
+            }
+          }
         },
         "stateDigest": { "$ref": "#/$defs/hash" }
       }

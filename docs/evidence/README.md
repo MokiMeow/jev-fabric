@@ -18,8 +18,13 @@ across deterministic, host-model, Jev-only, and combined architectures. It is
 also `NOT RUN`; no accuracy, calibration, latency, cost, or market-performance
 claim is established.
 
+The dated [finance and visual ecosystem scan](../research/jev-finance-landscape-2026-09-20.md)
+records the discovery sources and implementation ideas used for this iteration.
+It separates official documentation from community reports and does not promote
+third-party speed, cost, accuracy, or trading claims into Fabric evidence.
+
 ## Vendor context, not product promises
 
-TypeSafe’s official [models page](https://docs.typesafe.ai/models) (accessed 2026-09-19) lists dynamic model and pricing/rate information. It is a provider scenario input, not a claim of cheaper, faster, or more accurate operation here. For integration shape, consult the dated official model/tool documentation of [OpenAI](https://platform.openai.com/docs/models), [Anthropic](https://docs.anthropic.com/en/docs/about-claude/models), [Google](https://ai.google.dev/gemini-api/docs/models), [Kimi](https://platform.moonshot.ai/docs/guide/use-kimi-k2), and [Qwen](https://www.alibabacloud.com/help/en/model-studio/models). No cross-model benchmark is committed.
+TypeSafe’s official [models page](https://docs.typesafe.ai/models), accessed 2026-09-20, lists dynamic model and pricing/rate information. It is a provider scenario input, not a claim of cheaper, faster, or more accurate operation here. For integration shape, consult the dated official model/tool documentation of [OpenAI](https://platform.openai.com/docs/models), [Anthropic](https://docs.anthropic.com/en/docs/about-claude/models), [Google](https://ai.google.dev/gemini-api/docs/models), [Kimi](https://platform.moonshot.ai/docs/guide/use-kimi-k2), and [Qwen](https://www.alibabacloud.com/help/en/model-studio/models). No cross-model benchmark is committed.
 
 Use [replay](../reference/cli.md) with a retained manifest for a reproducible offline integrity check. Add target-domain cases, versions, hardware/region when relevant, and limitations before publishing a comparison.

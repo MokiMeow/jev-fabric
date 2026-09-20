@@ -33,7 +33,10 @@
             "providerId": null,
             "modelId": null,
             "modelVersion": null,
-            "probabilitySemantics": null
+            "responseModel": null,
+            "modelVersionEvidence": null,
+            "probabilitySemantics": null,
+            "pricing": null
           }
         ],
         "combinerId": null,
@@ -46,7 +49,10 @@
             "providerId": null,
             "modelId": null,
             "modelVersion": null,
-            "probabilitySemantics": null
+            "responseModel": null,
+            "modelVersionEvidence": null,
+            "probabilitySemantics": null,
+            "pricing": null
           }
         ],
         "combinerId": null,
@@ -59,7 +65,10 @@
             "providerId": null,
             "modelId": null,
             "modelVersion": null,
-            "probabilitySemantics": null
+            "responseModel": null,
+            "modelVersionEvidence": null,
+            "probabilitySemantics": null,
+            "pricing": null
           }
         ],
         "combinerId": null,
@@ -72,14 +81,20 @@
             "providerId": null,
             "modelId": null,
             "modelVersion": null,
-            "probabilitySemantics": null
+            "responseModel": null,
+            "modelVersionEvidence": null,
+            "probabilitySemantics": null,
+            "pricing": null
           },
           {
             "role": "jev",
             "providerId": null,
             "modelId": null,
             "modelVersion": null,
-            "probabilitySemantics": null
+            "responseModel": null,
+            "modelVersionEvidence": null,
+            "probabilitySemantics": null,
+            "pricing": null
           }
         ],
         "combinerId": null,
@@ -94,8 +109,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -107,6 +124,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -116,8 +134,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -129,6 +149,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -138,8 +159,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -151,6 +174,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -160,8 +184,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -173,6 +199,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -182,8 +209,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -195,6 +224,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -204,8 +234,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -217,6 +249,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -226,8 +259,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -239,6 +274,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -248,8 +284,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -261,6 +299,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -270,8 +309,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -283,6 +324,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -292,8 +334,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -305,6 +349,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -314,8 +359,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -327,6 +374,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     },
@@ -336,8 +384,10 @@
       "sampleCount": 0,
       "calibrationStatus": "NOT_RUN",
       "calibrationReason": null,
-      "accountingStatus": "NOT_RUN",
-      "accountingReason": null,
+      "tokenAccountingStatus": "NOT_RUN",
+      "tokenAccountingReason": null,
+      "costAccountingStatus": "NOT_RUN",
+      "costAccountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
@@ -349,6 +399,7 @@
         "p50Ms": null,
         "p95Ms": null,
         "inputTokens": null,
+        "outputTokens": null,
         "estimatedCostUsd": null
       }
     }

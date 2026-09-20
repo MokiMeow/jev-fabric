@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MokiMeow/jev-fabric/benchmarks/finance/builders/schema/build-manifest.schema.json",
+  "title": "Jev Fabric finance build manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "datasetId",
+    "evidenceClass",
+    "sourceLockHash",
+    "generator",
+    "split",
+    "inputs",
+    "artifacts",
+    "rebuildDigest"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "datasetId": { "$ref": "#/$defs/id" },
+    "evidenceClass": {
+      "enum": ["SYNTHETIC", "LOCAL_EXPLORATORY", "RETAINED_PUBLIC"]
+    },
+    "sourceLockHash": { "$ref": "#/$defs/hash" },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "sourceRevision",
+        "configHash",
+        "labelPolicyHash",
+        "splitPolicyHash"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "version": { "$ref": "#/$defs/id" },
+        "sourceRevision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "configHash": { "$ref": "#/$defs/hash" },
+        "labelPolicyHash": { "$ref": "#/$defs/hash" },
+        "splitPolicyHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "trainEnd", "testStart", "embargoDays"],
+      "properties": {
+        "method": { "const": "forward_chaining_time_split" },
+        "trainEnd": { "type": "string", "format": "date-time" },
+        "testStart": { "type": "string", "format": "date-time" },
+        "embargoDays": { "type": "integer", "minimum": 30 }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config", "labelPolicy", "splitPolicy"],
+      "properties": {
+        "config": { "$ref": "#/$defs/input" },
+        "labelPolicy": { "$ref": "#/$defs/input" },
+        "splitPolicy": { "$ref": "#/$defs/input" }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cases", "provenance", "assets"],
+      "properties": {
+        "cases": { "$ref": "#/$defs/artifact" },
+        "provenance": { "$ref": "#/$defs/artifact" },
+        "assets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifact" }
+        }
+      }
+    },
+    "rebuildDigest": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]{0,159}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes", "sourceUses"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
+          "maxLength": 240
+        },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sourceUses": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/sourceUse" }
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
+          "maxLength": 240
+        },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "sourceUse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "retention"],
+      "properties": {
+        "sourceId": { "$ref": "#/$defs/id" },
+        "retention": {
+          "enum": [
+            "metadata_only",
+            "generated_output",
+            "source_excerpt",
+            "raw_source"
+          ]
+        }
+      }
+    }
+  }
+}

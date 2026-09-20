@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MokiMeow/jev-fabric/benchmarks/finance/builders/schema/source-lock.schema.json",
+  "title": "Jev Fabric finance source lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "lockId", "evidenceClass", "sources"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "lockId": { "$ref": "#/$defs/id" },
+    "evidenceClass": {
+      "enum": ["SYNTHETIC", "LOCAL_EXPLORATORY", "RETAINED_PUBLIC"]
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/source" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]{0,159}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "track",
+        "kind",
+        "url",
+        "pin",
+        "cachePath",
+        "mediaType",
+        "rights"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "track": {
+          "enum": [
+            "market_surveillance",
+            "financial_text_triage",
+            "visual_evidence"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "sec_edgar_submission",
+            "sec_xbrl_statement",
+            "abides_source"
+          ]
+        },
+        "url": { "type": "string", "format": "uri" },
+        "pin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value", "sha256", "bytes"],
+          "properties": {
+            "kind": { "enum": ["content_sha256", "git_commit"] },
+            "value": { "type": "string", "minLength": 1, "maxLength": 71 },
+            "sha256": { "$ref": "#/$defs/hash" },
+            "bytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "cachePath": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
+          "maxLength": 240
+        },
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "rights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "redistribution",
+            "evidenceUrl",
+            "statement",
+            "reviewedAt"
+          ],
+          "properties": {
+            "redistribution": {
+              "enum": [
+                "allowed",
+                "generated_output_only",
+                "unresolved",
+                "forbidden"
+              ]
+            },
+            "evidenceUrl": { "type": "string", "format": "uri" },
+            "statement": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "reviewedAt": { "type": "string", "format": "date" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,9 +1,9 @@
+import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
 import { describe, expect, it } from "vitest";
 import {
   OpenAICompatibleProvider,
   type OpenAICompatibleProviderError,
 } from "../src/index.js";
-import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
 
 const request: DecisionRequest = {
   id: "request_1",
@@ -19,10 +19,16 @@ const request: DecisionRequest = {
   ],
 };
 const json = (content: string, init?: ResponseInit) =>
-  new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
+  new Response(
+    JSON.stringify({
+      model: "configured-model",
+      choices: [{ message: { content } }],
+    }),
+    {
+      headers: { "content-type": "application/json" },
+      ...init,
+    },
+  );
 
 describe("OpenAICompatibleProvider", () => {
   it("uses only its configured endpoint, injected fetch, strict response handling, and self-reported semantics", async () => {
@@ -52,6 +58,115 @@ describe("OpenAICompatibleProvider", () => {
       serverName: "models.example.test",
     });
     expect(init?.redirect).toBe("manual");
+    expect(provider.executionPolicy).toEqual({
+      maxRedirects: 2,
+      repairAttempts: 0,
+    });
+    expect(Object.isFrozen(provider.executionPolicy)).toBe(true);
+  });
+
+  it("retains exact provider-reported token usage without changing evaluate", async () => {
+    const provider = new OpenAICompatibleProvider({
+      id: "compatible",
+      endpoint: "https://models.example.test/v1/chat/completions",
+      model: "configured-model",
+      resolve: async () => ["8.8.8.8"],
+      transport: {
+        execute: async () =>
+          new Response(
+            JSON.stringify({
+              model: "configured-model",
+              choices: [
+                {
+                  message: {
+                    content:
+                      '{"answers":[{"questionId":"route","type":"choice","selected":"billing","probabilities":{"billing":0.7,"other":0.3}}]}',
+                  },
+                },
+              ],
+              usage: {
+                prompt_tokens: 41,
+                completion_tokens: 7,
+                total_tokens: 48,
+                prompt_tokens_details: { cached_tokens: 0 },
+              },
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      },
+    });
+    await expect(provider.evaluateWithMetadata(request)).resolves.toMatchObject(
+      {
+        response: { model: "configured-model" },
+        usage: { inputTokens: 41, outputTokens: 7, totalTokens: 48 },
+      },
+    );
+    await expect(provider.evaluate(request)).resolves.toMatchObject({
+      model: "configured-model",
+    });
+  });
+
+  it("rejects internally inconsistent provider token usage", async () => {
+    const provider = new OpenAICompatibleProvider({
+      id: "compatible",
+      endpoint: "https://models.example.test/v1/chat/completions",
+      model: "configured-model",
+      resolve: async () => ["8.8.8.8"],
+      transport: {
+        execute: async () =>
+          new Response(
+            JSON.stringify({
+              model: "configured-model",
+              choices: [
+                {
+                  message: {
+                    content:
+                      '{"answers":[{"questionId":"route","type":"choice","selected":"billing","probabilities":{"billing":0.7,"other":0.3}}]}',
+                  },
+                },
+              ],
+              usage: {
+                prompt_tokens: 41,
+                completion_tokens: 7,
+                total_tokens: 49,
+              },
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      },
+    });
+    await expect(provider.evaluateWithMetadata(request)).rejects.toMatchObject({
+      category: "invalid_response",
+    });
+  });
+
+  it("retains the exact upstream model instead of relabelling it as the requested route", async () => {
+    const provider = new OpenAICompatibleProvider({
+      id: "compatible",
+      endpoint: "https://models.example.test/v1/chat/completions",
+      model: "configured-route",
+      resolve: async () => ["8.8.8.8"],
+      transport: {
+        execute: async () =>
+          new Response(
+            JSON.stringify({
+              model: "resolved-model-2026-09-20",
+              choices: [
+                {
+                  message: {
+                    content:
+                      '{"answers":[{"questionId":"route","type":"choice","selected":"billing","probabilities":{"billing":0.7,"other":0.3}}]}',
+                  },
+                },
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      },
+    });
+    await expect(provider.evaluate(request)).resolves.toMatchObject({
+      model: "resolved-model-2026-09-20",
+    });
   });
 
   it("accounts for exactly one bounded repair and redacts failure details", async () => {

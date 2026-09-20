@@ -26,6 +26,8 @@ const official = new Set([
   "https://www.sec.gov/",
   "https://www.nist.gov/",
   "https://x.com/",
+  "https://madewithjev.com/",
+  "https://jevlist.ai/",
 ]);
 async function markdown(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });

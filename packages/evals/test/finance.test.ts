@@ -17,7 +17,7 @@ type PredictedOverrides =
 function predictedTrace(
   overrides: PredictedOverrides = {},
 ): FinancePredictedTrace {
-  return {
+  const trace = {
     caseId: "case-regular",
     groupId: "group-1",
     track: "market_surveillance",
@@ -37,8 +37,34 @@ function predictedTrace(
     unsafeExecutionAttempt: false,
     durationMs: 10,
     inputTokens: 100,
-    costMicros: "10000",
+    outputTokens: 20,
+    costNanoUsd: "10000000",
     ...overrides,
+  } as FinancePredictedTrace;
+  if (overrides.componentAccounting !== undefined) return trace;
+  const accounting = {
+    inputTokens: trace.inputTokens,
+    outputTokens: trace.outputTokens,
+    costNanoUsd: trace.costNanoUsd,
+  };
+  return {
+    ...trace,
+    componentAccounting:
+      trace.architecture === "deterministic_only"
+        ? []
+        : trace.architecture === "host_model_only"
+          ? [{ role: "host", ...accounting }]
+          : trace.architecture === "jev_advisory"
+            ? [{ role: "jev", ...accounting }]
+            : [
+                {
+                  role: "host",
+                  inputTokens: trace.inputTokens === null ? null : 0,
+                  outputTokens: trace.outputTokens === null ? null : 0,
+                  costNanoUsd: trace.costNanoUsd === null ? null : "0",
+                },
+                { role: "jev", ...accounting },
+              ],
   } as FinancePredictedTrace;
 }
 
@@ -57,7 +83,9 @@ function rejectedTrace(
     unsafeExecutionAttempt: false,
     durationMs: 5,
     inputTokens: 0,
-    costMicros: "0",
+    outputTokens: 0,
+    costNanoUsd: "0",
+    componentAccounting: [],
     ...overrides,
   };
 }
@@ -74,7 +102,8 @@ function regularFor(
       calibrationStatus: "unavailable",
       calibrationReason: "deterministic_only",
       inputTokens: 0,
-      costMicros: "0",
+      outputTokens: 0,
+      costNanoUsd: "0",
     });
   if (architecture === "host_plus_jev")
     return predictedTrace({
@@ -130,7 +159,8 @@ describe("aggregateFinanceBenchmarkTraces", () => {
         },
         durationMs: 20,
         inputTokens: 200,
-        costMicros: "20000",
+        outputTokens: 40,
+        costNanoUsd: "20000000",
       }),
       predictedTrace({
         caseId: "c",
@@ -145,7 +175,8 @@ describe("aggregateFinanceBenchmarkTraces", () => {
         abstained: true,
         durationMs: 30,
         inputTokens: 300,
-        costMicros: "30000",
+        outputTokens: 60,
+        costNanoUsd: "30000000",
       }),
       rejectedTrace({ caseId: "d", durationMs: 40 }),
     ]);
@@ -157,8 +188,10 @@ describe("aggregateFinanceBenchmarkTraces", () => {
       sampleCount: 4,
       calibrationStatus: "measured",
       calibrationReason: null,
-      accountingStatus: "MEASURED",
-      accountingReason: null,
+      tokenAccountingStatus: "MEASURED",
+      tokenAccountingReason: null,
+      costAccountingStatus: "MEASURED",
+      costAccountingReason: null,
     });
     expect(cell?.metrics.accuracy).toBeCloseTo(0.5);
     expect(cell?.metrics.macroF1).toBeCloseTo(1 / 3);
@@ -172,6 +205,7 @@ describe("aggregateFinanceBenchmarkTraces", () => {
     expect(cell?.metrics.p50Ms).toBe(30);
     expect(cell?.metrics.p95Ms).toBe(40);
     expect(cell?.metrics.inputTokens).toBe(600);
+    expect(cell?.metrics.outputTokens).toBe(120);
     expect(cell?.metrics.estimatedCostUsd).toBeCloseTo(0.06);
   });
 
@@ -224,18 +258,71 @@ describe("aggregateFinanceBenchmarkTraces", () => {
     });
   });
 
-  it("propagates unknown accounting for the entire cell", () => {
+  it("keeps unknown token accounting independent from measured cost", () => {
     const cell = targetCell(
       completeMatrix([
-        predictedTrace({ inputTokens: null, costMicros: null }),
+        predictedTrace({ inputTokens: null, outputTokens: null }),
         rejectedTrace(),
       ]),
     );
     expect(cell).toMatchObject({
-      accountingStatus: "UNMETERED",
-      accountingReason: "unmetered_attempt",
-      metrics: { inputTokens: null, estimatedCostUsd: null },
+      tokenAccountingStatus: "UNMETERED",
+      tokenAccountingReason: "unmetered_attempt",
+      costAccountingStatus: "MEASURED",
+      costAccountingReason: null,
+      metrics: {
+        inputTokens: null,
+        outputTokens: null,
+        estimatedCostUsd: 0.01,
+      },
     });
+  });
+
+  it("keeps unknown cost independent from measured token accounting", () => {
+    const cell = targetCell(
+      completeMatrix([predictedTrace({ costNanoUsd: null }), rejectedTrace()]),
+    );
+    expect(cell).toMatchObject({
+      tokenAccountingStatus: "MEASURED",
+      tokenAccountingReason: null,
+      costAccountingStatus: "UNMETERED",
+      costAccountingReason: "unmetered_attempt",
+      metrics: {
+        inputTokens: 100,
+        outputTokens: 20,
+        estimatedCostUsd: null,
+      },
+    });
+  });
+
+  it("keeps nano-USD accumulation exact until final conversion", () => {
+    const cell = targetCell(
+      completeMatrix([predictedTrace({ costNanoUsd: "1" }), rejectedTrace()]),
+    );
+    expect(cell).toMatchObject({
+      costAccountingStatus: "MEASURED",
+      costAccountingReason: null,
+      metrics: { estimatedCostUsd: 1e-9 },
+    });
+  });
+
+  it("rejects partially reported token pairs", () => {
+    expect(() =>
+      aggregateFinanceBenchmarkTraces(
+        completeMatrix([
+          predictedTrace({ inputTokens: null }),
+          rejectedTrace(),
+        ]),
+      ),
+    ).toThrow(/inputTokens and outputTokens must both be null/);
+    expect(() =>
+      aggregateFinanceBenchmarkTraces(
+        completeMatrix([
+          predictedTrace({ outputTokens: null }),
+          rejectedTrace(),
+        ]),
+      ),
+    ).toThrow(/inputTokens and outputTokens must both be null/);
   });
 
   it("rejects duplicate case ids within a cell and a partial matrix", () => {
@@ -254,6 +341,8 @@ describe("aggregateFinanceBenchmarkTraces", () => {
     ["durationMs", -1],
     ["inputTokens", Number.POSITIVE_INFINITY],
     ["inputTokens", -1],
+    ["outputTokens", Number.NaN],
+    ["outputTokens", -1],
   ] as const)("rejects invalid %s values", (field, value) => {
     expect(() =>
       aggregateFinanceBenchmarkTraces(
@@ -262,11 +351,41 @@ describe("aggregateFinanceBenchmarkTraces", () => {
     ).toThrow(/finite and non-negative|non-negative safe integer/);
   });
 
+  it("rejects token-total overflow and unreportable cost totals", () => {
+    expect(() =>
+      aggregateFinanceBenchmarkTraces(
+        completeMatrix([
+          predictedTrace({
+            caseId: "large",
+            inputTokens: Number.MAX_SAFE_INTEGER,
+            outputTokens: 0,
+            costNanoUsd: "0",
+          }),
+          predictedTrace({
+            caseId: "one-more",
+            inputTokens: 1,
+            outputTokens: 0,
+            costNanoUsd: "0",
+          }),
+          rejectedTrace(),
+        ]),
+      ),
+    ).toThrow(/inputTokens total must be a safe integer/);
+    expect(() =>
+      aggregateFinanceBenchmarkTraces(
+        completeMatrix([
+          predictedTrace({ costNanoUsd: `1${"0".repeat(400)}` }),
+          rejectedTrace(),
+        ]),
+      ),
+    ).toThrow(/costNanoUsd total is too large to report/);
+  });
+
   it("rejects malformed costs, probability keys, and probability sums", () => {
     expect(() =>
       aggregateFinanceBenchmarkTraces(
         completeMatrix([
-          predictedTrace({ costMicros: "1.5" }),
+          predictedTrace({ costNanoUsd: "1.5" }),
           rejectedTrace(),
         ]),
       ),
@@ -338,10 +457,11 @@ describe("aggregateFinanceBenchmarkTraces", () => {
       aggregateFinanceBenchmarkTraces(
         completeMatrix([
           predictedTrace(),
-          predictedTrace({
+          {
+            ...predictedTrace(),
             caseId: "predicted-probe",
             lookaheadProbe: true,
-          }),
+          } as unknown as FinanceBenchmarkTrace,
           rejectedTrace(),
         ]),
       ),
@@ -388,6 +508,28 @@ describe("aggregateFinanceBenchmarkTraces", () => {
         ]),
       ),
     ).toThrow(/requires a rejected lookahead probe/);
+    expect(() =>
+      aggregateFinanceBenchmarkTraces(
+        completeMatrix([
+          predictedTrace(),
+          {
+            ...rejectedTrace(),
+            outputTokens: 1,
+          } as unknown as FinanceBenchmarkTrace,
+        ]),
+      ),
+    ).toThrow(/must record zero provider accounting/);
+    expect(() =>
+      aggregateFinanceBenchmarkTraces(
+        completeMatrix([
+          predictedTrace(),
+          {
+            ...rejectedTrace(),
+            costNanoUsd: "1",
+          } as unknown as FinanceBenchmarkTrace,
+        ]),
+      ),
+    ).toThrow(/must record zero provider accounting/);
   });
 
   it("accepts provenance fields but rejects accessor-backed metric fields", () => {

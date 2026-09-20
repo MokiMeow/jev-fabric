@@ -4,20 +4,26 @@ import type {
   DecisionProvider,
   DecisionRequest,
   DecisionResponse,
+  DecisionUsage,
   EvaluateOptions,
   ProviderCapabilities,
 } from "@mokimeow/jev-fabric-protocol";
 import {
-  EndpointPolicy,
-  EndpointPolicyError,
   type DnsResolver,
   type EndpointConnectionPlan,
+  EndpointPolicy,
+  EndpointPolicyError,
 } from "./endpoint-policy.js";
 import { buildCompatiblePrompt } from "./prompt.js";
 import {
-  extractCompatibleContent,
+  extractCompatibleResponse,
   parseCompatibleAnswers,
 } from "./response.js";
+
+export interface OpenAICompatibleMappedResult {
+  readonly response: DecisionResponse;
+  readonly usage?: DecisionUsage;
+}
 
 export type OpenAICompatibleErrorCategory =
   | "authentication"
@@ -149,6 +155,11 @@ export interface OpenAICompatibleProviderOptions {
   readonly onAttempt?: (attempt: CompatibleAttempt) => void;
 }
 
+export interface OpenAICompatibleExecutionPolicy {
+  readonly maxRedirects: number;
+  readonly repairAttempts: number;
+}
+
 export class OpenAICompatibleProvider implements DecisionProvider {
   readonly capabilities: ProviderCapabilities = {
     questionTypes: ["choice", "noul", "score"],
@@ -156,6 +167,7 @@ export class OpenAICompatibleProvider implements DecisionProvider {
     maxQuestions: 100,
   };
   readonly id: string;
+  readonly #executionPolicy: OpenAICompatibleExecutionPolicy;
   readonly #endpoint: string;
   readonly #model: string;
   readonly #headers: Readonly<Record<string, string>>;
@@ -194,13 +206,33 @@ export class OpenAICompatibleProvider implements DecisionProvider {
     });
     this.#maxRedirects = options.maxRedirects ?? 2;
     this.#repairAttempts = options.repairAttempts ?? 0;
+    this.#executionPolicy = Object.freeze({
+      maxRedirects: this.#maxRedirects,
+      repairAttempts: this.#repairAttempts,
+    });
     this.#maxResponseBytes = options.maxResponseBytes ?? 1_000_000;
     this.#onAttempt = options.onAttempt;
+  }
+  /** Immutable, inspectable transport multiplicity controls. */
+  get executionPolicy(): OpenAICompatibleExecutionPolicy {
+    return this.#executionPolicy;
+  }
+  /** Private-brand-checked policy proof for trusted harnesses. */
+  static executionPolicyOf(
+    provider: OpenAICompatibleProvider,
+  ): OpenAICompatibleExecutionPolicy {
+    return provider.#executionPolicy;
   }
   async evaluate(
     request: DecisionRequest,
     options?: EvaluateOptions,
   ): Promise<DecisionResponse> {
+    return (await this.evaluateWithMetadata(request, options)).response;
+  }
+  async evaluateWithMetadata(
+    request: DecisionRequest,
+    options?: EvaluateOptions,
+  ): Promise<OpenAICompatibleMappedResult> {
     if (
       options?.deadlineMs !== undefined &&
       (!Number.isFinite(options.deadlineMs) || options.deadlineMs < 0)
@@ -242,7 +274,7 @@ export class OpenAICompatibleProvider implements DecisionProvider {
     request: DecisionRequest,
     attempt: number,
     signal: AbortSignal,
-  ): Promise<DecisionResponse> {
+  ): Promise<OpenAICompatibleMappedResult> {
     try {
       let connection = await this.#policy.plan(this.#endpoint, signal);
       for (let redirect = 0; redirect <= this.#maxRedirects; redirect += 1) {
@@ -290,21 +322,24 @@ export class OpenAICompatibleProvider implements DecisionProvider {
             .split(";", 1)[0] !== "application/json"
         )
           throw new OpenAICompatibleProviderError("invalid_response", false);
-        const content = extractCompatibleContent(
+        const envelope = extractCompatibleResponse(
           await readBoundedBody(response, this.#maxResponseBytes),
         );
         const parsed = parseCompatibleAnswers(
           request,
           this.id,
-          this.#model,
-          content,
+          envelope.model,
+          envelope.content,
         );
         this.#onAttempt?.({
           requestId: request.id,
           attempt,
           outcome: "succeeded",
         });
-        return parsed;
+        return {
+          response: parsed,
+          ...(envelope.usage === undefined ? {} : { usage: envelope.usage }),
+        };
       }
       throw new OpenAICompatibleProviderError("network", false);
     } catch (error) {

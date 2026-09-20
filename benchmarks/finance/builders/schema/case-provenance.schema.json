@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MokiMeow/jev-fabric/benchmarks/finance/builders/schema/case-provenance.schema.json",
+  "title": "Jev Fabric finance case provenance record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "caseId",
+    "track",
+    "split",
+    "groupId",
+    "isolation",
+    "sourceIds",
+    "cutoffAt",
+    "evidence",
+    "lookahead"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "caseId": { "$ref": "#/$defs/id" },
+    "track": {
+      "enum": [
+        "market_surveillance",
+        "financial_text_triage",
+        "visual_evidence"
+      ]
+    },
+    "split": { "enum": ["calibration", "test"] },
+    "groupId": { "$ref": "#/$defs/id" },
+    "isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "key"],
+      "properties": {
+        "kind": { "enum": ["issuer", "scenario_family"] },
+        "key": { "$ref": "#/$defs/id" }
+      }
+    },
+    "sourceIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" }
+    },
+    "cutoffAt": { "type": "string", "format": "date-time" },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["modality", "hash", "availableAt"],
+        "properties": {
+          "modality": { "enum": ["market", "text", "visual"] },
+          "hash": { "$ref": "#/$defs/hash" },
+          "availableAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "lookahead": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "probeOf",
+            "modality",
+            "evidenceHash",
+            "signalEvidenceHash"
+          ],
+          "properties": {
+            "probeOf": { "$ref": "#/$defs/id" },
+            "modality": { "enum": ["market", "text", "visual"] },
+            "evidenceHash": { "$ref": "#/$defs/hash" },
+            "signalEvidenceHash": { "$ref": "#/$defs/hash" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]{0,159}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

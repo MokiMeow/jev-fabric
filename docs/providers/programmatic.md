@@ -60,8 +60,19 @@ const provider = new OpenAICompatibleProvider({
 The adapter uses endpoint/address planning and rejects private, unpinned, and
 unsafe redirect destinations. Keep the resolver and transport in trusted server
 code; do not accept endpoint/model/header values from an agent or browser.
+Its immutable `executionPolicy` exposes the configured redirect and repair
+limits so higher-level measurement harnesses can reject hidden transport
+multiplicity; the finance harness requires both values to be zero.
 `self_reported` probability semantics do not mean calibration, correctness, or
-authority.
+authority. `evaluateWithMetadata` additionally preserves strict optional
+`usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens`
+from the same bounded response body. Missing usage remains absent; malformed
+or internally inconsistent usage fails the response instead of being guessed.
+The response model is the exact non-empty top-level `model` value returned by
+the upstream endpoint; the adapter never relabels it as the configured request
+route. Callers that require a pinned concrete version must compare that value
+exactly and fail closed on absence or drift. The ordinary `evaluate` method
+remains response-only.
 
 ## Evidence and failures
 

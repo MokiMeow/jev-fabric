@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1",
+  "policyId": "finance.abides-scenarios.v1",
+  "upstream": {
+    "repository": "https://github.com/jpmorganchase/abides-jpmc-public",
+    "commit": "f9cbe51342b7dedd9587e4e069040d68a5c6477f",
+    "archived": true,
+    "license": "BSD-3-Clause"
+  },
+  "executionBoundary": {
+    "network": "disabled",
+    "python": "3.9",
+    "seed": "required_explicit_integer",
+    "ticker": "ABM",
+    "wallClockDefaults": "forbidden"
+  },
+  "scenarios": [
+    { "id": "synthetic_baseline_liquidity", "route": "observe" },
+    { "id": "synthetic_benign_stress", "route": "investigate" },
+    { "id": "synthetic_pov_burst", "route": "investigate" },
+    { "id": "synthetic_high_cancel_multilevel_pattern", "route": "escalate" }
+  ],
+  "claimBoundary": "synthetic_analyst_routing_pattern_not_legal_or_manipulation_ground_truth"
+}

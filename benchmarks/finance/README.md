@@ -18,11 +18,19 @@ financial-text triage. Every retained test case runs through:
 The runner retains accuracy, macro-F1, selective coverage, route-question
 Brier score and ECE when a real route distribution exists, look-ahead
 rejection, unsafe-execution attempts, monotonic p50/p95 latency, input tokens,
-and exact micro-dollar cost. Unknown provider accounting remains `null`, never
-zero. Composite routes do not inherit a component's probability distribution.
+output tokens, and exact nano-USD cost. Token and price availability are
+tracked independently: known usage is retained even when no reviewed price is
+available, and every unknown remains `null`, never zero. Composite routes do
+not inherit a component's probability distribution.
 
 Market returns and P&L are intentionally excluded. This evaluates a read-only
 control plane, not a trading strategy.
+
+End-to-end duration includes the client, scheduler, network, gateway, and
+provider. A public latency report must therefore retain a same-host network
+floor measurement and report it beside, not subtracted from, the raw duration.
+The floor is context rather than a model-latency estimate; geography, warm-up,
+request size, concurrency, and gateway route must remain visible.
 
 ## Retained dataset contract
 
@@ -40,15 +48,61 @@ outside the repository; publish only evidence whose licence permits it.
 
 ## Running it
 
-`run.mts` is a programmatic API. Supply four code-reviewed drivers and complete
-per-component runtime provenance, then call `loadFinanceDataset`,
+`run.mts` is a programmatic API. Supply four code-reviewed drivers, complete
+per-component runtime provenance, and the canonical runtime-evidence documents
+whose hashes that provenance claims. Then call `loadFinanceDataset`,
 `runFinanceBenchmark`, and `writeFinanceArtifacts`. There is deliberately no
 CLI option that imports an arbitrary provider module.
 
+For provider-backed runs, use `createTrustedFinanceDriverBundle` from
+`scripts/drivers.mts`. It creates all four arms together so the standalone and
+combined host/Jev paths share finite per-provider request/token budgets. Every
+call uses an always-miss cache, one Fabric attempt, an abort deadline, exact
+provider/model/semantics checks, and the `finance-surveillance` pack. The
+combined arm evaluates host and Jev independently in parallel and keeps the
+more restrictive route; it never invents a composite probability distribution.
+
+`createTypeSafeFinanceInvoker` and
+`createOpenAICompatibleFinanceInvoker` adapt already-constructed,
+metadata-capable providers. They do not read credentials or construct network
+clients. The compatible wrapper inspects the provider's immutable execution
+policy and refuses any nonzero repair or redirect count; the TypeSafe adapter
+sets zero SDK retries on every request. Supply an immutable `modelVersion`
+separately from the exact `responseModel`: a gateway route such as
+`typesafe-ai/jev` is not evidence of a concrete upstream version. When the two
+differ, a dated, hashed, canonical-HTTPS external version attestation is
+required and retained; otherwise the run fails before calling the provider.
+Optional pricing uses a dated, hashed HTTPS source and integer nano-USD per
+token; without it, token counts remain measured and cost remains `null`. The
+derived runtime provenance snapshots that reviewed price record beside each
+provider component and requires the same host/Jev record in standalone and
+composite arms; deterministic code carries explicit `null` pricing.
+
+Each predicted trace retains per-component token and nano-USD accounting. Both
+the live runner and independent artifact validator recompute every component
+against its retained price record and require the aggregate to equal the exact
+sum, including the parallel host-plus-Jev arm.
+
+The bundle exposes derived `architectures` and `budgetSnapshots()`. Use the
+derived architecture provenance in the run metadata; do not hand-copy model
+identities. Budget tokens are conservative admission reservations, not billed
+usage reconciliation or a provider-side hard quota.
+
 A completed artifact directory contains the original dataset files,
-`run.json`, and canonical `traces.jsonl`. Writes stage to a unique adjacent
-directory and rename atomically. The independent validator recomputes the
-trace digest, coverage, case bindings, and aggregate rows:
+`run.json`, canonical `traces.jsonl`, and an `evidence/` directory. The latter
+contains one canonical JSON document named `<sha256>.json` for each distinct
+price record and external model-version attestation claimed by the runtime.
+The SHA-256 is computed over the exact retained bytes. Evidence documents are
+bounded, credential-free metadata only; they never contain provider secrets,
+raw market state, execution instructions, or order-entry authority.
+
+Writes stage every file, including evidence, in a unique adjacent directory
+and rename that directory atomically. The independent validator requires the
+exact top-level and evidence filename sets; rejects links, unknown fields,
+oversized documents, and noncanonical JSON; hashes the raw evidence bytes; and
+matches every pricing and model-identity field back to runtime provenance. It
+also recomputes the trace digest, coverage, case bindings, costs, and aggregate
+rows:
 
 ```text
 pnpm benchmark:check
@@ -57,7 +111,14 @@ pnpm exec tsx benchmarks/finance/scripts/validate.mts --artifacts-dir PATH
 
 The validator rejects fabricated values in `NOT_RUN` evidence, missing
 architecture/case pairs, trace tampering, split leakage, mismatched look-ahead
-outcomes, incomplete provenance, and non-zero unsafe-execution attempts.
+outcomes, incomplete provenance, and non-zero unsafe-execution attempts. It
+also rejects malformed, credential-bearing, cross-arm-inconsistent, missing,
+extra, tampered, or semantically mismatched runtime evidence.
+
+The separate [offline dataset-builder verifier](builders/README.md) checks
+hash-locked sources, rights records, deterministic build inputs, issuer or
+scenario-family split isolation, a 30-day embargo, and modality-bound
+look-ahead probes before a generated dataset reaches this runner.
 
 ## Trust boundary and claim limits
 
@@ -71,18 +132,19 @@ and an independently instrumented execution sink. The retained unsafe-attempt
 field is output-contract telemetry, not proof that arbitrary driver code caused
 no external side effect.
 
-The validator proves artifact self-consistency. It binds every claim-bearing
-run metadata field to the retained manifest and cases, but it cannot prove that
-a publisher's source data or labels are truthful. Public performance evidence
-also needs an externally pinned dataset digest, reviewable generation recipe,
-and signed CI/run attestation. Provenance URLs must be canonical,
-credential-free HTTPS URLs.
+The validator proves artifact closure and self-consistency. A content hash does
+not prove that a price page, model-version attestation, publisher, source data,
+or label is truthful. Public performance evidence also needs an externally
+pinned dataset digest, reviewable generation recipe, and a signed CI/run
+attestation whose trust chain is independent of the artifact publisher.
+Provenance URLs must be canonical, credential-free HTTPS URLs.
 
 ## First public datasets
 
 Prefer SEC EDGAR submissions and filing archives for text triage and the SEC
-Financial Statement and Notes datasets for source-bound chart generation.
+Financial Statement Data Sets for source-bound chart generation.
 ABIDES can provide reproducible synthetic market-regime and anomaly scenarios.
 PlotQA may test a chart extractor upstream, but it is not a finance label set
 and cannot establish no-look-ahead behavior. Every source still needs a
-case-specific licence and redistribution review.
+case-specific licence and redistribution review. SEC structured datasets are
+derived conveniences; the filed documents remain authoritative.

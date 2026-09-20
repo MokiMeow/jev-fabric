@@ -76,7 +76,12 @@ describe("published JSON Schema contracts", () => {
       recursive: true,
     })) {
       const file = String(relative).replace(/\\/g, "/");
-      if (!/\.(?:json|jsonl)$/.test(file) || file.startsWith("schema/"))
+      if (
+        !/\.(?:json|jsonl)$/.test(file) ||
+        file.startsWith("finance/builders/") ||
+        file.startsWith("schema/") ||
+        file.includes("/schema/")
+      )
         continue;
       const base = file.split("/").at(-1) ?? "";
       const validator = validators.get(

@@ -28,6 +28,13 @@ export type FinanceCalibrationReason =
   | "deterministic_only"
   | "composite_no_distribution";
 
+export interface FinanceComponentAccounting {
+  readonly role: "host" | "jev";
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly costNanoUsd: string | null;
+}
+
 interface FinanceBenchmarkTraceBase {
   readonly caseId: string;
   readonly groupId: string;
@@ -38,11 +45,14 @@ interface FinanceBenchmarkTraceBase {
   readonly unsafeExecutionAttempt: boolean;
   readonly durationMs: number;
   readonly inputTokens: number | null;
-  readonly costMicros: string | null;
+  readonly outputTokens: number | null;
+  readonly costNanoUsd: string | null;
+  readonly componentAccounting: readonly FinanceComponentAccounting[];
 }
 
 interface FinancePredictedTraceBase extends FinanceBenchmarkTraceBase {
   readonly status: "predicted";
+  readonly lookaheadProbe: false;
   readonly predictedRoute: FinanceRoute;
   readonly abstained: boolean;
   readonly lookaheadRejected: false;
@@ -71,6 +81,9 @@ export interface FinanceRejectedLookaheadTrace
   readonly status: "rejected_lookahead";
   readonly lookaheadProbe: true;
   readonly lookaheadRejected: true;
+  readonly inputTokens: 0;
+  readonly outputTokens: 0;
+  readonly costNanoUsd: "0";
   readonly predictedRoute?: never;
   readonly routeQuestionProbabilities?: never;
   readonly calibrationStatus?: never;
@@ -93,6 +106,7 @@ export interface FinanceBenchmarkMetrics {
   readonly p50Ms: number;
   readonly p95Ms: number;
   readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
   readonly estimatedCostUsd: number | null;
 }
 
@@ -102,8 +116,10 @@ export interface FinanceBenchmarkCell {
   readonly sampleCount: number;
   readonly calibrationStatus: "measured" | "unavailable";
   readonly calibrationReason: "no_measured_route_question_distributions" | null;
-  readonly accountingStatus: "MEASURED" | "UNMETERED";
-  readonly accountingReason: "unmetered_attempt" | null;
+  readonly tokenAccountingStatus: "MEASURED" | "UNMETERED";
+  readonly tokenAccountingReason: "unmetered_attempt" | null;
+  readonly costAccountingStatus: "MEASURED" | "UNMETERED";
+  readonly costAccountingReason: "unmetered_attempt" | null;
   readonly metrics: FinanceBenchmarkMetrics;
 }
 
@@ -122,7 +138,9 @@ const traceKeys = [
   "unsafeExecutionAttempt",
   "durationMs",
   "inputTokens",
-  "costMicros",
+  "outputTokens",
+  "costNanoUsd",
+  "componentAccounting",
 ] as const;
 const predictedTraceKeys = [
   "predictedRoute",
@@ -208,10 +226,91 @@ function validateTrace(trace: FinanceBenchmarkTrace): void {
   if (trace.unsafeExecutionAttempt)
     throw new TypeError("finance benchmark trace attempted unsafe execution");
   finiteNonNegative(trace.durationMs, "durationMs");
-  if (trace.inputTokens !== null)
-    safeNonNegativeInteger(trace.inputTokens, "inputTokens");
-  if (trace.costMicros !== null && !/^(0|[1-9]\d*)$/.test(trace.costMicros))
-    throw new TypeError("costMicros must be a non-negative integer string");
+  validateTokenPair(trace.inputTokens, trace.outputTokens);
+  if (trace.costNanoUsd !== null && !/^(0|[1-9]\d*)$/.test(trace.costNanoUsd))
+    throw new TypeError("costNanoUsd must be a non-negative integer string");
+  validateComponentAccounting(trace);
+}
+
+function validateComponentAccounting(trace: FinanceBenchmarkTrace): void {
+  const expectedRoles: Readonly<
+    Record<FinanceArchitecture, readonly ("host" | "jev")[]>
+  > = {
+    deterministic_only: [],
+    host_model_only: ["host"],
+    jev_advisory: ["jev"],
+    host_plus_jev: ["host", "jev"],
+  };
+  const roles =
+    trace.status === "rejected_lookahead"
+      ? []
+      : expectedRoles[trace.architecture];
+  if (
+    !Array.isArray(trace.componentAccounting) ||
+    trace.componentAccounting.length !== roles.length
+  )
+    throw new TypeError("finance component accounting is incomplete");
+  for (const [index, rawComponent] of trace.componentAccounting.entries()) {
+    assertDataObject(
+      rawComponent,
+      ["role", "inputTokens", "outputTokens", "costNanoUsd"],
+      "finance component accounting",
+      true,
+    );
+    const component = rawComponent as unknown as FinanceComponentAccounting;
+    if (component.role !== roles[index])
+      throw new TypeError("finance component accounting role is invalid");
+    validateTokenPair(component.inputTokens, component.outputTokens);
+    if (
+      component.costNanoUsd !== null &&
+      !/^(0|[1-9]\d*)$/.test(component.costNanoUsd)
+    )
+      throw new TypeError("finance component cost is invalid");
+  }
+  if (trace.componentAccounting.length === 0) {
+    if (
+      trace.inputTokens !== 0 ||
+      trace.outputTokens !== 0 ||
+      trace.costNanoUsd !== "0"
+    )
+      throw new TypeError("deterministic finance accounting must be zero");
+    return;
+  }
+  const tokensKnown = trace.componentAccounting.every(
+    ({ inputTokens }) => inputTokens !== null,
+  );
+  if (tokensKnown !== (trace.inputTokens !== null))
+    throw new TypeError("finance aggregate token availability is inconsistent");
+  if (tokensKnown) {
+    const inputTokens = trace.componentAccounting.reduce(
+      (sum, component) => sum + (component.inputTokens ?? 0),
+      0,
+    );
+    const outputTokens = trace.componentAccounting.reduce(
+      (sum, component) => sum + (component.outputTokens ?? 0),
+      0,
+    );
+    if (
+      !Number.isSafeInteger(inputTokens) ||
+      !Number.isSafeInteger(outputTokens) ||
+      trace.inputTokens !== inputTokens ||
+      trace.outputTokens !== outputTokens
+    )
+      throw new TypeError("finance aggregate token accounting is inconsistent");
+  }
+  const costsKnown = trace.componentAccounting.every(
+    ({ costNanoUsd }) => costNanoUsd !== null,
+  );
+  if (costsKnown !== (trace.costNanoUsd !== null))
+    throw new TypeError("finance aggregate cost availability is inconsistent");
+  if (costsKnown) {
+    const cost = trace.componentAccounting.reduce(
+      (sum, component) => sum + BigInt(component.costNanoUsd ?? "0"),
+      0n,
+    );
+    if (trace.costNanoUsd !== cost.toString())
+      throw new TypeError("finance aggregate cost is inconsistent");
+  }
 }
 
 function validatePredictedTrace(trace: FinancePredictedTrace): void {
@@ -276,7 +375,11 @@ function validateRejectedLookaheadTrace(
     throw new TypeError(
       "rejected_lookahead trace cannot contain prediction fields",
     );
-  if (trace.inputTokens !== 0 || trace.costMicros !== "0")
+  if (
+    trace.inputTokens !== 0 ||
+    trace.outputTokens !== 0 ||
+    trace.costNanoUsd !== "0"
+  )
     throw new TypeError(
       "rejected_lookahead trace must record zero provider accounting",
     );
@@ -332,7 +435,8 @@ function summarizeCell(
   );
   if (p50Ms === null || p95Ms === null)
     throw new TypeError("finance benchmark cell must not be empty");
-  const accounting = aggregateAccounting(rows);
+  const tokenAccounting = aggregateTokenAccounting(rows);
+  const costAccounting = aggregateCostAccounting(rows);
 
   return {
     track,
@@ -341,8 +445,10 @@ function summarizeCell(
     calibrationStatus: measured.length === 0 ? "unavailable" : "measured",
     calibrationReason:
       measured.length === 0 ? "no_measured_route_question_distributions" : null,
-    accountingStatus: accounting.status,
-    accountingReason: accounting.reason,
+    tokenAccountingStatus: tokenAccounting.status,
+    tokenAccountingReason: tokenAccounting.reason,
+    costAccountingStatus: costAccounting.status,
+    costAccountingReason: costAccounting.reason,
     metrics: {
       accuracy:
         covered.length === 0
@@ -359,8 +465,9 @@ function summarizeCell(
         probes.length,
       p50Ms,
       p95Ms,
-      inputTokens: accounting.inputTokens,
-      estimatedCostUsd: accounting.estimatedCostUsd,
+      inputTokens: tokenAccounting.inputTokens,
+      outputTokens: tokenAccounting.outputTokens,
+      estimatedCostUsd: costAccounting.estimatedCostUsd,
     },
   };
 }
@@ -405,34 +512,70 @@ function safeNonNegativeInteger(value: number, name: string): void {
     throw new TypeError(`${name} must be a non-negative safe integer`);
 }
 
-function aggregateAccounting(rows: readonly FinanceBenchmarkTrace[]): {
+function validateTokenPair(
+  inputTokens: number | null,
+  outputTokens: number | null,
+): void {
+  if (inputTokens === null || outputTokens === null) {
+    if (inputTokens !== null || outputTokens !== null)
+      throw new TypeError("inputTokens and outputTokens must both be null");
+    return;
+  }
+  safeNonNegativeInteger(inputTokens, "inputTokens");
+  safeNonNegativeInteger(outputTokens, "outputTokens");
+}
+
+function aggregateTokenAccounting(rows: readonly FinanceBenchmarkTrace[]): {
   readonly status: "MEASURED" | "UNMETERED";
   readonly reason: "unmetered_attempt" | null;
   readonly inputTokens: number | null;
-  readonly estimatedCostUsd: number | null;
+  readonly outputTokens: number | null;
 } {
-  if (rows.some((row) => row.inputTokens === null || row.costMicros === null))
+  if (rows.some((row) => row.inputTokens === null))
     return {
       status: "UNMETERED",
       reason: "unmetered_attempt",
       inputTokens: null,
-      estimatedCostUsd: null,
+      outputTokens: null,
     };
   let inputTokens = 0;
-  let costMicros = 0n;
+  let outputTokens = 0;
   for (const row of rows) {
     inputTokens += row.inputTokens ?? 0;
     if (!Number.isSafeInteger(inputTokens))
       throw new TypeError("inputTokens total must be a safe integer");
-    costMicros += BigInt(row.costMicros ?? "0");
+    outputTokens += row.outputTokens ?? 0;
+    if (!Number.isSafeInteger(outputTokens))
+      throw new TypeError("outputTokens total must be a safe integer");
   }
-  if (costMicros > BigInt(Number.MAX_SAFE_INTEGER))
-    throw new TypeError("costMicros total exceeds the exact numeric range");
   return {
     status: "MEASURED",
     reason: null,
     inputTokens,
-    estimatedCostUsd: Number(costMicros) / 1_000_000,
+    outputTokens,
+  };
+}
+
+function aggregateCostAccounting(rows: readonly FinanceBenchmarkTrace[]): {
+  readonly status: "MEASURED" | "UNMETERED";
+  readonly reason: "unmetered_attempt" | null;
+  readonly estimatedCostUsd: number | null;
+} {
+  if (rows.some((row) => row.costNanoUsd === null))
+    return {
+      status: "UNMETERED",
+      reason: "unmetered_attempt",
+      estimatedCostUsd: null,
+    };
+  let costNanoUsd = 0n;
+  for (const row of rows) costNanoUsd += BigInt(row.costNanoUsd ?? "0");
+  const estimatedCostUsd = Number(costNanoUsd) / 1_000_000_000;
+  if (!Number.isFinite(estimatedCostUsd))
+    throw new TypeError("costNanoUsd total is too large to report");
+  return {
+    status: "MEASURED",
+    reason: null,
+    estimatedCostUsd,
   };
 }
 

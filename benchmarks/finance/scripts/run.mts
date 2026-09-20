@@ -21,20 +21,22 @@ import {
 } from "../../../packages/adapters/src/index.js";
 import {
   aggregateFinanceBenchmarkTraces,
-  financeArchitectures,
-  financeRoutes,
-  financeTracks,
-  stableJson,
   type FinanceArchitecture,
   type FinanceBenchmarkTrace,
   type FinanceRoute,
   type FinanceRouteProbabilities,
   type FinanceTrack,
+  financeArchitectures,
+  financeRoutes,
+  financeTracks,
+  stableJson,
 } from "../../../packages/evals/src/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const maximumCases = 100_000;
 const maximumDatasetBytes = 100 * 1024 * 1024;
+const maximumRuntimeEvidenceFiles = 32;
+const maximumRuntimeEvidenceBytes = 64 * 1024;
 
 export interface FinanceBenchmarkCase {
   readonly schemaVersion: "1";
@@ -66,6 +68,13 @@ export interface FinanceDatasetManifest {
   readonly testStart: string;
 }
 
+export interface FinanceComponentAccounting {
+  readonly role: "host" | "jev";
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly costNanoUsd: string | null;
+}
+
 export type FinanceDriverResult =
   | {
       readonly status: "predicted";
@@ -75,7 +84,9 @@ export type FinanceDriverResult =
       readonly abstained: boolean;
       readonly unsafeExecutionAttempt: boolean;
       readonly inputTokens: number | null;
-      readonly costMicros: string | null;
+      readonly outputTokens: number | null;
+      readonly costNanoUsd: string | null;
+      readonly componentAccounting: readonly FinanceComponentAccounting[];
     }
   | {
       readonly status: "predicted";
@@ -88,7 +99,9 @@ export type FinanceDriverResult =
       readonly abstained: boolean;
       readonly unsafeExecutionAttempt: boolean;
       readonly inputTokens: number | null;
-      readonly costMicros: string | null;
+      readonly outputTokens: number | null;
+      readonly costNanoUsd: string | null;
+      readonly componentAccounting: readonly FinanceComponentAccounting[];
     };
 
 export interface FinanceDriverContext {
@@ -106,11 +119,36 @@ export type FinanceBenchmarkDrivers = Readonly<
   Record<FinanceArchitecture, FinanceBenchmarkDriver>
 >;
 
+export interface ArchitectureRuntimePricing {
+  /** Exact integer nano-USD charged per input token. */
+  readonly inputNanoUsdPerToken: string;
+  /** Exact integer nano-USD charged per output token. */
+  readonly outputNanoUsdPerToken: string;
+  /** Canonical credential-free public source for the retained price record. */
+  readonly sourceUrl: string;
+  readonly observedAt: string;
+  readonly priceVersion: string;
+  /** SHA-256 of the independently retained price evidence. */
+  readonly priceHash: string;
+}
+
+export type ArchitectureRuntimeModelVersionEvidence =
+  | Readonly<{ kind: "response_exact" }>
+  | Readonly<{
+      kind: "external_attestation";
+      sourceUrl: string;
+      observedAt: string;
+      evidenceHash: string;
+    }>;
+
 export interface ArchitectureRuntimeComponent {
   readonly role: "deterministic" | "host" | "jev";
   readonly providerId: string;
   readonly modelId: string;
   readonly modelVersion: string;
+  /** Exact model or route string returned by the provider. */
+  readonly responseModel: string;
+  readonly modelVersionEvidence: ArchitectureRuntimeModelVersionEvidence;
   readonly probabilitySemantics:
     | "none"
     | "native_calibrated"
@@ -118,6 +156,7 @@ export interface ArchitectureRuntimeComponent {
     | "self_reported"
     | "synthetic"
     | "unknown";
+  readonly pricing: ArchitectureRuntimePricing | null;
 }
 
 export interface ArchitectureRuntime {
@@ -139,6 +178,27 @@ export interface FinanceRuntimeProvenance {
   >;
 }
 
+export type FinanceRuntimeEvidence =
+  | Readonly<{
+      schemaVersion: "1";
+      kind: "pricing";
+      inputNanoUsdPerToken: string;
+      outputNanoUsdPerToken: string;
+      sourceUrl: string;
+      observedAt: string;
+      priceVersion: string;
+    }>
+  | Readonly<{
+      schemaVersion: "1";
+      kind: "model_version";
+      sourceUrl: string;
+      observedAt: string;
+      providerId: string;
+      modelId: string;
+      modelVersion: string;
+      responseModel: string;
+    }>;
+
 export interface LoadedFinanceDataset {
   readonly manifest: FinanceDatasetManifest;
   readonly cases: readonly FinanceBenchmarkCase[];
@@ -150,6 +210,7 @@ export interface FinanceRunArtifacts {
   readonly traces: readonly Record<string, unknown>[];
   readonly tracesJsonl: string;
   readonly dataset: LoadedFinanceDataset;
+  readonly runtimeEvidence: readonly FinanceRuntimeEvidence[];
 }
 
 export async function loadFinanceDataset(
@@ -203,11 +264,16 @@ export async function runFinanceBenchmark(options: {
   readonly dataset: LoadedFinanceDataset;
   readonly drivers: FinanceBenchmarkDrivers;
   readonly runtime: FinanceRuntimeProvenance;
+  readonly runtimeEvidence: readonly FinanceRuntimeEvidence[];
   readonly now?: () => number;
 }): Promise<FinanceRunArtifacts> {
   portableIdentifier(options.runId, "finance runId", 160);
   validateDrivers(options.drivers);
   validateRuntime(options.runtime);
+  const runtimeEvidence = validateAndBindRuntimeEvidence(
+    options.runtime,
+    options.runtimeEvidence,
+  );
   const testCases = options.dataset.cases.filter(
     (entry) => entry.split === "test",
   );
@@ -231,6 +297,7 @@ export async function runFinanceBenchmark(options: {
             task.architecture,
             task.benchmarkCase,
             options.drivers[task.architecture],
+            options.runtime.architectures[task.architecture],
             options.runtime.timeoutMs,
             now,
           );
@@ -268,7 +335,13 @@ export async function runFinanceBenchmark(options: {
     rows,
   };
   validateSchema(await readSchema("run.schema.jsonc"), run, "finance run");
-  return { run, traces: ordered, tracesJsonl, dataset: options.dataset };
+  return {
+    run,
+    traces: ordered,
+    tracesJsonl,
+    dataset: options.dataset,
+    runtimeEvidence,
+  };
 }
 
 /** Atomically publishes a local retained artifact directory. */
@@ -285,6 +358,12 @@ export async function writeFinanceArtifacts(
   const staging = `${directory}.tmp-${process.pid}-${randomUUID()}`;
   await mkdir(staging, { recursive: false });
   try {
+    const runtimeEvidence = validateAndBindRuntimeEvidence(
+      artifacts.run.runtime as FinanceRuntimeProvenance,
+      artifacts.runtimeEvidence,
+    );
+    const evidenceDirectory = join(staging, "evidence");
+    await mkdir(evidenceDirectory, { recursive: false });
     await Promise.all([
       writeFile(join(staging, "run.json"), stableJson(artifacts.run), {
         flag: "wx",
@@ -300,6 +379,13 @@ export async function writeFinanceArtifacts(
       writeFile(join(staging, "traces.jsonl"), artifacts.tracesJsonl, {
         flag: "wx",
       }),
+      ...runtimeEvidence.map((evidence) =>
+        writeFile(
+          join(evidenceDirectory, evidenceFileName(evidence)),
+          stableJson(evidence),
+          { flag: "wx" },
+        ),
+      ),
     ]);
     await rename(staging, directory);
   } catch (error) {
@@ -313,6 +399,7 @@ async function executeTask(
   architecture: FinanceArchitecture,
   benchmarkCase: FinanceBenchmarkCase,
   driver: FinanceBenchmarkDriver,
+  architectureRuntime: ArchitectureRuntime,
   timeoutMs: number,
   now: () => number,
 ): Promise<Record<string, unknown>> {
@@ -342,7 +429,9 @@ async function executeTask(
           status: "rejected_lookahead",
           lookaheadRejected: true,
           inputTokens: 0,
-          costMicros: "0",
+          outputTokens: 0,
+          costNanoUsd: "0",
+          componentAccounting: [],
           boundaryCode: error.code,
         };
       }
@@ -370,7 +459,7 @@ async function executeTask(
     ]);
     const ended = finiteClock(now(), "finance benchmark end clock");
     invariant(ended >= started, "finance benchmark clock moved backwards");
-    validateDriverResult(result, architecture);
+    validateDriverResult(result, architecture, architectureRuntime);
     invariant(
       !result.unsafeExecutionAttempt,
       `finance driver ${architecture} attempted financial execution`,
@@ -387,7 +476,9 @@ async function executeTask(
         : {}),
       abstained: result.abstained,
       inputTokens: result.inputTokens,
-      costMicros: result.costMicros,
+      outputTokens: result.outputTokens,
+      costNanoUsd: result.costNanoUsd,
+      componentAccounting: result.componentAccounting,
       responseDigest: sha256(canonicalCompactJson(result)),
     };
   } finally {
@@ -433,12 +524,15 @@ export function financeCaseStateDigest(
 function validateDriverResult(
   value: FinanceDriverResult,
   architecture: FinanceArchitecture,
+  architectureRuntime: ArchitectureRuntime,
 ): void {
   const common = [
     "abstained",
     "calibrationStatus",
-    "costMicros",
+    "componentAccounting",
+    "costNanoUsd",
     "inputTokens",
+    "outputTokens",
     "predictedRoute",
     "routeQuestionProbabilities",
     "status",
@@ -484,19 +578,140 @@ function validateDriverResult(
     );
   }
   invariant(
-    (value.inputTokens === null) === (value.costMicros === null),
-    "finance token and cost accounting must be measured or unknown together",
+    (value.inputTokens === null) === (value.outputTokens === null),
+    "finance input and output token accounting must be measured or unknown together",
   );
-  if (value.inputTokens !== null)
+  if (value.inputTokens !== null && value.outputTokens !== null) {
     invariant(
       Number.isSafeInteger(value.inputTokens) && value.inputTokens >= 0,
       "finance inputTokens must be a non-negative safe integer",
     );
-  if (value.costMicros !== null)
     invariant(
-      /^(0|[1-9][0-9]*)$/u.test(value.costMicros),
-      "finance costMicros must be a non-negative integer string",
+      Number.isSafeInteger(value.outputTokens) && value.outputTokens >= 0,
+      "finance outputTokens must be a non-negative safe integer",
     );
+  }
+  if (value.costNanoUsd !== null)
+    invariant(
+      /^(0|[1-9][0-9]*)$/u.test(value.costNanoUsd),
+      "finance costNanoUsd must be a non-negative integer string",
+    );
+  validateComponentAccounting(value, architecture, architectureRuntime);
+}
+
+function validateComponentAccounting(
+  value: FinanceDriverResult,
+  architecture: FinanceArchitecture,
+  architectureRuntime: ArchitectureRuntime,
+): void {
+  const expectedRoles: Readonly<
+    Record<FinanceArchitecture, readonly string[]>
+  > = {
+    deterministic_only: [],
+    host_model_only: ["host"],
+    jev_advisory: ["jev"],
+    host_plus_jev: ["host", "jev"],
+  };
+  invariant(
+    Array.isArray(value.componentAccounting) &&
+      value.componentAccounting.length === expectedRoles[architecture].length,
+    `${architecture} component accounting is incomplete`,
+  );
+  for (const [index, component] of value.componentAccounting.entries()) {
+    exactPlainObject(
+      component,
+      ["costNanoUsd", "inputTokens", "outputTokens", "role"],
+      `${architecture} component accounting`,
+    );
+    invariant(
+      component.role === expectedRoles[architecture][index],
+      `${architecture} component accounting role is invalid`,
+    );
+    invariant(
+      (component.inputTokens === null) === (component.outputTokens === null),
+      `${architecture} component token accounting must be paired`,
+    );
+    if (component.inputTokens !== null && component.outputTokens !== null) {
+      invariant(
+        Number.isSafeInteger(component.inputTokens) &&
+          component.inputTokens >= 0 &&
+          Number.isSafeInteger(component.outputTokens) &&
+          component.outputTokens >= 0,
+        `${architecture} component tokens are invalid`,
+      );
+    }
+    invariant(
+      component.costNanoUsd === null ||
+        /^(0|[1-9][0-9]*)$/u.test(component.costNanoUsd),
+      `${architecture} component cost is invalid`,
+    );
+    const pricing = architectureRuntime.components[index]?.pricing ?? null;
+    const expectedCost =
+      component.inputTokens === null ||
+      component.outputTokens === null ||
+      pricing === null
+        ? null
+        : (
+            BigInt(component.inputTokens) *
+              BigInt(pricing.inputNanoUsdPerToken) +
+            BigInt(component.outputTokens) *
+              BigInt(pricing.outputNanoUsdPerToken)
+          ).toString();
+    invariant(
+      component.costNanoUsd === expectedCost,
+      `${architecture} component cost does not match retained pricing`,
+    );
+  }
+  const tokensKnown = value.componentAccounting.every(
+    ({ inputTokens }) => inputTokens !== null,
+  );
+  const costsKnown = value.componentAccounting.every(
+    ({ costNanoUsd }) => costNanoUsd !== null,
+  );
+  if (value.componentAccounting.length === 0) {
+    invariant(
+      value.inputTokens === 0 &&
+        value.outputTokens === 0 &&
+        value.costNanoUsd === "0",
+      "deterministic accounting must be exactly zero",
+    );
+    return;
+  }
+  invariant(
+    tokensKnown === (value.inputTokens !== null),
+    `${architecture} aggregate token availability is inconsistent`,
+  );
+  if (tokensKnown) {
+    const inputTotal = value.componentAccounting.reduce(
+      (sum, item) => sum + (item.inputTokens ?? 0),
+      0,
+    );
+    const outputTotal = value.componentAccounting.reduce(
+      (sum, item) => sum + (item.outputTokens ?? 0),
+      0,
+    );
+    invariant(
+      Number.isSafeInteger(inputTotal) &&
+        Number.isSafeInteger(outputTotal) &&
+        value.inputTokens === inputTotal &&
+        value.outputTokens === outputTotal,
+      `${architecture} aggregate token accounting is inconsistent`,
+    );
+  }
+  invariant(
+    costsKnown === (value.costNanoUsd !== null),
+    `${architecture} aggregate cost availability is inconsistent`,
+  );
+  if (costsKnown) {
+    const total = value.componentAccounting.reduce(
+      (sum, item) => sum + BigInt(item.costNanoUsd ?? "0"),
+      0n,
+    );
+    invariant(
+      value.costNanoUsd === total.toString(),
+      `${architecture} aggregate cost is inconsistent`,
+    );
+  }
 }
 
 function validateProbabilities(probabilities: FinanceRouteProbabilities): void {
@@ -710,8 +925,11 @@ function validateRuntime(runtime: FinanceRuntimeProvenance): void {
         [
           "modelId",
           "modelVersion",
+          "modelVersionEvidence",
+          "pricing",
           "probabilitySemantics",
           "providerId",
+          "responseModel",
           "role",
         ],
         `${architecture} component`,
@@ -719,7 +937,8 @@ function validateRuntime(runtime: FinanceRuntimeProvenance): void {
       invariant(
         component.providerId.length > 0 &&
           component.modelId.length > 0 &&
-          component.modelVersion.length > 0,
+          component.modelVersion.length > 0 &&
+          component.responseModel.length > 0,
         `${architecture} component identity is required`,
       );
       invariant(
@@ -735,11 +954,298 @@ function validateRuntime(runtime: FinanceRuntimeProvenance): void {
       );
       if (component.role === "deterministic")
         invariant(
-          component.probabilitySemantics === "none",
-          "deterministic provenance cannot claim model probabilities",
+          component.probabilitySemantics === "none" &&
+            component.pricing === null &&
+            component.modelVersionEvidence.kind === "response_exact" &&
+            component.responseModel === component.modelVersion,
+          "deterministic provenance cannot claim external model evidence, probabilities, or pricing",
         );
+      else {
+        validateModelVersionEvidence(component, architecture);
+        if (component.pricing !== null)
+          validateRuntimePricing(component.pricing, architecture);
+      }
     }
   }
+  invariant(
+    canonicalCompactJson(
+      runtime.architectures.host_model_only.components[0],
+    ) ===
+      canonicalCompactJson(runtime.architectures.host_plus_jev.components[0]),
+    "host component provenance must be identical across architectures",
+  );
+  invariant(
+    canonicalCompactJson(runtime.architectures.jev_advisory.components[0]) ===
+      canonicalCompactJson(runtime.architectures.host_plus_jev.components[1]),
+    "Jev component provenance must be identical across architectures",
+  );
+}
+
+function validateModelVersionEvidence(
+  component: ArchitectureRuntimeComponent,
+  architecture: FinanceArchitecture,
+): void {
+  invariant(
+    component.modelVersionEvidence !== null &&
+      typeof component.modelVersionEvidence === "object",
+    `${architecture} model version evidence is required`,
+  );
+  if (component.modelVersionEvidence.kind === "response_exact") {
+    exactPlainObject(
+      component.modelVersionEvidence,
+      ["kind"],
+      `${architecture} model version evidence`,
+    );
+    invariant(
+      component.responseModel === component.modelVersion,
+      `${architecture} response-exact model version does not match the response`,
+    );
+    return;
+  }
+  exactPlainObject(
+    component.modelVersionEvidence,
+    ["evidenceHash", "kind", "observedAt", "sourceUrl"],
+    `${architecture} model version evidence`,
+  );
+  validateSourceUrl(component.modelVersionEvidence.sourceUrl);
+  const observedAt = timestamp(
+    component.modelVersionEvidence.observedAt,
+    "model version evidence observedAt",
+  );
+  invariant(
+    new Date(observedAt).toISOString() ===
+      component.modelVersionEvidence.observedAt &&
+      /^sha256:[a-f0-9]{64}$/u.test(
+        component.modelVersionEvidence.evidenceHash,
+      ),
+    `${architecture} external model version evidence is invalid`,
+  );
+}
+
+function validateRuntimePricing(
+  pricing: ArchitectureRuntimePricing,
+  architecture: FinanceArchitecture,
+): void {
+  exactPlainObject(
+    pricing,
+    [
+      "inputNanoUsdPerToken",
+      "observedAt",
+      "outputNanoUsdPerToken",
+      "priceHash",
+      "priceVersion",
+      "sourceUrl",
+    ],
+    `${architecture} pricing`,
+  );
+  invariant(
+    /^(0|[1-9][0-9]*)$/u.test(pricing.inputNanoUsdPerToken) &&
+      /^(0|[1-9][0-9]*)$/u.test(pricing.outputNanoUsdPerToken),
+    `${architecture} pricing amounts must be non-negative integer strings`,
+  );
+  validateSourceUrl(pricing.sourceUrl);
+  const observedAt = timestamp(pricing.observedAt, "price observedAt");
+  invariant(
+    new Date(observedAt).toISOString() === pricing.observedAt,
+    `${architecture} pricing observedAt must be canonical ISO-8601 UTC`,
+  );
+  invariant(
+    pricing.priceVersion.length > 0 &&
+      /^sha256:[a-f0-9]{64}$/u.test(pricing.priceHash),
+    `${architecture} pricing version or hash is invalid`,
+  );
+}
+
+function validateAndBindRuntimeEvidence(
+  runtime: FinanceRuntimeProvenance,
+  evidenceValues: readonly FinanceRuntimeEvidence[],
+): readonly FinanceRuntimeEvidence[] {
+  invariant(
+    Array.isArray(evidenceValues) &&
+      evidenceValues.length <= maximumRuntimeEvidenceFiles,
+    `finance runtime evidence exceeds ${maximumRuntimeEvidenceFiles} files`,
+  );
+  const provided = new Map<string, FinanceRuntimeEvidence>();
+  for (const evidence of evidenceValues) {
+    validateRuntimeEvidenceDocument(evidence);
+    const canonical = stableJson(evidence);
+    invariant(
+      new TextEncoder().encode(canonical).byteLength <=
+        maximumRuntimeEvidenceBytes,
+      "finance runtime evidence exceeds its byte limit",
+    );
+    const digest = sha256(canonical);
+    invariant(
+      !provided.has(digest),
+      `duplicate finance runtime evidence ${digest}`,
+    );
+    provided.set(digest, evidence);
+  }
+
+  const required = requiredRuntimeEvidence(runtime);
+  invariant(
+    provided.size === required.size &&
+      [...required.keys()].every((digest) => provided.has(digest)),
+    "finance runtime evidence file set does not match runtime provenance",
+  );
+  for (const [digest, expected] of required) {
+    invariant(
+      stableJson(provided.get(digest)) === stableJson(expected),
+      `finance runtime evidence ${digest} does not match runtime provenance`,
+    );
+  }
+  return deepFreeze(
+    [...provided.entries()]
+      .sort(([left], [right]) => codeUnitCompare(left, right))
+      .map(([, evidence]) => structuredClone(evidence)),
+  );
+}
+
+function requiredRuntimeEvidence(
+  runtime: FinanceRuntimeProvenance,
+): Map<string, FinanceRuntimeEvidence> {
+  const required = new Map<string, FinanceRuntimeEvidence>();
+  for (const architecture of financeArchitectures) {
+    for (const component of runtime.architectures[architecture].components) {
+      if (component.pricing !== null) {
+        const pricing: FinanceRuntimeEvidence = {
+          schemaVersion: "1",
+          kind: "pricing",
+          inputNanoUsdPerToken: component.pricing.inputNanoUsdPerToken,
+          outputNanoUsdPerToken: component.pricing.outputNanoUsdPerToken,
+          sourceUrl: component.pricing.sourceUrl,
+          observedAt: component.pricing.observedAt,
+          priceVersion: component.pricing.priceVersion,
+        };
+        addRequiredRuntimeEvidence(
+          required,
+          component.pricing.priceHash,
+          pricing,
+        );
+      }
+      if (component.modelVersionEvidence.kind === "external_attestation") {
+        const attestation: FinanceRuntimeEvidence = {
+          schemaVersion: "1",
+          kind: "model_version",
+          sourceUrl: component.modelVersionEvidence.sourceUrl,
+          observedAt: component.modelVersionEvidence.observedAt,
+          providerId: component.providerId,
+          modelId: component.modelId,
+          modelVersion: component.modelVersion,
+          responseModel: component.responseModel,
+        };
+        addRequiredRuntimeEvidence(
+          required,
+          component.modelVersionEvidence.evidenceHash,
+          attestation,
+        );
+      }
+    }
+  }
+  return required;
+}
+
+function addRequiredRuntimeEvidence(
+  required: Map<string, FinanceRuntimeEvidence>,
+  claimedHash: string,
+  evidence: FinanceRuntimeEvidence,
+): void {
+  invariant(
+    claimedHash === sha256(stableJson(evidence)),
+    `finance runtime evidence ${claimedHash} does not match its canonical metadata`,
+  );
+  const existing = required.get(claimedHash);
+  invariant(
+    existing === undefined || stableJson(existing) === stableJson(evidence),
+    `finance runtime evidence ${claimedHash} is bound to conflicting metadata`,
+  );
+  required.set(claimedHash, evidence);
+}
+
+function validateRuntimeEvidenceDocument(
+  evidence: FinanceRuntimeEvidence,
+): void {
+  invariant(
+    evidence !== null && typeof evidence === "object",
+    "finance runtime evidence must be an object",
+  );
+  if (evidence.kind === "pricing") {
+    exactPlainObject(
+      evidence,
+      [
+        "inputNanoUsdPerToken",
+        "kind",
+        "observedAt",
+        "outputNanoUsdPerToken",
+        "priceVersion",
+        "schemaVersion",
+        "sourceUrl",
+      ],
+      "finance pricing evidence",
+    );
+    validateRuntimePricing(
+      {
+        inputNanoUsdPerToken: evidence.inputNanoUsdPerToken,
+        outputNanoUsdPerToken: evidence.outputNanoUsdPerToken,
+        sourceUrl: evidence.sourceUrl,
+        observedAt: evidence.observedAt,
+        priceVersion: evidence.priceVersion,
+        priceHash: sha256(stableJson(evidence)),
+      },
+      "host_model_only",
+    );
+    boundedEvidenceString(evidence.priceVersion, "priceVersion");
+  } else {
+    exactPlainObject(
+      evidence,
+      [
+        "kind",
+        "modelId",
+        "modelVersion",
+        "observedAt",
+        "providerId",
+        "responseModel",
+        "schemaVersion",
+        "sourceUrl",
+      ],
+      "finance model version evidence",
+    );
+    validateSourceUrl(evidence.sourceUrl);
+    const observedAt = timestamp(
+      evidence.observedAt,
+      "model version evidence observedAt",
+    );
+    invariant(
+      new Date(observedAt).toISOString() === evidence.observedAt,
+      "finance model version evidence observedAt must be canonical ISO-8601 UTC",
+    );
+    for (const [label, value] of [
+      ["providerId", evidence.providerId],
+      ["modelId", evidence.modelId],
+      ["modelVersion", evidence.modelVersion],
+      ["responseModel", evidence.responseModel],
+    ] as const)
+      boundedEvidenceString(value, label);
+  }
+  invariant(
+    evidence.schemaVersion === "1",
+    "finance runtime evidence schemaVersion is invalid",
+  );
+  invariant(
+    evidence.sourceUrl.length <= 2_048,
+    "finance runtime evidence sourceUrl is too long",
+  );
+}
+
+function boundedEvidenceString(value: string, label: string): void {
+  invariant(
+    typeof value === "string" && value.length > 0 && value.length <= 256,
+    `finance runtime evidence ${label} is invalid`,
+  );
+}
+
+function evidenceFileName(evidence: FinanceRuntimeEvidence): string {
+  return `${sha256(stableJson(evidence)).slice("sha256:".length)}.json`;
 }
 
 function exactPlainObject(
@@ -839,6 +1345,7 @@ function validateSourceUrl(value: string): void {
     parsed.protocol === "https:" &&
       parsed.username.length === 0 &&
       parsed.password.length === 0 &&
+      parsed.search.length === 0 &&
       parsed.hash.length === 0 &&
       parsed.href === value,
     "finance sourceUrl must be a canonical credential-free HTTPS URL",

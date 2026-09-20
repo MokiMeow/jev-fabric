@@ -133,8 +133,10 @@
           "sampleCount",
           "calibrationStatus",
           "calibrationReason",
-          "accountingStatus",
-          "accountingReason",
+          "tokenAccountingStatus",
+          "tokenAccountingReason",
+          "costAccountingStatus",
+          "costAccountingReason",
           "metrics"
         ],
         "properties": {
@@ -163,8 +165,16 @@
               { "const": "no_measured_route_question_distributions" }
             ]
           },
-          "accountingStatus": { "enum": ["NOT_RUN", "MEASURED", "UNMETERED"] },
-          "accountingReason": {
+          "tokenAccountingStatus": {
+            "enum": ["NOT_RUN", "MEASURED", "UNMETERED"]
+          },
+          "tokenAccountingReason": {
+            "anyOf": [{ "type": "null" }, { "const": "unmetered_attempt" }]
+          },
+          "costAccountingStatus": {
+            "enum": ["NOT_RUN", "MEASURED", "UNMETERED"]
+          },
+          "costAccountingReason": {
             "anyOf": [{ "type": "null" }, { "const": "unmetered_attempt" }]
           },
           "metrics": {
@@ -181,6 +191,7 @@
               "p50Ms",
               "p95Ms",
               "inputTokens",
+              "outputTokens",
               "estimatedCostUsd"
             ],
             "properties": {
@@ -221,6 +232,7 @@
               "p50Ms": { "type": ["number", "null"], "minimum": 0 },
               "p95Ms": { "type": ["number", "null"], "minimum": 0 },
               "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+              "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
               "estimatedCostUsd": { "type": ["number", "null"], "minimum": 0 }
             }
           }
@@ -246,13 +258,49 @@
               "providerId",
               "modelId",
               "modelVersion",
-              "probabilitySemantics"
+              "responseModel",
+              "modelVersionEvidence",
+              "probabilitySemantics",
+              "pricing"
             ],
             "properties": {
               "role": { "enum": ["deterministic", "host", "jev"] },
               "providerId": { "type": ["string", "null"], "minLength": 1 },
               "modelId": { "type": ["string", "null"], "minLength": 1 },
               "modelVersion": { "type": ["string", "null"], "minLength": 1 },
+              "responseModel": { "type": ["string", "null"], "minLength": 1 },
+              "modelVersionEvidence": {
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": { "const": "response_exact" }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind",
+                      "sourceUrl",
+                      "observedAt",
+                      "evidenceHash"
+                    ],
+                    "properties": {
+                      "kind": { "const": "external_attestation" },
+                      "sourceUrl": { "type": "string", "minLength": 1 },
+                      "observedAt": { "type": "string", "minLength": 1 },
+                      "evidenceHash": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      }
+                    }
+                  }
+                ]
+              },
               "probabilitySemantics": {
                 "anyOf": [
                   { "type": "null" },
@@ -265,6 +313,40 @@
                       "synthetic",
                       "unknown"
                     ]
+                  }
+                ]
+              },
+              "pricing": {
+                "anyOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "inputNanoUsdPerToken",
+                      "outputNanoUsdPerToken",
+                      "sourceUrl",
+                      "observedAt",
+                      "priceVersion",
+                      "priceHash"
+                    ],
+                    "properties": {
+                      "inputNanoUsdPerToken": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "outputNanoUsdPerToken": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]*)$"
+                      },
+                      "sourceUrl": { "type": "string", "minLength": 1 },
+                      "observedAt": { "type": "string", "minLength": 1 },
+                      "priceVersion": { "type": "string", "minLength": 1 },
+                      "priceHash": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      }
+                    }
                   }
                 ]
               }

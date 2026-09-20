@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1",
+  "policyId": "finance.market-features.v1",
+  "timeRule": "events_with_timestamp_lte_cutoff_only",
+  "features": [
+    {
+      "id": "message-rate.bucket",
+      "definition": "Count accepted synthetic order messages per fixed window, then bucket with predeclared thresholds."
+    },
+    {
+      "id": "cancel-add-ratio.bucket",
+      "definition": "Synthetic cancel count divided by add count in the same closed window."
+    },
+    {
+      "id": "book-imbalance.bucket",
+      "definition": "Signed top-level synthetic book imbalance at or before the cutoff."
+    },
+    {
+      "id": "short-lived-large-order.bucket",
+      "definition": "Count synthetic large orders cancelled inside the declared lifetime threshold."
+    }
+  ],
+  "forbiddenInputs": [
+    "events_after_cutoff",
+    "scenario_label",
+    "future_midprice",
+    "detector_output_used_as_gold"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1",
+  "policyId": "finance.labels.v1",
+  "scope": "operational_triage_not_investment_advice",
+  "financialTextTriage": {
+    "excludedFormSuffixes": ["/A"],
+    "ignoredItems": ["9.01"],
+    "routes": {
+      "escalate": ["1.03", "4.02"],
+      "investigate": ["2.04", "2.05", "2.06", "3.01", "4.01"],
+      "observe": ["2.02", "7.01"]
+    },
+    "unknownItemAction": "exclude",
+    "multiItemRule": "maximum_declared_severity"
+  },
+  "visualEvidence": {
+    "routes": {
+      "escalate": ["swapped_series_legend", "truncated_zero_baseline"],
+      "investigate": ["missing_source_date", "missing_units"],
+      "observe": ["faithful_render"]
+    },
+    "labelSource": "declared_deterministic_mutation_id"
+  },
+  "marketSurveillance": {
+    "routes": {
+      "escalate": ["synthetic_high_cancel_multilevel_pattern"],
+      "investigate": ["synthetic_benign_stress", "synthetic_pov_burst"],
+      "observe": ["synthetic_baseline_liquidity"]
+    },
+    "labelSource": "declared_scenario_before_simulation"
+  }
+}

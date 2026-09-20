@@ -23,6 +23,7 @@ export async function example() {
       execute: async () =>
         new Response(
           JSON.stringify({
+            model: "pinned-compatible-model",
             choices: [
               {
                 message: {

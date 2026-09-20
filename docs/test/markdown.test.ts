@@ -34,6 +34,8 @@ const external = [
   "https://www.sec.gov/",
   "https://www.nist.gov/",
   "https://x.com/",
+  "https://madewithjev.com/",
+  "https://jevlist.ai/",
 ];
 
 async function markdown(directory: string): Promise<string[]> {
@@ -125,7 +127,7 @@ describe("public Markdown integrity", () => {
       resolve(root, "docs/evidence/README.md"),
       "utf8",
     );
-    expect(evidence).toMatch(/official .*accessed 2026-09-19/iu);
+    expect(evidence).toMatch(/official .*accessed 2026-09-20/iu);
     const paths = [
       ...(await markdown(resolve(root, "docs"))),
       ...rootDocs.map((path) => resolve(root, path)),
@@ -135,7 +137,7 @@ describe("public Markdown integrity", () => {
       const text = await readFile(path, "utf8");
       if (!quantified.test(text)) continue;
       expect(text).toMatch(/evidence class|evidence:|Evidence:/u);
-      expect(text).toMatch(/2026-09-19/u);
+      expect(text).toMatch(/2026-09-(?:19|20)/u);
       expect(text).toMatch(/version|versions/u);
       expect(text).toMatch(/cases|sample|denominator/u);
       expect(text).toMatch(/hardware|region|machine|redacted/u);

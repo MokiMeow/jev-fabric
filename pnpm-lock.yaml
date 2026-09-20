@@ -224,8 +224,8 @@ importers:
   packages/adapters:
     dependencies:
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/cli:
     dependencies:
@@ -263,8 +263,8 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       ajv:
         specifier: 8.20.0
@@ -291,8 +291,8 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@modelcontextprotocol/client':
         specifier: 2.0.0
@@ -301,8 +301,8 @@ importers:
   packages/protocol:
     dependencies:
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/provider-openai-compatible:
     dependencies:
@@ -310,8 +310,8 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/provider-typesafe:
     dependencies:
@@ -1755,8 +1755,8 @@ packages:
   yuku-parser@0.10.2:
     resolution: {integrity: sha512-CgaU0/PPjCAIEZ3WQroosOxTY3eeKldAN3h+vk8pMNz4+jl1CZzBR4pW+K/rRPF112VooCL5FdjJoiMNjDrL2A==}
 
-  zod@4.2.0:
-    resolution: {integrity: sha512-Bd5fw9wlIhtqCCxotZgdTOMwGm1a0u75wARVEY9HMs1X17trvA/lMi4+MGK5EUfYkXVTbX8UDiDKW4OgzHVUZw==}
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -2036,16 +2036,16 @@ snapshots:
       eventsource-parser: 3.1.1
       jose: 6.2.12
       pkce-challenge: 5.0.1
-      zod: 4.2.0
+      zod: 4.6.5
 
   '@modelcontextprotocol/core@2.0.0':
     dependencies:
-      zod: 4.2.0
+      zod: 4.6.5
 
   '@modelcontextprotocol/server@2.0.0':
     dependencies:
       '@modelcontextprotocol/core': 2.0.0
-      zod: 4.2.0
+      zod: 4.6.5
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
@@ -2845,4 +2845,4 @@ snapshots:
       '@yuku-parser/binding-win32-arm64': 0.10.2
       '@yuku-parser/binding-win32-x64': 0.10.2
 
-  zod@4.2.0: {}
+  zod@4.6.5: {}

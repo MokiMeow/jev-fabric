@@ -29,7 +29,7 @@ const approvedFields: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
 };
 const secretPattern =
-  /(?:api[_-]?key|authorization|bearer\s+|password|secret|token)\s*[:=]|\b(?:sk|ts|jev)_[A-Za-z0-9_-]{16,}\b/i;
+  /(?:api[_-]?key|authorization|bearer\s+|password|secret|token)\s*[:=]|\b(?:sk|ts|jev)_[A-Za-z0-9_-]{16,}\b|(?:^|[^A-Za-z0-9_-])apikey_[A-Za-z0-9_-]{32,}(?=$|[^A-Za-z0-9_-])/i;
 const absolutePath = /(?:[A-Za-z]:\\|\\\\|\/(?:Users|home|var|etc)\/)/;
 const hostnamePattern = /(?:https?:\/\/|\b(?:host|hostname)\s*[:=])/i;
 const bareHostPattern =

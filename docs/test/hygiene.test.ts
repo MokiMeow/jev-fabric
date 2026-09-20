@@ -34,7 +34,7 @@ describe("public-document hygiene", () => {
       resolve(root, "llms.txt"),
     ];
     const secret =
-      /(?:apikey|api[_-]?key|bearer)\s*[:=]\s*[A-Za-z0-9_-]{16,}/iu;
+      /(?:apikey|api[_-]?key|bearer)\s*[:=]\s*[A-Za-z0-9_-]{16,}|(?:^|[^A-Za-z0-9_-])apikey_[A-Za-z0-9_-]{32,}(?=$|[^A-Za-z0-9_-])/iu;
     for (const path of publicFiles) {
       const text = await readFile(path, "utf8");
       expect(text).not.toMatch(/[A-Z]:\\(?:Users|home)\\/u);

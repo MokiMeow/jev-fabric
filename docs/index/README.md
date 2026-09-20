@@ -1,6 +1,6 @@
 # Documentation index
 
-Begin with the [offline quickstart](../quickstart/offline.md), then select a [pack](../packs/selection.md) and read the relevant [security boundary](../security/boundaries.md). This documentation describes the `0.1.0-alpha.1` alpha as of 2026-09-19.
+Begin with the [offline quickstart](../quickstart/offline.md), then select a [pack](../packs/selection.md) and read the relevant [security boundary](../security/boundaries.md). This documentation describes the `0.1.0-alpha.1` alpha as of 2026-09-20.
 
 | Topic | Purpose |
 | --- | --- |
@@ -17,3 +17,6 @@ Begin with the [offline quickstart](../quickstart/offline.md), then select a [pa
 | [Troubleshooting](../reference/troubleshooting.md) | common bounded-installation failures |
 | [Native live operation](../providers/typesafe-native.md) | operator-only TypeSafe stdio overlay |
 | [Programmatic providers](../providers/programmatic.md) | server-side native and compatible composition |
+| [Vercel AI Gateway](../providers/vercel-ai-gateway.md) | fixed TypeSafe-compatible Jev route and temporary promotion limits |
+| [Experimental WebMCP](../recipes/webmcp-browser.md) | origin/tool/schema-bound browser advice without execution |
+| [Tool environments](../integrations/tool-environments.md) | advisory contracts for browsers, DCC tools, engines, and CAD |

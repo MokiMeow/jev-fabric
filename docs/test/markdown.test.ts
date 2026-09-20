@@ -21,6 +21,15 @@ const external = [
   "https://ai.google.dev/",
   "https://platform.moonshot.ai/",
   "https://www.alibabacloud.com/",
+  "https://github.com/",
+  "https://vercel.com/",
+  "https://developer.chrome.com/",
+  "https://chromedevtools.github.io/",
+  "https://docs.blender.org/",
+  "https://dev.epicgames.com/",
+  "https://docs.unity3d.com/",
+  "https://docs.godotengine.org/",
+  "https://freecad.github.io/",
 ];
 
 async function markdown(directory: string): Promise<string[]> {

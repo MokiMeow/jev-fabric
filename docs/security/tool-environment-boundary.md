@@ -1,0 +1,64 @@
+# Tool-environment security boundary
+
+Tool environments contain high-value state: authenticated browser sessions,
+files, scenes, assets, project settings, local network access, and potentially
+expensive renders or builds. Jev Fabric is advisory at this boundary.
+
+## What crosses into Jev Fabric
+
+Only a trusted adapter may construct a tool-environment snapshot. It may send:
+
+- opaque session, workspace, and selected-object references;
+- hashes of state, capability manifest, action arguments, and evidence;
+- bounded freshness and dirty/undo metadata; and
+- a finite, versioned catalogue of static action descriptors.
+
+It must not send raw DOM/scene/project state, selectors, object paths, local
+paths, commands, source code, macros, credentials, or page/tool output as a
+privileged instruction. Treat all content originating outside the trusted adapter
+as advisory data, including WebMCP metadata and returned page content.
+
+## What Jev Fabric may do
+
+It may advise which declared candidate fits a bounded question, signal a risk,
+ask for escalation, or abstain. It cannot authorize, execute, mint an action
+ticket, broaden an action catalogue, or turn a failed precondition into success.
+The action proposal schema intentionally contains only an action identifier and
+hashes; it has no code, URI, selector, machine path, or concrete arguments.
+
+## What the trusted host and adapter must do
+
+Before a mutation, the trusted host must apply identity, policy, budget, and
+approval requirements. It may then issue a short-lived, one-use action ticket
+bound to principal, tenant, workspace, adapter audience, exact action,
+argument-or-scope hash, state hash, evidence hash, and policy/permission epochs.
+
+The protocol schemas validate shape only. They must never be used as an action
+allowlist. The adapter owns a code-reviewed positive catalogue unavailable to
+the model/page/request, and must call `validateToolEnvironmentSnapshot` plus
+`validateToolEnvironmentProposal` before policy or ticket processing.
+
+Immediately before performing its own predeclared native operation, the adapter
+must re-observe and reject all of the following:
+
+- expired, replayed, wrong-audience, or invalid tickets;
+- changed state, target, capability manifest, app version, or action descriptor;
+- stale observations, unmet preconditions, or argument-hash mismatch;
+- missing approval for persistent or external work; and
+- any request to use a generic command, script, network, evaluation, or shell
+  interface.
+
+Afterward, it must use deterministic native checks to observe the declared
+postconditions and whether an undo is available or succeeded. Store redacted,
+hash-based receipts only. A successful model answer, receipt, or page statement
+does not certify that an operation occurred.
+
+## Browser-specific cautions
+
+WebMCP is useful structured input, not an authorization mechanism. Chrome notes
+that LLM agents remain susceptible to indirect prompt injection and recommends
+untrusted-content and consequential-action hints in its
+[WebMCP tool security guidance](https://developer.chrome.com/docs/ai/webmcp).
+Honor consequential actions with a user confirmation and keep browser automation
+out of this package. Never use arbitrary DevTools `Runtime.evaluate`, page
+scripts, selectors from untrusted pages, or visual coordinates as Jev candidates.

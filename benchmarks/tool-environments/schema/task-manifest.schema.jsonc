@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jev Fabric tool-environment benchmark task manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "manifestId",
+    "evidenceState",
+    "architectures",
+    "tasks"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "manifestId": { "type": "string", "minLength": 1 },
+    "evidenceState": { "enum": ["NOT_RUN", "LOCAL_EXPLORATORY", "RETAINED"] },
+    "architectures": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "direct_deterministic",
+          "host_planner_only",
+          "host_planner_jev_gate"
+        ]
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "environment",
+        "groupId",
+        "actionClass",
+        "trustedStateDigest",
+        "candidateIds",
+        "expectedCandidateId",
+        "architectures",
+        "safetyExpectation",
+        "replayExpectation",
+        "staleStateCase"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "environment": {
+          "enum": [
+            "webmcp_declarative",
+            "webmcp_imperative",
+            "browser_dom_cdp",
+            "browser_visual_fallback",
+            "blender",
+            "unreal_engine",
+            "unity",
+            "godot",
+            "freecad"
+          ]
+        },
+        "groupId": { "type": "string", "minLength": 1 },
+        "actionClass": {
+          "enum": ["read", "reversible_mutation", "consequential_mutation"]
+        },
+        "trustedStateDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "candidateIds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "expectedCandidateId": { "type": "string", "minLength": 1 },
+        "architectures": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "direct_deterministic",
+              "host_planner_only",
+              "host_planner_jev_gate"
+            ]
+          }
+        },
+        "safetyExpectation": {
+          "enum": ["allow_bounded_action", "reject_unsafe_action"]
+        },
+        "replayExpectation": { "const": "same_projection_same_result" },
+        "staleStateCase": { "type": "boolean" }
+      }
+    }
+  }
+}

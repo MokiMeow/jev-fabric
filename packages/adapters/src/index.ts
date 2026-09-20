@@ -18,3 +18,9 @@ export {
   syncCanonicalSkill,
 } from "./generate.js";
 export { validateGeneratedIntegrations } from "./validate.js";
+export {
+  bindWebMcpAdvisory,
+  type TrustedWebMcpHostProjection,
+  type UntrustedWebMcpPageMetadata,
+  type WebMcpAdvisoryBinding,
+} from "./webmcp.js";

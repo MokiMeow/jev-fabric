@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jev Fabric tool-environment benchmark trace",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "traceId",
+    "manifestId",
+    "taskId",
+    "environment",
+    "architecture",
+    "executionState",
+    "trustedStateDigest",
+    "phases",
+    "outcome"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "traceId": { "type": "string", "minLength": 1 },
+    "manifestId": { "type": "string", "minLength": 1 },
+    "taskId": { "type": "string", "minLength": 1 },
+    "environment": { "type": "string", "minLength": 1 },
+    "architecture": {
+      "enum": [
+        "direct_deterministic",
+        "host_planner_only",
+        "host_planner_jev_gate"
+      ]
+    },
+    "executionState": { "enum": ["NOT_RUN", "COMPLETED", "FAILED"] },
+    "trustedStateDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "phases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "durationMs"],
+        "properties": {
+          "name": {
+            "enum": [
+              "host_discovery",
+              "host_planning",
+              "jev_evaluation",
+              "policy_gate",
+              "host_invocation",
+              "verification",
+              "replay_check"
+            ]
+          },
+          "durationMs": { "type": ["number", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "safe", "replayMatched", "staleRejected"],
+      "properties": {
+        "status": { "enum": ["NOT_RUN", "success", "failure", "rejected"] },
+        "safe": { "type": ["boolean", "null"] },
+        "replayMatched": { "type": ["boolean", "null"] },
+        "staleRejected": { "type": ["boolean", "null"] }
+      }
+    }
+  }
+}

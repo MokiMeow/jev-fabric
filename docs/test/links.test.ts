@@ -14,6 +14,14 @@ const official = new Set([
   "https://www.alibabacloud.com/",
   "https://github.com/",
   "https://www.npmjs.com/",
+  "https://vercel.com/",
+  "https://developer.chrome.com/",
+  "https://chromedevtools.github.io/",
+  "https://docs.blender.org/",
+  "https://dev.epicgames.com/",
+  "https://docs.unity3d.com/",
+  "https://docs.godotengine.org/",
+  "https://freecad.github.io/",
 ]);
 async function markdown(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });

@@ -1,6 +1,6 @@
 # @mokimeow/jev-fabric-provider-typesafe
 
-TypeSafe AI advisory provider adapter for [Jev Fabric](https://github.com/MokiMeow/jev-fabric).
+TypeSafe AI and fixed Vercel AI Gateway advisory provider adapter for [Jev Fabric](https://github.com/MokiMeow/jev-fabric).
 
 ## Install
 
@@ -8,7 +8,7 @@ TypeSafe AI advisory provider adapter for [Jev Fabric](https://github.com/MokiMe
 
 ## Use
 
-Import the adapter from the package root and pass credentials only through your host secret manager.
+Import `createNativeJevProvider` for the direct route or `createVercelGatewayJevProvider` for the fixed TypeSafe-compatible Gateway route, and pass credentials only through your host secret manager.
 
 Live calls require the runtime/CLI explicit `--live` controls; never commit or log API keys.
 

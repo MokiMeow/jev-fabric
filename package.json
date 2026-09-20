@@ -20,6 +20,7 @@
     "pack:test": "node scripts/pack-smoke.mjs",
     "examples:check": "vitest run examples/test",
     "docs:check": "vitest run docs/test examples/test && pnpm pack:test",
+    "benchmark:check": "node --test benchmarks/tool-environments/scripts/validate-and-report.test.mjs && node benchmarks/tool-environments/scripts/validate-and-report.mjs",
     "security:check": "tsx scripts/security-check.mts && tsx scripts/verify-workflows.mts",
     "release:check": "vitest run scripts/test",
     "conformance": "node scripts/mcp-cli-smoke.mjs && pnpm --filter @mokimeow/jev-fabric-cli exec jev-fabric doctor --json",
@@ -31,7 +32,7 @@
     "package-readmes:check": "tsx scripts/generate-package-readmes.mts --check",
     "changeset:check": "tsx scripts/check-changeset-policy.mts",
     "import:historical": "tsx scripts/import-historical.mts",
-    "verify": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm release:check && pnpm pack:test"
+    "verify": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm benchmark:check && pnpm release:check && pnpm pack:test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
@@ -39,11 +40,12 @@
     "@mokimeow/jev-fabric-cli": "workspace:*",
     "@mokimeow/jev-fabric-core": "workspace:*",
     "@mokimeow/jev-fabric-packs": "workspace:*",
+    "@mokimeow/jev-fabric-protocol": "workspace:*",
     "@mokimeow/jev-fabric-provider-openai-compatible": "workspace:*",
     "@mokimeow/jev-fabric-provider-typesafe": "workspace:*",
-    "@mokimeow/jev-fabric-protocol": "workspace:*",
     "@types/node": "22.18.6",
     "@vitest/coverage-v8": "5.0.1",
+    "ajv": "8.20.0",
     "fast-check": "4.10.1",
     "pnpm": "12.4.2",
     "tsdown": "0.23.0",

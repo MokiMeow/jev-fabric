@@ -67,6 +67,7 @@ for (const name of localPackages)
   assertNoWorkspaceImports(
     join(installedRoot, "node_modules", "@mokimeow", `jev-fabric-${name}`),
   );
+const installedModules = new Map();
 for (const name of localPackages) {
   const module = await import(
     pathToFileURL(
@@ -82,7 +83,65 @@ for (const name of localPackages) {
   );
   if (Object.keys(module).length === 0)
     throw new Error(`installed package has no importable exports: ${name}`);
+  installedModules.set(name, module);
 }
+
+const adapters = installedModules.get("adapters");
+const webMcpBinding = adapters.bindWebMcpAdvisory(
+  {
+    origin: "https://tools.example.test",
+    frameId: "main",
+    toolName: "lookup_record",
+    inputSchema: { type: "object", additionalProperties: false },
+    policyEpoch: "policy-1",
+    stateVersion: "state-1",
+  },
+  {
+    origin: "https://tools.example.test",
+    frameId: "main",
+    toolName: "lookup_record",
+    inputSchema: { type: "object", additionalProperties: false },
+  },
+);
+if (
+  webMcpBinding.advisoryOnly !== true ||
+  webMcpBinding.execution !== "NOT_SUPPORTED"
+)
+  throw new Error("installed WebMCP boundary is not advisory-only");
+
+const typeSafeProvider = installedModules.get("provider-typesafe");
+const gatewayProvider = typeSafeProvider.createVercelGatewayJevProvider({
+  apiKey: "offline-smoke-key",
+  client: {
+    systemOne: async () => ({
+      model: "typesafe-ai/jev",
+      usage: { input_tokens: 1, output_tokens: 0 },
+      answers: {
+        choice_1: {
+          type: "choice",
+          choice: "a",
+          probabilities: { a: 1, b: 0 },
+          confidence: 1,
+        },
+      },
+    }),
+  },
+});
+const gatewayResult = await gatewayProvider.evaluate({
+  id: "packed-gateway-smoke",
+  state: { fixture: true },
+  questions: [
+    {
+      id: "choice_1",
+      type: "choice",
+      instructions: "Choose the fixture answer",
+      criteria: { a: "Expected", b: "Unexpected" },
+      options: ["a", "b"],
+    },
+  ],
+});
+if (gatewayResult.model !== "typesafe-ai/jev")
+  throw new Error("installed Gateway factory did not preserve model identity");
 
 function run(args) {
   const result = spawnSync(process.execPath, [cli, ...args], {

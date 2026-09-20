@@ -32,6 +32,14 @@ before provider projection. The pack rejects their reintroduction, and an
 end-to-end driver regression inspects the exact provider request so benchmark
 targets cannot inflate a live result.
 
+Retained-public finance datasets now bind `dataset-manifest.json` to the exact
+builder manifest. Runtime loading verifies the complete retained builder
+closure, cross-checks identity and temporal split, consumes the verified cases
+and visual byte snapshots, and carries the remaining evidence snapshots into
+atomic artifact publication. Raw source-cache replay remains the stricter
+pre-publication check; the unkeyed digest chain detects drift but does not claim
+publisher authentication.
+
 Finance state is snapshotted without invoking accessors, rejects C1 and
 bidirectional/isolate controls, revalidates direct-pack text and annotation
 hashes, and carries an expiry that is checked against the runtime's trusted

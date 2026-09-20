@@ -24,6 +24,7 @@ import {
   computeRebuildDigest,
   financeCandidateEvidenceHash,
   verifyFinanceBuilderDirectory,
+  verifyFinanceRetainedDatasetBundle,
 } from "../lib/verify.mjs";
 import {
   FINANCE_CHART_RENDERER,
@@ -64,6 +65,44 @@ test("accepts the canonical offline three-track fixture", async () => {
   assert.equal(result.caseCount, 9);
   assert.equal(result.sourceCount, 3);
   assert.match(result.rebuildDigest, /^sha256:[a-f0-9]{64}$/u);
+  assert.equal(result.schemaVersion, "finance.retained-dataset-bundle.v1");
+  assert.ok(!("casesBytes" in result));
+  assert.ok(!("evidenceFiles" in result));
+  assert.ok(!("visualArtifacts" in result));
+  assert.ok(JSON.stringify(result).length < 2_000);
+  const retainedBundle = await verifyFinanceRetainedDatasetBundle(
+    fixture.dataset,
+  );
+  const expectedEvidencePaths = [
+    "build-manifest.json",
+    "builder-config.json",
+    "labels.v1.json",
+    "provenance.jsonl",
+    "source-lock.json",
+    "split.v1.json",
+  ] as const;
+  assert.deepEqual(
+    retainedBundle.evidenceFiles.map(({ path }) => path),
+    expectedEvidencePaths,
+  );
+  for (const evidence of retainedBundle.evidenceFiles) {
+    const retained = await readFile(join(fixture.dataset, evidence.path));
+    assert.equal(evidence.byteLength, retained.byteLength);
+    assert.equal(evidence.sha256, sha256(retained));
+    assert.deepEqual(Buffer.from(evidence.content), retained);
+  }
+  assert.equal(
+    result.buildManifestHash,
+    sha256(await readFile(join(fixture.dataset, "build-manifest.json"))),
+  );
+  assert.equal(
+    result.sourceLockHash,
+    sha256(await readFile(join(fixture.dataset, "source-lock.json"))),
+  );
+  assert.equal(
+    result.provenanceHash,
+    sha256(await readFile(join(fixture.dataset, "provenance.jsonl"))),
+  );
 });
 
 test("accepts multiple immutable sources for one track", async () => {
@@ -134,6 +173,207 @@ test("accepts multiple immutable sources for one track", async () => {
 
   const result = await verify(fixture);
   assert.equal((result as { sourceCount: number }).sourceCount, 4);
+});
+
+test("loads a retained dataset through the verified builder closure", async () => {
+  const fixture = await createFixture();
+  const { loadFinanceDataset } = await import("../../scripts/run.mjs");
+
+  const loaded = await loadFinanceDataset(fixture.dataset);
+
+  assert.equal(loaded.manifest.datasetId, "finance.public-fixture.v1");
+  assert.equal(
+    loaded.builderEvidence.schemaVersion,
+    "finance.retained-dataset-bundle.v1",
+  );
+  assert.equal(loaded.builderEvidence.caseCount, loaded.cases.length);
+  assert.deepEqual(
+    loaded.builderEvidence.evidenceFiles.map(({ path }) => path),
+    [
+      "build-manifest.json",
+      "builder-config.json",
+      "labels.v1.json",
+      "provenance.jsonl",
+      "source-lock.json",
+      "split.v1.json",
+    ],
+  );
+});
+
+test("rejects retained dataset drift before any finance driver can run", async () => {
+  const forgedCasesFixture = await createFixture();
+  const forgedCases = await readJsonLines(
+    join(forgedCasesFixture.dataset, "cases.jsonl"),
+  );
+  forgedCases[0].groupId = "forged-group";
+  await writeCanonicalJsonLines(
+    join(forgedCasesFixture.dataset, "cases.jsonl"),
+    forgedCases,
+  );
+  const forgedManifest = await readJson(
+    join(forgedCasesFixture.dataset, "dataset-manifest.json"),
+  );
+  forgedManifest.caseSetHash = sha256(
+    await readFile(join(forgedCasesFixture.dataset, "cases.jsonl")),
+  );
+  await writeJson(
+    join(forgedCasesFixture.dataset, "dataset-manifest.json"),
+    forgedManifest,
+  );
+  const { loadFinanceDataset } = await import("../../scripts/run.mjs");
+  await assert.rejects(
+    () => loadFinanceDataset(forgedCasesFixture.dataset),
+    /artifact (hash|size) mismatch: cases\.jsonl/u,
+  );
+
+  const splitFixture = await createFixture();
+  const splitManifest = await readJson(
+    join(splitFixture.dataset, "dataset-manifest.json"),
+  );
+  splitManifest.testStart = "2026-04-01T00:00:00.000Z";
+  await writeJson(
+    join(splitFixture.dataset, "dataset-manifest.json"),
+    splitManifest,
+  );
+  await assert.rejects(
+    () => loadFinanceDataset(splitFixture.dataset),
+    /split does not match builder evidence/u,
+  );
+
+  const policyFixture = await createFixture();
+  await writeFile(
+    join(policyFixture.dataset, "labels.v1.json"),
+    '{"schemaVersion":"1","tampered":true}\n',
+  );
+  await assert.rejects(
+    () => loadFinanceDataset(policyFixture.dataset),
+    /artifact (hash|size) mismatch: labels\.v1\.json/u,
+  );
+
+  const extraAssetFixture = await createFixture();
+  await writeFile(
+    join(extraAssetFixture.dataset, "assets", "unbound.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg"/>',
+  );
+  await assert.rejects(
+    () => loadFinanceDataset(extraAssetFixture.dataset),
+    /visual artifact file set does not match build manifest/u,
+  );
+});
+
+test("publishes the exact verified builder evidence snapshots", async () => {
+  const fixture = await createFixture();
+  const { loadFinanceDataset, writeFinanceArtifacts } = await import(
+    "../../scripts/run.mjs"
+  );
+  const dataset = await loadFinanceDataset(fixture.dataset);
+  const component = (role: "deterministic" | "host" | "jev") => ({
+    role,
+    providerId: `${role}-fixture`,
+    modelId: role === "deterministic" ? "none" : `${role}-model`,
+    modelVersion: role === "deterministic" ? "none" : `${role}-1.0.0`,
+    responseModel: role === "deterministic" ? "none" : `${role}-1.0.0`,
+    modelVersionEvidence: { kind: "response_exact" as const },
+    probabilitySemantics:
+      role === "deterministic"
+        ? ("none" as const)
+        : ("native_calibrated" as const),
+    pricing: null,
+  });
+  const host = component("host");
+  const jev = component("jev");
+  const runtime = {
+    questionSetHash: hash("1"),
+    policyVersion: "1",
+    featureSetHash: hash("2"),
+    hardware: "fixture-cpu",
+    region: "offline",
+    concurrency: 1,
+    timeoutMs: 1_000,
+    architectures: {
+      deterministic_only: {
+        components: [component("deterministic")],
+        combinerId: "deterministic",
+        combinerVersion: "1",
+      },
+      host_model_only: {
+        components: [host],
+        combinerId: "host",
+        combinerVersion: "1",
+      },
+      jev_advisory: {
+        components: [jev],
+        combinerId: "jev",
+        combinerVersion: "1",
+      },
+      host_plus_jev: {
+        components: [host, jev],
+        combinerId: "restrictive-join",
+        combinerVersion: "1",
+      },
+    },
+  };
+  const runArtifacts = {
+    run: { runtime, traceSetHash: sha256("") },
+    traces: [],
+    tracesJsonl: "",
+    dataset,
+    runtimeEvidence: [],
+  };
+  const output = join(fixture.root, "published");
+  await writeFinanceArtifacts(output, runArtifacts);
+  assert.ok(dataset.builderEvidence !== null);
+  for (const evidence of dataset.builderEvidence.evidenceFiles) {
+    assert.deepEqual(
+      await readFile(join(output, evidence.path)),
+      Buffer.from(evidence.content),
+    );
+  }
+  const published = await loadFinanceDataset(output);
+  assert.equal(
+    published.builderEvidence?.rebuildDigest,
+    dataset.builderEvidence.rebuildDigest,
+  );
+
+  await assert.rejects(
+    () =>
+      writeFinanceArtifacts(join(fixture.root, "forged-split"), {
+        ...runArtifacts,
+        dataset: {
+          ...dataset,
+          manifest: {
+            ...dataset.manifest,
+            testStart: "2026-04-01T00:00:00.000Z",
+          },
+        },
+      }),
+    /finance builder evidence split does not match/u,
+  );
+
+  const tamperedPolicy = new TextEncoder().encode(
+    '{"schemaVersion":"1","tampered":true}\n',
+  );
+  const substitutedEvidence = {
+    ...dataset.builderEvidence,
+    evidenceFiles: dataset.builderEvidence.evidenceFiles.map((file) =>
+      file.path === "labels.v1.json"
+        ? {
+            ...file,
+            content: tamperedPolicy,
+            byteLength: tamperedPolicy.byteLength,
+            sha256: sha256(tamperedPolicy),
+          }
+        : file,
+    ),
+  };
+  await assert.rejects(
+    () =>
+      writeFinanceArtifacts(join(fixture.root, "substituted"), {
+        ...runArtifacts,
+        dataset: { ...dataset, builderEvidence: substitutedEvidence },
+      }),
+    /artifact (hash|size) mismatch: labels\.v1\.json/u,
+  );
 });
 
 test("rejects unsorted source ids even when every source is immutable", async () => {
@@ -485,6 +725,11 @@ test("binds financial-text claims and source spans to retained source bytes", as
     (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
   );
   spanCase.trustedProjection.text.candidateBindings[0].sourceSpan.byteStart -= 1;
+  const reboundEvidenceHash = financeCandidateEvidenceHash(
+    spanCase.trustedProjection.text.candidateBindings[0],
+  );
+  spanCase.goldAtomic[4].evidenceHash = reboundEvidenceHash;
+  spanCase.goldAtomic[5].evidenceHash = reboundEvidenceHash;
   await writeCanonicalJsonLines(
     join(spanFixture.dataset, "cases.jsonl"),
     spanCases,
@@ -759,6 +1004,47 @@ test("rejects artifact hash and size mismatches", async () => {
   );
 });
 
+test("bounds retained visual assets before reading their bytes", async () => {
+  const oversized = await createFixture();
+  const oversizedManifest = await readJson(
+    join(oversized.dataset, "build-manifest.json"),
+  );
+  oversizedManifest.artifacts.assets[0].bytes = 2 * 1024 * 1024 + 1;
+  oversizedManifest.rebuildDigest = computeRebuildDigest(oversizedManifest);
+  await writeJson(
+    join(oversized.dataset, "build-manifest.json"),
+    oversizedManifest,
+  );
+  await assert.rejects(
+    () => verifyFinanceRetainedDatasetBundle(oversized.dataset),
+    /visual artifact exceeds the per-file byte limit/u,
+  );
+
+  const aggregate = await createFixture();
+  const aggregateManifest = await readJson(
+    join(aggregate.dataset, "build-manifest.json"),
+  );
+  const sourceUses = aggregateManifest.artifacts.assets[0].sourceUses;
+  aggregateManifest.artifacts.assets = Array.from(
+    { length: 51 },
+    (_, index) => ({
+      path: `assets/bounded-${index}.svg`,
+      sha256: `sha256:${index.toString(16).padStart(64, "0")}`,
+      bytes: 2 * 1024 * 1024,
+      sourceUses,
+    }),
+  ).sort((left, right) => left.path.localeCompare(right.path));
+  aggregateManifest.rebuildDigest = computeRebuildDigest(aggregateManifest);
+  await writeJson(
+    join(aggregate.dataset, "build-manifest.json"),
+    aggregateManifest,
+  );
+  await assert.rejects(
+    () => verifyFinanceRetainedDatasetBundle(aggregate.dataset),
+    /visual artifacts exceed the aggregate byte limit/u,
+  );
+});
+
 test("rejects nondeterministic rebuild digests", async () => {
   const first = await createFixture();
   const second = await createFixture();
@@ -993,6 +1279,23 @@ async function createFixture(): Promise<Fixture> {
   };
   manifest.rebuildDigest = computeRebuildDigest(manifest as BuildManifest);
   await writeJson(join(dataset, "build-manifest.json"), manifest);
+  const buildManifestHash = sha256(
+    await readFile(join(dataset, "build-manifest.json")),
+  );
+  await writeJson(join(dataset, "dataset-manifest.json"), {
+    schemaVersion: "1",
+    datasetId: manifest.datasetId,
+    sourceUrl: "https://example.invalid/finance-public-fixture",
+    caseSetHash: sha256(caseBytes),
+    buildManifestHash,
+    license: "Public fixture source rights are bound in source-lock.json",
+    evidenceClass: manifest.evidenceClass,
+    redistributionAllowed: true,
+    containsSensitiveData: false,
+    splitMethod: manifest.split.method,
+    trainEnd: manifest.split.trainEnd,
+    testStart: manifest.split.testStart,
+  });
   return { root, dataset, cache };
 }
 

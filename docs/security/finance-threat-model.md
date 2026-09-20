@@ -92,6 +92,12 @@ Assumptions and open questions:
   to a same-privilege process racing path replacement. Failed staging
   directories are retained for operator inspection instead of recursively
   deleted through a mutable path.
+- Retained-public datasets carry a dataset-to-build-manifest hash edge, and the
+  loader verifies the complete retained cases, provenance, policy, source-lock,
+  and visual-asset closure before a driver runs. These unkeyed hashes detect
+  drift and substitution inside the closure; they do not authenticate a
+  publisher. The separate pre-publication verifier must still replay locked raw
+  source bytes from a trusted cache.
 - The visual extractor and axes verification are independently tested; Fabric
   verifies their declared binding, not their semantic correctness.
 - Retained benchmark visuals are stronger than live extractor claims: the

@@ -385,6 +385,31 @@ async function validateArtifactLayout(directory: string): Promise<void> {
     ["run.json", "file"],
     ["traces.jsonl", "file"],
   ]);
+  const manifestBytes = await boundedRead(
+    join(directory, "dataset-manifest.json"),
+    1_000_000,
+  );
+  let manifest: { readonly buildManifestHash?: unknown };
+  try {
+    manifest = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(manifestBytes),
+    ) as { readonly buildManifestHash?: unknown };
+  } catch (cause) {
+    throw new TypeError("finance dataset manifest is not valid UTF-8 JSON", {
+      cause,
+    });
+  }
+  if (manifest.buildManifestHash !== undefined) {
+    for (const path of [
+      "build-manifest.json",
+      "builder-config.json",
+      "labels.v1.json",
+      "provenance.jsonl",
+      "source-lock.json",
+      "split.v1.json",
+    ])
+      expected.set(path, "file");
+  }
   const entries = await readdir(directory, { withFileTypes: true });
   invariant(
     entries.length === expected.size &&

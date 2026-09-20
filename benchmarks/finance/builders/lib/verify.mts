@@ -1,3 +1,4 @@
+import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module, { type ValidateFunction } from "ajv/dist/2020.js";
@@ -26,6 +27,9 @@ const tracks = [
 const splits = ["calibration", "test"] as const;
 const dayMs = 24 * 60 * 60 * 1000;
 const maximumSources = 10_000;
+const maximumVisualAssets = 10_000;
+const maximumVisualAssetBytes = 2 * 1024 * 1024;
+const maximumVisualAssetAggregateBytes = 100 * 1024 * 1024;
 const financeBaseQuestionIds = [
   "finance-route",
   "finance-anomaly",
@@ -188,10 +192,31 @@ export interface VerifyFinanceBuilderOptions {
 }
 
 export interface FinanceBuilderVerification {
+  readonly schemaVersion: "finance.retained-dataset-bundle.v1";
   readonly datasetId: string;
   readonly caseCount: number;
   readonly sourceCount: number;
   readonly rebuildDigest: string;
+  readonly buildManifestHash: string;
+  readonly sourceLockHash: string;
+  readonly provenanceHash: string;
+}
+
+export interface FinanceRetainedDatasetBundle
+  extends FinanceBuilderVerification {
+  readonly evidenceClass: SourceLock["evidenceClass"];
+  readonly split: Readonly<BuildManifest["split"]>;
+  readonly casesHash: string;
+  readonly casesBytes: Uint8Array;
+  readonly evidenceFiles: readonly FinanceBuilderEvidenceFile[];
+  readonly visualArtifacts: readonly FinanceBuilderEvidenceFile[];
+}
+
+export interface FinanceBuilderEvidenceFile {
+  readonly path: string;
+  readonly sha256: string;
+  readonly byteLength: number;
+  readonly content: Uint8Array;
 }
 
 export async function verifyFinanceBuilderDirectory(
@@ -214,10 +239,52 @@ export async function verifyFinanceBuilderDirectory(
   return verified;
 }
 
+/**
+ * Verifies the complete evidence closure retained beside a finance dataset.
+ * This detects local drift but does not authenticate a publisher and does not
+ * replace cache-backed verification of the original source bytes.
+ */
+export async function verifyFinanceRetainedDatasetBundle(
+  datasetDirectory: string,
+): Promise<FinanceRetainedDatasetBundle> {
+  return (await verifyRetainedClosure(datasetDirectory)).bundle;
+}
+
 async function verifyOne(
   datasetDirectory: string,
   cacheDirectory: string,
 ): Promise<FinanceBuilderVerification> {
+  const closure = await verifyRetainedClosure(datasetDirectory);
+  const sourceBytes = await verifySources(closure.sourceLock, cacheDirectory);
+  verifyCasesAndProvenance(
+    closure.cases,
+    closure.provenanceRecords,
+    closure.sourceLock,
+    closure.manifest,
+    closure.artifactBytes.assets,
+    sourceBytes,
+  );
+  const bundle = closure.bundle;
+  return Object.freeze({
+    schemaVersion: bundle.schemaVersion,
+    datasetId: bundle.datasetId,
+    caseCount: bundle.caseCount,
+    sourceCount: bundle.sourceCount,
+    rebuildDigest: bundle.rebuildDigest,
+    buildManifestHash: bundle.buildManifestHash,
+    sourceLockHash: bundle.sourceLockHash,
+    provenanceHash: bundle.provenanceHash,
+  });
+}
+
+async function verifyRetainedClosure(datasetDirectory: string): Promise<{
+  readonly bundle: FinanceRetainedDatasetBundle;
+  readonly sourceLock: SourceLock;
+  readonly manifest: BuildManifest;
+  readonly cases: readonly Record<string, unknown>[];
+  readonly provenanceRecords: readonly CaseProvenance[];
+  readonly artifactBytes: Awaited<ReturnType<typeof verifyArtifactsAndInputs>>;
+}> {
   const [sourceLockBytes, manifestBytes] = await Promise.all([
     readSafeRelativeFile(datasetDirectory, "source-lock.json", 2 * 1024 * 1024),
     readSafeRelativeFile(
@@ -240,12 +307,14 @@ async function verifyOne(
   if (manifest.sourceLockHash !== sha256(sourceLockBytes))
     throw new TypeError("sourceLockHash does not match source-lock.json bytes");
 
-  const sourceBytes = await verifySources(sourceLock, cacheDirectory);
+  verifySourceLockSemantics(sourceLock);
+  verifyVisualAssetBounds(manifest);
   const artifactBytes = await verifyArtifactsAndInputs(
     manifest,
     datasetDirectory,
     sourceLock,
   );
+  await verifyVisualAssetDirectory(manifest, datasetDirectory);
   verifyEmbargo(manifest);
 
   const cases = parseCanonicalJsonLines(artifactBytes.cases, "cases.jsonl");
@@ -260,7 +329,7 @@ async function verifyOne(
     sourceLock,
     manifest,
     artifactBytes.assets,
-    sourceBytes,
+    undefined,
   );
   verifyArtifactRetention(cases, provenanceRecords, sourceLock, manifest);
 
@@ -270,12 +339,106 @@ async function verifyOne(
       "rebuildDigest does not match the deterministic build inputs",
     );
 
-  return {
+  const evidenceFiles = Object.freeze(
+    [
+      evidenceFile("build-manifest.json", manifestBytes),
+      evidenceFile(manifest.inputs.config.path, artifactBytes.inputs.config),
+      evidenceFile(
+        manifest.inputs.labelPolicy.path,
+        artifactBytes.inputs.labelPolicy,
+      ),
+      evidenceFile("provenance.jsonl", artifactBytes.provenance),
+      evidenceFile("source-lock.json", sourceLockBytes),
+      evidenceFile(
+        manifest.inputs.splitPolicy.path,
+        artifactBytes.inputs.splitPolicy,
+      ),
+    ].sort((left, right) => left.path.localeCompare(right.path)),
+  );
+  const visualArtifacts = Object.freeze(
+    [...artifactBytes.assets.entries()]
+      .map(([path, bytes]) => evidenceFile(path, bytes))
+      .sort((left, right) => left.path.localeCompare(right.path)),
+  );
+  const bundle: FinanceRetainedDatasetBundle = Object.freeze({
+    schemaVersion: "finance.retained-dataset-bundle.v1",
     datasetId: manifest.datasetId,
+    evidenceClass: manifest.evidenceClass,
+    split: Object.freeze({ ...manifest.split }),
     caseCount: cases.length,
     sourceCount: sourceLock.sources.length,
     rebuildDigest: expectedDigest,
+    buildManifestHash: sha256(manifestBytes),
+    sourceLockHash: sha256(sourceLockBytes),
+    provenanceHash: sha256(artifactBytes.provenance),
+    casesHash: sha256(artifactBytes.cases),
+    casesBytes: Uint8Array.from(artifactBytes.cases),
+    evidenceFiles,
+    visualArtifacts,
+  });
+  return {
+    bundle,
+    sourceLock,
+    manifest,
+    cases,
+    provenanceRecords,
+    artifactBytes,
   };
+}
+
+function verifyVisualAssetBounds(manifest: BuildManifest): void {
+  if (manifest.artifacts.assets.length > maximumVisualAssets)
+    throw new TypeError("visual artifact count exceeds the retained limit");
+  let aggregateBytes = 0;
+  for (const asset of manifest.artifacts.assets) {
+    if (asset.bytes > maximumVisualAssetBytes)
+      throw new TypeError("visual artifact exceeds the per-file byte limit");
+    aggregateBytes += asset.bytes;
+    if (
+      !Number.isSafeInteger(aggregateBytes) ||
+      aggregateBytes > maximumVisualAssetAggregateBytes
+    )
+      throw new TypeError("visual artifacts exceed the aggregate byte limit");
+  }
+}
+
+async function verifyVisualAssetDirectory(
+  manifest: BuildManifest,
+  datasetDirectory: string,
+): Promise<void> {
+  const expectedNames = new Set(
+    manifest.artifacts.assets.map((asset) =>
+      asset.path.slice("assets/".length),
+    ),
+  );
+  const entries = await readdir(join(datasetDirectory, "assets"), {
+    withFileTypes: true,
+  });
+  if (
+    entries.length !== expectedNames.size ||
+    !entries.every(
+      (entry) =>
+        expectedNames.has(entry.name) &&
+        entry.isFile() &&
+        !entry.isSymbolicLink(),
+    )
+  )
+    throw new TypeError(
+      "visual artifact file set does not match build manifest",
+    );
+}
+
+function evidenceFile(
+  path: string,
+  bytes: Uint8Array,
+): FinanceBuilderEvidenceFile {
+  const content = Uint8Array.from(bytes);
+  return Object.freeze({
+    path,
+    sha256: sha256(content),
+    byteLength: content.byteLength,
+    content,
+  });
 }
 
 async function validateCanonicalFinanceCases(
@@ -341,10 +504,27 @@ async function verifySources(
   sourceLock: SourceLock,
   cacheDirectory: string,
 ): Promise<ReadonlyMap<string, Uint8Array>> {
+  verifySourceLockSemantics(sourceLock);
+  const sourceBytes = new Map<string, Uint8Array>();
+  for (const source of sourceLock.sources) {
+    const bytes = await readSafeRelativeFile(
+      cacheDirectory,
+      source.cachePath,
+      512 * 1024 * 1024,
+    );
+    if (bytes.byteLength !== source.pin.bytes)
+      throw new TypeError(`source size mismatch: ${source.id}`);
+    if (sha256(bytes) !== source.pin.sha256)
+      throw new TypeError(`source hash mismatch: ${source.id}`);
+    sourceBytes.set(source.id, bytes);
+  }
+  return sourceBytes;
+}
+
+function verifySourceLockSemantics(sourceLock: SourceLock): void {
   const ids = new Set<string>();
   const hashes = new Set<string>();
   const coveredTracks = new Set<Track>();
-  const sourceBytes = new Map<string, Uint8Array>();
   for (const source of sourceLock.sources) {
     if (ids.has(source.id))
       throw new TypeError(`duplicate source id: ${source.id}`);
@@ -362,23 +542,11 @@ async function verifySources(
       throw new TypeError(
         `unresolved retained-public rights for source: ${source.id}`,
       );
-
-    const bytes = await readSafeRelativeFile(
-      cacheDirectory,
-      source.cachePath,
-      512 * 1024 * 1024,
-    );
-    if (bytes.byteLength !== source.pin.bytes)
-      throw new TypeError(`source size mismatch: ${source.id}`);
-    if (sha256(bytes) !== source.pin.sha256)
-      throw new TypeError(`source hash mismatch: ${source.id}`);
-    sourceBytes.set(source.id, bytes);
   }
   for (const track of tracks) {
     if (!coveredTracks.has(track))
       throw new TypeError(`source lock does not cover ${track}`);
   }
-  return sourceBytes;
 }
 
 async function verifyArtifactsAndInputs(
@@ -389,6 +557,11 @@ async function verifyArtifactsAndInputs(
   readonly cases: Uint8Array;
   readonly provenance: Uint8Array;
   readonly assets: ReadonlyMap<string, Uint8Array>;
+  readonly inputs: Readonly<{
+    config: Uint8Array;
+    labelPolicy: Uint8Array;
+    splitPolicy: Uint8Array;
+  }>;
 }> {
   const artifacts = [
     manifest.artifacts.cases,
@@ -404,6 +577,9 @@ async function verifyArtifactsAndInputs(
   const hashes = new Set<string>();
   let cases: Uint8Array | undefined;
   let provenance: Uint8Array | undefined;
+  let config: Uint8Array | undefined;
+  let labelPolicy: Uint8Array | undefined;
+  let splitPolicy: Uint8Array | undefined;
   const assetDeclarations = new Set<ArtifactDeclaration>(
     manifest.artifacts.assets,
   );
@@ -418,7 +594,9 @@ async function verifyArtifactsAndInputs(
     const bytes = await readSafeRelativeFile(
       datasetDirectory,
       declaration.path,
-      100 * 1024 * 1024,
+      assetDeclarations.has(declaration)
+        ? maximumVisualAssetBytes
+        : 100 * 1024 * 1024,
     );
     if (bytes.byteLength !== declaration.bytes)
       throw new TypeError(`artifact size mismatch: ${declaration.path}`);
@@ -426,6 +604,9 @@ async function verifyArtifactsAndInputs(
       throw new TypeError(`artifact hash mismatch: ${declaration.path}`);
     if (declaration === manifest.artifacts.cases) cases = bytes;
     if (declaration === manifest.artifacts.provenance) provenance = bytes;
+    if (declaration === manifest.inputs.config) config = bytes;
+    if (declaration === manifest.inputs.labelPolicy) labelPolicy = bytes;
+    if (declaration === manifest.inputs.splitPolicy) splitPolicy = bytes;
     if (assetDeclarations.has(declaration))
       assetBytes.set(declaration.path, bytes);
   }
@@ -450,9 +631,20 @@ async function verifyArtifactsAndInputs(
         );
     }
   }
-  if (cases === undefined || provenance === undefined)
+  if (
+    cases === undefined ||
+    provenance === undefined ||
+    config === undefined ||
+    labelPolicy === undefined ||
+    splitPolicy === undefined
+  )
     throw new TypeError("required builder artifacts were not verified");
-  return { cases, provenance, assets: assetBytes };
+  return {
+    cases,
+    provenance,
+    assets: assetBytes,
+    inputs: Object.freeze({ config, labelPolicy, splitPolicy }),
+  };
 }
 
 function verifyEmbargo(manifest: BuildManifest): void {
@@ -585,7 +777,7 @@ function verifyCasesAndProvenance(
   sourceLock: SourceLock,
   manifest: BuildManifest,
   assetBytes: ReadonlyMap<string, Uint8Array>,
-  sourceBytes: ReadonlyMap<string, Uint8Array>,
+  sourceBytes: ReadonlyMap<string, Uint8Array> | undefined,
 ): void {
   if (caseRecords.length !== provenanceRecords.length)
     throw new TypeError("cases and provenance must have one-to-one coverage");
@@ -815,7 +1007,7 @@ function verifyTextCandidateBindings(
   caseId: string,
   sourceIds: readonly string[],
   sourceLock: SourceLock,
-  sourceBytes: ReadonlyMap<string, Uint8Array>,
+  sourceBytes: ReadonlyMap<string, Uint8Array> | undefined,
 ): readonly Record<string, unknown>[] {
   const text = requiredRecord(trustedProjection.text, "trustedProjection.text");
   const bindings = requiredArray(
@@ -854,16 +1046,25 @@ function verifyTextCandidateBindings(
     throw new TypeError(`text claim bindings are incomplete for ${caseId}`);
   if (hasClaimBindings.every(Boolean) !== (claims !== undefined))
     throw new TypeError(`text claims and bindings mismatch for ${caseId}`);
-  const sourcesByHash = new Map<string, Uint8Array>();
+  const sourcesByHash = new Map<
+    string,
+    Readonly<{ bytes: number; content?: Uint8Array }>
+  >();
   const sourceById = new Map(
     sourceLock.sources.map((source) => [source.id, source]),
   );
   for (const sourceId of sourceIds) {
     const source = sourceById.get(sourceId);
-    const bytes = sourceBytes.get(sourceId);
-    if (source === undefined || bytes === undefined)
+    const bytes = sourceBytes?.get(sourceId);
+    if (
+      source === undefined ||
+      (sourceBytes !== undefined && bytes === undefined)
+    )
       throw new TypeError(`text source is unavailable for ${caseId}`);
-    sourcesByHash.set(source.pin.sha256, bytes);
+    sourcesByHash.set(source.pin.sha256, {
+      bytes: source.pin.bytes,
+      ...(bytes === undefined ? {} : { content: bytes }),
+    });
   }
   const ids = new Set<string>();
   let excerptBytes = 0;
@@ -931,13 +1132,14 @@ function verifyTextCandidateBindings(
         !Number.isSafeInteger(byteEnd) ||
         byteEnd <= byteStart ||
         source === undefined ||
-        byteEnd > source.byteLength
+        byteEnd > source.bytes
       )
         throw new TypeError(`text source span mismatch for ${caseId}: ${id}`);
+      if (source.content === undefined) continue;
       let retainedExcerpt: string;
       try {
         retainedExcerpt = new TextDecoder("utf-8", { fatal: true }).decode(
-          source.subarray(byteStart, byteEnd),
+          source.content.subarray(byteStart, byteEnd),
         );
       } catch (error) {
         throw new TypeError(

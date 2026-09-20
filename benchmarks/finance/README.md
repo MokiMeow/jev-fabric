@@ -56,9 +56,18 @@ request size, concurrency, and gateway route must remain visible.
 
 ## Retained dataset contract
 
-A dataset directory contains `dataset-manifest.json`, `cases.jsonl`, and the
-visual SVGs referenced beneath `assets/`. The schemas require a SHA-256
-case-set digest, source and licence metadata,
+A retained-public dataset directory contains `dataset-manifest.json`,
+`cases.jsonl`, the visual SVGs referenced beneath `assets/`, and the builder
+closure: `build-manifest.json`, `source-lock.json`, `provenance.jsonl`,
+`builder-config.json`, `labels.v1.json`, and `split.v1.json`. The dataset
+manifest binds the exact build-manifest bytes; that manifest in turn binds the
+source lock, cases, provenance, policies, configuration, and visual assets.
+The loader uses the verified case and asset byte snapshots rather than reading
+them again after verification. This unkeyed SHA-256 chain detects bundle drift;
+it does not authenticate the publisher. Synthetic and local exploratory
+fixtures may remain legacy bundle-less inputs during migration.
+
+The schemas also require a SHA-256 case-set digest, source and licence metadata,
 redistribution status, a forward-chaining time split, fixed evaluation times,
 and group isolation across calibration and test. Each regular case also carries
 exact atomic gold labels for the four fixed finance questions and for every
@@ -144,8 +153,11 @@ derived architecture provenance in the run metadata; do not hand-copy model
 identities. Budget tokens are conservative admission reservations, not billed
 usage reconciliation or a provider-side hard quota.
 
-A completed artifact directory contains the original dataset files and visual
-SVGs, `run.json`, canonical `traces.jsonl`, and an `evidence/` directory. The
+A completed retained-public artifact directory contains the original dataset
+manifest, builder closure, cases, and visual SVGs, plus `run.json`, canonical
+`traces.jsonl`, and an `evidence/` directory. The writer publishes the exact
+builder-evidence snapshots accepted by the loader; it does not reopen the
+source dataset after model execution. The
 run retains all twelve observe-gate policy artifacts and every calibration and
 test trace; calibration rows remain excluded from held-out metrics. The latter
 contains one canonical JSON document named `<sha256>.json` for each distinct
@@ -179,10 +191,13 @@ outcomes, incomplete provenance, and non-zero unsafe-execution attempts. It
 also rejects malformed, credential-bearing, cross-arm-inconsistent, missing,
 extra, tampered, or semantically mismatched runtime evidence.
 
-The separate [offline dataset-builder verifier](builders/README.md) checks
-hash-locked sources, rights records, deterministic build inputs, issuer or
-scenario-family split isolation, a 30-day embargo, and modality-bound
-look-ahead probes before a generated dataset reaches this runner.
+The separate [offline dataset-builder verifier](builders/README.md) additionally
+checks the original hash-locked source bytes from a content-addressed cache,
+rights records, deterministic build inputs, issuer or scenario-family split
+isolation, a 30-day embargo, and modality-bound look-ahead probes before a
+generated dataset reaches this runner. Published artifacts intentionally omit
+the raw source cache, so later validation proves retained closure and
+self-consistency, not upstream publisher identity or source authenticity.
 
 ## Trust boundary and claim limits
 

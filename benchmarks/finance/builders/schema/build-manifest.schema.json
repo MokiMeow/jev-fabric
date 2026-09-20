@@ -72,6 +72,7 @@
         "provenance": { "$ref": "#/$defs/artifact" },
         "assets": {
           "type": "array",
+          "maxItems": 10000,
           "items": { "$ref": "#/$defs/artifact" }
         }
       }

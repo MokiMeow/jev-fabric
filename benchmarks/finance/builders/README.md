@@ -54,6 +54,22 @@ tsx benchmarks/finance/builders/scripts/verify.mts \
 Compare two independently rebuilt directories with `--compare path/to/rebuild`.
 Both directories must verify independently and must have the same rebuild digest.
 
+The benchmark loader separately verifies the retained builder closure without
+requiring the raw source cache. Retained-public `dataset-manifest.json` files
+must include `buildManifestHash`, the SHA-256 of the exact
+`build-manifest.json` bytes. The loader follows that manifest's hashes through
+the source lock, cases, provenance, configuration, label and split policies,
+and every visual asset, then cross-checks dataset identity, evidence class,
+case set, and split dates. It returns exact verified byte snapshots so the
+artifact writer cannot silently publish files changed after loading.
+Visual retention is capped at 10,000 flat SVGs, 2 MiB per SVG, and 100 MiB in
+aggregate; all declared limits are checked before asset bytes are retained.
+
+This retained verification is an integrity check, not a signature. Only the
+cache-backed verifier above proves that filing excerpts and source spans match
+the locked source bytes; neither path authenticates who published the bundle.
+Keep signing or organizational trust policy outside this hash chain.
+
 The files in `fixtures/tiny` contain invented identifiers and values only. The
 tests construct a complete three-track dataset around those bytes:
 

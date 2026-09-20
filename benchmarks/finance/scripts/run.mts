@@ -52,6 +52,10 @@ import {
   readSafeRelativeFile,
 } from "../builders/lib/canonical.mjs";
 import {
+  type FinanceRetainedDatasetBundle,
+  verifyFinanceRetainedDatasetBundle,
+} from "../builders/lib/verify.mjs";
+import {
   FINANCE_CHART_RENDERER,
   FINANCE_VISUAL_MUTATION_ROUTES,
   renderFinanceChart,
@@ -89,6 +93,7 @@ export interface FinanceDatasetManifest {
   readonly datasetId: string;
   readonly sourceUrl: string;
   readonly caseSetHash: string;
+  readonly buildManifestHash?: string;
   readonly license: string;
   readonly evidenceClass: "SYNTHETIC" | "LOCAL_EXPLORATORY" | "RETAINED_PUBLIC";
   readonly redistributionAllowed: boolean;
@@ -242,6 +247,7 @@ export interface LoadedFinanceDataset {
     path: string;
     bytes: Uint8Array;
   }>[];
+  readonly builderEvidence: FinanceRetainedDatasetBundle | null;
 }
 
 export interface FinanceRunArtifacts {
@@ -261,22 +267,53 @@ export async function loadFinanceDataset(
   directory: string,
 ): Promise<LoadedFinanceDataset> {
   const manifestPath = join(directory, "dataset-manifest.json");
-  const casesPath = join(directory, "cases.jsonl");
-  await Promise.all([
-    assertRegularFile(manifestPath),
-    assertRegularFile(casesPath),
+  await assertRegularFile(manifestPath);
+  const [manifestBytes, manifestSchema, caseSchema] = await Promise.all([
+    boundedRead(manifestPath, 1_000_000),
+    readSchema("dataset-manifest.schema.jsonc"),
+    readSchema("case.schema.jsonc"),
   ]);
-  const [manifestBytes, casesBytes, manifestSchema, caseSchema] =
-    await Promise.all([
-      boundedRead(manifestPath, 1_000_000),
-      boundedRead(casesPath, maximumDatasetBytes),
-      readSchema("dataset-manifest.schema.jsonc"),
-      readSchema("case.schema.jsonc"),
-    ]);
   const manifest = JSON.parse(
     new TextDecoder().decode(manifestBytes),
   ) as FinanceDatasetManifest;
   validateSchema(manifestSchema, manifest, "finance dataset manifest");
+  const builderEvidence =
+    manifest.buildManifestHash === undefined
+      ? null
+      : await verifyFinanceRetainedDatasetBundle(directory);
+  if (manifest.evidenceClass === "RETAINED_PUBLIC")
+    invariant(
+      builderEvidence !== null,
+      "retained-public finance datasets require verified builder evidence",
+    );
+  if (builderEvidence !== null) {
+    invariant(
+      manifest.buildManifestHash === builderEvidence.buildManifestHash,
+      "finance dataset buildManifestHash does not match build-manifest.json",
+    );
+    invariant(
+      manifest.datasetId === builderEvidence.datasetId &&
+        manifest.evidenceClass === builderEvidence.evidenceClass,
+      "finance dataset identity does not match builder evidence",
+    );
+    invariant(
+      manifest.splitMethod === builderEvidence.split.method &&
+        manifest.trainEnd === builderEvidence.split.trainEnd &&
+        manifest.testStart === builderEvidence.split.testStart,
+      "finance dataset split does not match builder evidence",
+    );
+    invariant(
+      manifest.caseSetHash === builderEvidence.casesHash,
+      "finance dataset caseSetHash does not match builder evidence",
+    );
+  }
+  const casesBytes =
+    builderEvidence?.casesBytes ??
+    (await (async () => {
+      const casesPath = join(directory, "cases.jsonl");
+      await assertRegularFile(casesPath);
+      return boundedRead(casesPath, maximumDatasetBytes);
+    })());
   invariant(
     manifest.caseSetHash === sha256(casesBytes),
     "finance dataset caseSetHash does not match cases.jsonl",
@@ -296,15 +333,16 @@ export async function loadFinanceDataset(
     return value;
   });
   validateDatasetSemantics(manifest, cases);
-  const visualArtifacts = await validateRetainedVisualArtifacts(
-    directory,
-    cases,
-  );
+  const visualArtifacts =
+    builderEvidence?.visualArtifacts.map(({ path, content }) =>
+      Object.freeze({ path, bytes: Uint8Array.from(content) }),
+    ) ?? (await validateRetainedVisualArtifacts(directory, cases));
   return {
     manifest: deepFreeze(structuredClone(manifest)),
     cases: deepFreeze(structuredClone(cases)),
     casesBytes,
     visualArtifacts,
+    builderEvidence,
   };
 }
 
@@ -939,6 +977,9 @@ export async function writeFinanceArtifacts(
   const casesBytes = Uint8Array.from(artifacts.dataset.casesBytes);
   const tracesJsonl = String(artifacts.tracesJsonl);
   const visualArtifacts = validateVisualArtifactsForWrite(artifacts.dataset);
+  const builderEvidenceFiles = validateBuilderEvidenceForWrite(
+    artifacts.dataset,
+  );
   const runtimeEvidence = validateAndBindRuntimeEvidence(
     run.runtime as FinanceRuntimeProvenance,
     structuredClone(artifacts.runtimeEvidence),
@@ -998,10 +1039,31 @@ export async function writeFinanceArtifacts(
     ...visualArtifacts.map((artifact) =>
       writePinnedFile(staging, artifact.path, artifact.bytes),
     ),
+    ...builderEvidenceFiles.map((artifact) =>
+      writePinnedFile(staging, artifact.path, artifact.bytes),
+    ),
     ...evidenceFiles.map((evidence) =>
       writePinnedFile(staging, `evidence/${evidence.name}`, evidence.bytes),
     ),
   ]);
+  if (manifest.buildManifestHash !== undefined) {
+    const stagedBuilderEvidence = await verifyFinanceRetainedDatasetBundle(
+      staging.path,
+    );
+    invariant(
+      stagedBuilderEvidence.buildManifestHash === manifest.buildManifestHash &&
+        stagedBuilderEvidence.casesHash === manifest.caseSetHash &&
+        stagedBuilderEvidence.datasetId === manifest.datasetId &&
+        stagedBuilderEvidence.evidenceClass === manifest.evidenceClass,
+      "staged finance builder evidence does not match the retained manifest",
+    );
+    invariant(
+      stagedBuilderEvidence.split.method === manifest.splitMethod &&
+        stagedBuilderEvidence.split.trainEnd === manifest.trainEnd &&
+        stagedBuilderEvidence.split.testStart === manifest.testStart,
+      "staged finance builder evidence split does not match the retained manifest",
+    );
+  }
   await verifyPinnedDirectory(evidenceDirectory);
   await verifyPinnedDirectory(staging);
   await verifyPinnedDirectory(pinnedOutputParent);
@@ -1011,6 +1073,55 @@ export async function writeFinanceArtifacts(
     resolve(directory),
     canonicalOutputParent,
   );
+}
+
+function validateBuilderEvidenceForWrite(
+  dataset: LoadedFinanceDataset,
+): readonly Readonly<{ path: string; bytes: Uint8Array }>[] {
+  const evidence = dataset.builderEvidence;
+  if (evidence === null) {
+    invariant(
+      dataset.manifest.evidenceClass !== "RETAINED_PUBLIC" &&
+        dataset.manifest.buildManifestHash === undefined,
+      "retained-public finance artifacts require builder evidence",
+    );
+    return [];
+  }
+  invariant(
+    dataset.manifest.buildManifestHash === evidence.buildManifestHash &&
+      dataset.manifest.caseSetHash === evidence.casesHash &&
+      dataset.manifest.datasetId === evidence.datasetId,
+    "finance builder evidence does not match the retained manifest",
+  );
+  invariant(
+    dataset.manifest.splitMethod === evidence.split.method &&
+      dataset.manifest.trainEnd === evidence.split.trainEnd &&
+      dataset.manifest.testStart === evidence.split.testStart,
+    "finance builder evidence split does not match the retained manifest",
+  );
+  const expectedPaths = [
+    "build-manifest.json",
+    "builder-config.json",
+    "labels.v1.json",
+    "provenance.jsonl",
+    "source-lock.json",
+    "split.v1.json",
+  ];
+  invariant(
+    evidence.evidenceFiles.length === expectedPaths.length &&
+      evidence.evidenceFiles.every(
+        (file, index) => file.path === expectedPaths[index],
+      ),
+    "finance builder evidence has an unexpected file set",
+  );
+  return evidence.evidenceFiles.map((file) => {
+    const bytes = Uint8Array.from(file.content);
+    invariant(
+      bytes.byteLength === file.byteLength && sha256(bytes) === file.sha256,
+      `finance builder evidence changed after verification: ${file.path}`,
+    );
+    return Object.freeze({ path: file.path, bytes });
+  });
 }
 
 function validateVisualArtifactsForWrite(

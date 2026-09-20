@@ -51,6 +51,7 @@ export {
 export {
   bindFinanceAdvisoryEvidence,
   bindFinanceAdvisoryEvidenceWithText,
+  computeFinanceProjectionBindingHash,
   FinanceAdvisoryBoundaryError,
   financeAdvisoryStateSchema,
   FINANCE_ADVISORY_CONTRACT_VERSION,
@@ -63,6 +64,7 @@ export {
   type MarketAssetClass,
   type MarketSignalBucket,
   type TrustedFinanceProjection,
+  type TrustedFinanceProjectionPayload,
   type TrustedMarketSignal,
   type UntrustedVisualFinanceEvidence,
   type UntrustedTextFinanceEvidence,

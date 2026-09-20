@@ -68,7 +68,7 @@ const maximumRuntimeEvidenceFiles = 32;
 const maximumRuntimeEvidenceBytes = 64 * 1024;
 
 export interface FinanceBenchmarkCase {
-  readonly schemaVersion: "1";
+  readonly schemaVersion: "2";
   readonly id: string;
   readonly groupId: string;
   readonly track: FinanceTrack;

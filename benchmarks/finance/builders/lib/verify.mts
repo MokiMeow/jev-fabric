@@ -2,6 +2,7 @@ import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module, { type ValidateFunction } from "ajv/dist/2020.js";
+import { computeFinanceProjectionBindingHash } from "../../../../packages/adapters/src/index.js";
 import {
   FINANCE_CHART_RENDERER,
   FINANCE_VISUAL_MUTATION_ROUTES,
@@ -882,6 +883,21 @@ function verifyCasesAndProvenance(
     else if (benchmarkCase.visualArtifact !== undefined)
       throw new TypeError(
         `non-visual case has a visual artifact: ${record.caseId}`,
+      );
+    const projectionBindingHash = digest(
+      trustedProjection.projectionBindingHash,
+      "trustedProjection.projectionBindingHash",
+    );
+    const {
+      projectionBindingHash: _projectionBindingHash,
+      ...projectionPayload
+    } = trustedProjection;
+    if (
+      computeFinanceProjectionBindingHash(projectionPayload) !==
+      projectionBindingHash
+    )
+      throw new TypeError(
+        `projection binding hash mismatch for ${record.caseId}`,
       );
     const cutoffAt = requiredString(
       trustedProjection.cutoffAt,

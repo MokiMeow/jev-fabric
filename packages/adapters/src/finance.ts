@@ -168,7 +168,7 @@ export const trustedMarketSignalSchema = z
   .strict();
 export type TrustedMarketSignal = z.infer<typeof trustedMarketSignalSchema>;
 
-export const trustedFinanceProjectionSchema = z
+const trustedFinanceProjectionPayloadSchema = z
   .object({
     instrumentRef: referenceSchema,
     assetClass: marketAssetClassSchema,
@@ -247,9 +247,32 @@ export const trustedFinanceProjectionSchema = z
         path: ["signals"],
       });
   });
+export const trustedFinanceProjectionSchema =
+  trustedFinanceProjectionPayloadSchema.safeExtend({
+    projectionBindingHash: hashSchema,
+  });
+export type TrustedFinanceProjectionPayload = z.infer<
+  typeof trustedFinanceProjectionPayloadSchema
+>;
 export type TrustedFinanceProjection = z.infer<
   typeof trustedFinanceProjectionSchema
 >;
+
+const FINANCE_PROJECTION_BINDING_DOMAIN =
+  "jev-fabric/finance-projection-binding/v1";
+
+/**
+ * Seals the complete trusted finance identity, time, signal, and evidence
+ * projection. Evaluator-owned visual targets are deliberately excluded so the
+ * digest cannot become an enumerable answer-label side channel.
+ */
+export function computeFinanceProjectionBindingHash(
+  projectionInput: unknown,
+): `sha256:${string}` {
+  const snapshot = snapshotTrustedFinancePlainData(projectionInput);
+  const projection = trustedFinanceProjectionPayloadSchema.parse(snapshot);
+  return computeParsedFinanceProjectionBindingHash(projection);
+}
 
 export interface UntrustedVisualFinanceEvidence {
   readonly annotations: unknown;
@@ -501,6 +524,15 @@ export function bindFinanceAdvisoryEvidenceWithText(
       { cause },
     );
   }
+  const { projectionBindingHash, ...projectionPayload } = trusted;
+  if (
+    projectionBindingHash !==
+    computeParsedFinanceProjectionBindingHash(projectionPayload)
+  )
+    throw new FinanceAdvisoryBoundaryError(
+      "EVIDENCE_BINDING",
+      "finance advisory projection binding hash mismatch",
+    );
   const observedAt = Date.parse(trusted.observedAt);
   const windowStart = Date.parse(trusted.windowStart);
   const windowEnd = Date.parse(trusted.windowEnd);
@@ -728,6 +760,68 @@ function bindText(
 
 function sha256(value: string): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function computeParsedFinanceProjectionBindingHash(
+  projection: TrustedFinanceProjectionPayload,
+): `sha256:${string}` {
+  const visual = projection.visual;
+  const payload = {
+    instrumentRef: projection.instrumentRef,
+    assetClass: projection.assetClass,
+    venue: projection.venue,
+    sourceId: projection.sourceId,
+    sourceHash: projection.sourceHash,
+    featureSetId: projection.featureSetId,
+    featureSetVersion: projection.featureSetVersion,
+    featureSetHash: projection.featureSetHash,
+    observedAt: projection.observedAt,
+    windowStart: projection.windowStart,
+    windowEnd: projection.windowEnd,
+    cutoffAt: projection.cutoffAt,
+    maxAgeMs: projection.maxAgeMs,
+    signals: projection.signals,
+    ...(visual === undefined
+      ? {}
+      : {
+          visual: {
+            mode: visual.mode,
+            extractorId: visual.extractorId,
+            extractorVersion: visual.extractorVersion,
+            imageHash: visual.imageHash,
+            axesVerified: visual.axesVerified,
+            sourceBindingHash: visual.sourceBindingHash,
+            schemaVersion: visual.schemaVersion,
+            renderer: visual.renderer,
+          },
+        }),
+    ...(projection.text === undefined ? {} : { text: projection.text }),
+  };
+  return sha256(
+    `${FINANCE_PROJECTION_BINDING_DOMAIN}\u0000${canonicalFinanceJson(payload)}`,
+  );
+}
+
+function canonicalFinanceJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean")
+    return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value))
+      throw new TypeError("finance projection contains a non-finite number");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value))
+    return `[${value.map((entry) => canonicalFinanceJson(entry)).join(",")}]`;
+  if (!value || typeof value !== "object")
+    throw new TypeError("finance projection is outside the JSON domain");
+  return `{${Object.keys(value)
+    .sort()
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${canonicalFinanceJson((value as Record<string, unknown>)[key])}`,
+    )
+    .join(",")}}`;
 }
 
 const MAX_TRUSTED_PLAIN_DEPTH = 12;

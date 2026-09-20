@@ -40,6 +40,14 @@ atomic artifact publication. Raw source-cache replay remains the stricter
 pre-publication check; the unkeyed digest chain detects drift but does not claim
 publisher authentication.
 
+Finance case schema version 2 now requires a domain-separated trusted
+projection binding over instrument identity, time windows, signals, and
+non-target evidence metadata. The adapter and retained builder verifier reject
+instrument or signal-time substitution before provider use, while the seal and
+all counterfactual metadata remain absent from provider-visible state. Version
+1 case producers must compute the seal and regenerate their case-set and build
+manifests.
+
 Finance state is snapshotted without invoking accessors, rejects C1 and
 bidirectional/isolate controls, revalidates direct-pack text and annotation
 hashes, and carries an expiry that is checked against the runtime's trusted

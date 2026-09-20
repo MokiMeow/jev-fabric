@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   bindFinanceAdvisoryEvidence,
   bindFinanceAdvisoryEvidenceWithText,
+  computeFinanceProjectionBindingHash,
   FinanceAdvisoryBoundaryError,
   financeAdvisoryStateSchema,
 } from "../src/index.js";
@@ -36,7 +37,14 @@ const visualArtifactBindingHash = (
     }),
   );
 const at = "2026-09-20T10:00:00.000+00:00";
-const trusted = {
+const sealFinanceProjection = <T extends Record<string, unknown>>(input: T) => {
+  const { projectionBindingHash: _ignored, ...projection } = input;
+  return {
+    ...projection,
+    projectionBindingHash: computeFinanceProjectionBindingHash(projection),
+  } as const;
+};
+const trustedProjection = {
   instrumentRef: "ref:instrument-1",
   assetClass: "equity",
   venue: "test-venue",
@@ -73,13 +81,14 @@ const trusted = {
     artifactBindingHash: visualArtifactBindingHash(hash("e"), hash("f")),
   },
 } as const;
+const trusted = sealFinanceProjection(trustedProjection);
 
 const candidateExcerpts = [
   "Revenue increased by 8% year over year.",
   "Management retained its previously published outlook.",
 ] as const;
-const trustedWithText = {
-  ...trusted,
+const trustedWithTextProjection = {
+  ...trustedProjection,
   text: {
     mode: "bounded_excerpts",
     extractorId: "filing-text-extractor",
@@ -92,17 +101,18 @@ const trustedWithText = {
     ],
   },
 } as const;
+const trustedWithText = sealFinanceProjection(trustedWithTextProjection);
 const candidateClaims = [
   "Revenue increased year over year.",
   "Management retained its outlook.",
 ] as const;
-const trustedWithClaims = {
-  ...trustedWithText,
+const trustedWithClaimsProjection = {
+  ...trustedProjection,
   text: {
-    ...trustedWithText.text,
+    ...trustedWithTextProjection.text,
     candidateBindings: [
       {
-        ...trustedWithText.text.candidateBindings[0],
+        ...trustedWithTextProjection.text.candidateBindings[0],
         claimHash: sha256(candidateClaims[0]),
         sourceSpan: {
           byteStart: 0,
@@ -111,7 +121,7 @@ const trustedWithClaims = {
         },
       },
       {
-        ...trustedWithText.text.candidateBindings[1],
+        ...trustedWithTextProjection.text.candidateBindings[1],
         claimHash: sha256(candidateClaims[1]),
         sourceSpan: {
           byteStart: 100,
@@ -122,8 +132,65 @@ const trustedWithClaims = {
     ],
   },
 } as const;
+const trustedWithClaims = sealFinanceProjection(trustedWithClaimsProjection);
 
 describe("finance advisory evidence boundary", () => {
+  it("rejects instrument and signal-time substitutions against the projection seal", () => {
+    const sealedTrusted = trusted;
+
+    const result = bindFinanceAdvisoryEvidence(
+      sealedTrusted,
+      { annotations: ["Series remains inside the declared axis"] },
+      Date.parse(at) + 500,
+    );
+    expect(result).not.toHaveProperty("projectionBindingHash");
+    expect(JSON.stringify(result)).not.toContain(
+      sealedTrusted.projectionBindingHash,
+    );
+
+    const { projectionBindingHash: _removed, ...unsealedTrusted } =
+      sealedTrusted;
+    for (const invalid of [
+      unsealedTrusted,
+      { ...unsealedTrusted, projectionBindingHash: "sha256:not-a-digest" },
+    ])
+      expect(() =>
+        bindFinanceAdvisoryEvidence(
+          invalid,
+          { annotations: ["Series remains inside the declared axis"] },
+          Date.parse(at) + 500,
+        ),
+      ).toThrowError(
+        expect.objectContaining<Partial<FinanceAdvisoryBoundaryError>>({
+          code: "INVALID_INPUT",
+        }),
+      );
+
+    for (const substituted of [
+      { ...sealedTrusted, instrumentRef: "ref:instrument-2" },
+      {
+        ...sealedTrusted,
+        signals: [
+          {
+            ...sealedTrusted.signals[0],
+            asOf: "2026-09-20T09:59:00.000+00:00",
+          },
+        ],
+      },
+    ])
+      expect(() =>
+        bindFinanceAdvisoryEvidence(
+          substituted,
+          { annotations: ["Series remains inside the declared axis"] },
+          Date.parse(at) + 500,
+        ),
+      ).toThrowError(
+        expect.objectContaining<Partial<FinanceAdvisoryBoundaryError>>({
+          code: "EVIDENCE_BINDING",
+        }),
+      );
+  });
+
   it("binds code-derived buckets and structured visual annotations without execution", () => {
     const result = bindFinanceAdvisoryEvidence(
       trusted,
@@ -167,19 +234,22 @@ describe("finance advisory evidence boundary", () => {
     ).toThrow(/stale/u);
     expect(() =>
       bindFinanceAdvisoryEvidence(
-        { ...trusted, cutoffAt: "2026-09-20T10:00:01.000+00:00" },
+        sealFinanceProjection({
+          ...trusted,
+          cutoffAt: "2026-09-20T10:00:01.000+00:00",
+        }),
         { annotations: [] },
         Date.parse(at) + 500,
       ),
     ).toThrow(/no-lookahead/u);
     expect(() =>
       bindFinanceAdvisoryEvidence(
-        {
+        sealFinanceProjection({
           ...trusted,
           signals: [
             { ...trusted.signals[0], asOf: "2026-09-20T10:00:01.000+00:00" },
           ],
-        },
+        }),
         { annotations: [] },
         Date.parse(at) + 500,
       ),
@@ -343,7 +413,7 @@ describe("finance advisory evidence boundary", () => {
     expect(result.execution).toBe("NOT_SUPPORTED");
 
     const changedSpan = bindFinanceAdvisoryEvidenceWithText(
-      {
+      sealFinanceProjection({
         ...trustedWithClaims,
         text: {
           ...trustedWithClaims.text,
@@ -358,7 +428,7 @@ describe("finance advisory evidence boundary", () => {
             trustedWithClaims.text.candidateBindings[1],
           ],
         },
-      },
+      }),
       { annotations: [] },
       { excerpts: [...candidateExcerpts], claims: [...candidateClaims] },
       Date.parse(at) + 500,
@@ -521,7 +591,7 @@ describe("finance advisory evidence boundary", () => {
       Date.parse(at) + 500,
     );
     const renamed = bindFinanceAdvisoryEvidenceWithText(
-      {
+      sealFinanceProjection({
         ...trustedWithText,
         text: {
           ...trustedWithText.text,
@@ -529,13 +599,13 @@ describe("finance advisory evidence boundary", () => {
             (binding, index) => ({ ...binding, id: `renamed-${index}` }),
           ),
         },
-      },
+      }),
       { annotations: [] },
       { excerpts: [...candidateExcerpts] },
       Date.parse(at) + 500,
     );
     const reordered = bindFinanceAdvisoryEvidenceWithText(
-      {
+      sealFinanceProjection({
         ...trustedWithText,
         text: {
           ...trustedWithText.text,
@@ -544,7 +614,7 @@ describe("finance advisory evidence boundary", () => {
             trustedWithText.text.candidateBindings[0],
           ],
         },
-      },
+      }),
       { annotations: [] },
       { excerpts: [...candidateExcerpts].reverse() },
       Date.parse(at) + 500,
@@ -897,7 +967,10 @@ describe("finance advisory evidence boundary", () => {
   it("classifies semantic boundary failures without parsing messages", () => {
     try {
       bindFinanceAdvisoryEvidence(
-        { ...trusted, cutoffAt: "2026-09-20T10:00:01.000+00:00" },
+        sealFinanceProjection({
+          ...trusted,
+          cutoffAt: "2026-09-20T10:00:01.000+00:00",
+        }),
         { annotations: [] },
         Date.parse(at) + 500,
       );

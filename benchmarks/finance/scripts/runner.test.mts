@@ -13,7 +13,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import type { FinanceAdvisoryState } from "../../../packages/adapters/src/index.js";
+import {
+  computeFinanceProjectionBindingHash,
+  type FinanceAdvisoryState,
+} from "../../../packages/adapters/src/index.js";
 import {
   type FinanceAtomicEvidenceLedger,
   type FinanceBenchmarkTrace,
@@ -100,7 +103,7 @@ function benchmarkCase(
           )
           .digest("hex")}`;
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     id: prefix,
     groupId: `${prefix}-group`,
     track,
@@ -155,47 +158,53 @@ function benchmarkCase(
             compilerInput,
           },
         }),
-    trustedProjection: {
-      instrumentRef: "ref:instrument.fixture",
-      assetClass: "equity",
-      venue: "fixture.venue",
-      sourceId: "fixture.source",
-      sourceHash: hash("e"),
-      featureSetId: "fixture.features",
-      featureSetVersion: "1",
-      featureSetHash: hash("f"),
-      observedAt,
-      windowStart:
-        split === "calibration"
-          ? "2026-01-15T11:00:00.000Z"
-          : "2026-02-15T11:00:00.000Z",
-      windowEnd:
-        split === "calibration"
-          ? "2026-01-15T11:30:00.000Z"
-          : "2026-02-15T11:30:00.000Z",
-      cutoffAt:
-        split === "calibration"
-          ? "2026-01-15T11:50:00.000Z"
-          : "2026-02-15T11:50:00.000Z",
-      maxAgeMs: 3_600_000,
-      signals: [
-        {
-          id: "volatility.bucket",
-          bucket: "normal",
-          definitionHash: hash("1"),
-          evidenceHash: hash("2"),
-          asOf: probe
-            ? split === "calibration"
-              ? "2026-01-15T11:55:00.000Z"
-              : "2026-02-15T11:55:00.000Z"
-            : split === "calibration"
-              ? "2026-01-15T11:40:00.000Z"
-              : "2026-02-15T11:40:00.000Z",
-        },
-      ],
-      ...(visual === undefined ? {} : { visual }),
-      ...(text === undefined ? {} : { text }),
-    },
+    trustedProjection: (() => {
+      const projection = {
+        instrumentRef: "ref:instrument.fixture",
+        assetClass: "equity",
+        venue: "fixture.venue",
+        sourceId: "fixture.source",
+        sourceHash: hash("e"),
+        featureSetId: "fixture.features",
+        featureSetVersion: "1",
+        featureSetHash: hash("f"),
+        observedAt,
+        windowStart:
+          split === "calibration"
+            ? "2026-01-15T11:00:00.000Z"
+            : "2026-02-15T11:00:00.000Z",
+        windowEnd:
+          split === "calibration"
+            ? "2026-01-15T11:30:00.000Z"
+            : "2026-02-15T11:30:00.000Z",
+        cutoffAt:
+          split === "calibration"
+            ? "2026-01-15T11:50:00.000Z"
+            : "2026-02-15T11:50:00.000Z",
+        maxAgeMs: 3_600_000,
+        signals: [
+          {
+            id: "volatility.bucket",
+            bucket: "normal",
+            definitionHash: hash("1"),
+            evidenceHash: hash("2"),
+            asOf: probe
+              ? split === "calibration"
+                ? "2026-01-15T11:55:00.000Z"
+                : "2026-02-15T11:55:00.000Z"
+              : split === "calibration"
+                ? "2026-01-15T11:40:00.000Z"
+                : "2026-02-15T11:40:00.000Z",
+          },
+        ],
+        ...(visual === undefined ? {} : { visual }),
+        ...(text === undefined ? {} : { text }),
+      } as const;
+      return {
+        ...projection,
+        projectionBindingHash: computeFinanceProjectionBindingHash(projection),
+      };
+    })(),
     untrustedEvidence: {
       ...(visual === undefined
         ? {}

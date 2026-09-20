@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { computeFinanceProjectionBindingHash } from "../../../../packages/adapters/src/index.js";
 import {
   canonicalJson,
   readSafeRelativeFile,
@@ -103,6 +104,38 @@ test("accepts the canonical offline three-track fixture", async () => {
     result.provenanceHash,
     sha256(await readFile(join(fixture.dataset, "provenance.jsonl"))),
   );
+});
+
+test("rejects trusted instrument and signal-time substitutions after outer rehashing", async () => {
+  for (const mutate of [
+    (projection: Record<string, unknown>) => {
+      projection.instrumentRef = "ref:substituted.instrument";
+    },
+    (projection: Record<string, unknown>) => {
+      const signals = projection.signals as Record<string, unknown>[];
+      const signal = signals[0];
+      if (signal === undefined)
+        throw new TypeError("fixture signal is missing");
+      signal.asOf = "2025-03-15T11:58:00.000Z";
+    },
+  ]) {
+    const fixture = await createFixture();
+    const casesPath = join(fixture.dataset, "cases.jsonl");
+    const cases = await readJsonLines(casesPath);
+    const benchmarkCase = cases.find(
+      (entry) =>
+        entry.track === "market_surveillance" &&
+        entry.split === "test" &&
+        entry.lookaheadProbe === false,
+    );
+    if (benchmarkCase === undefined)
+      throw new TypeError("fixture benchmark case is missing");
+    mutate(benchmarkCase.trustedProjection);
+    await writeCanonicalJsonLines(casesPath, cases);
+    await refreshManifest(fixture.dataset);
+
+    await assert.rejects(verify(fixture), /projection binding hash mismatch/u);
+  }
 });
 
 test("accepts multiple immutable sources for one track", async () => {
@@ -646,6 +679,7 @@ test("rejects mismatched and duplicate financial-text candidate bindings", async
   );
   mismatchedCase.trustedProjection.text.candidateBindings[0].excerptHash =
     hash("9");
+  resealBenchmarkCase(mismatchedCase);
   await writeCanonicalJsonLines(
     join(mismatched.dataset, "cases.jsonl"),
     mismatchedCases,
@@ -730,6 +764,7 @@ test("binds financial-text claims and source spans to retained source bytes", as
   );
   spanCase.goldAtomic[4].evidenceHash = reboundEvidenceHash;
   spanCase.goldAtomic[5].evidenceHash = reboundEvidenceHash;
+  resealBenchmarkCase(spanCase);
   await writeCanonicalJsonLines(
     join(spanFixture.dataset, "cases.jsonl"),
     spanCases,
@@ -850,6 +885,7 @@ test("binds compiled visual mutations to their artifact and gold route", async (
       expectedRoute: forgedVisual.expectedRoute,
     }),
   );
+  resealBenchmarkCase(forgedCase);
   await writeCanonicalJsonLines(
     join(forgedHashes.dataset, "cases.jsonl"),
     forgedCases,
@@ -1414,6 +1450,8 @@ function caseRecord(
       trustedProjection.visual as Record<string, unknown>
     ).imageHash;
   }
+  trustedProjection.projectionBindingHash =
+    computeFinanceProjectionBindingHash(trustedProjection);
   const goldAtomic: Record<string, unknown>[] = [
     {
       questionId: "finance-route",
@@ -1459,7 +1497,7 @@ function caseRecord(
     );
   }
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     id,
     groupId: `${track}.${split}.group`,
     track,
@@ -1600,6 +1638,14 @@ async function refreshManifest(dataset: string): Promise<void> {
   manifest.artifacts.provenance.bytes = provenanceBytes.byteLength;
   manifest.rebuildDigest = computeRebuildDigest(manifest);
   await writeJson(join(dataset, "build-manifest.json"), manifest);
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: mutation tests intentionally exercise malformed case objects.
+function resealBenchmarkCase(benchmarkCase: any): void {
+  const { projectionBindingHash: _ignored, ...projection } =
+    benchmarkCase.trustedProjection;
+  benchmarkCase.trustedProjection.projectionBindingHash =
+    computeFinanceProjectionBindingHash(projection);
 }
 
 async function verify(fixture: Fixture): Promise<unknown> {

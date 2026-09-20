@@ -414,6 +414,14 @@ test("provider-visible visual state excludes evaluator-owned target labels", asy
   assert.equal(serialized.includes("mutationId"), false);
   assert.equal(serialized.includes("expectedRoute"), false);
   assert.equal(serialized.includes("artifactBindingHash"), false);
+  assert.equal(serialized.includes("projectionBindingHash"), false);
+  assert.equal(serialized.includes("counterfactual"), false);
+  assert.equal(serialized.includes("wrong_instrument"), false);
+  assert.equal(serialized.includes("temporal_scramble"), false);
+  assert.equal(serialized.includes("donorCaseId"), false);
+  assert.equal(serialized.includes("expectedOutcome"), false);
+  assert.equal(serialized.includes(state.instrumentRef), false);
+  assert.equal(serialized.includes(state.observedAt), false);
   assert.equal(serialized.includes("faithful_render"), false);
   const publicMutationRoutes = {
     faithful_render: "observe",

@@ -136,6 +136,14 @@ must verify chart axes, units, timezone, source binding, crop identity, and
 cutoff before the annotations reach Jev. Preserve the image digest and
 extractor version, not the image itself, in the advisory state.
 
+The trusted projection also carries an evaluator-only, domain-separated seal
+over instrument identity, time boundaries, signal-to-timestamp associations,
+and non-target evidence bindings. The host recomputes it before temporal or
+visual processing and rejects substitutions before any provider call. The seal
+is never sent to Jev and does not authenticate the publisher; retained public
+evidence still depends on the dataset manifest chain and the repository's
+external publication trust.
+
 The benchmark's canonical SVG compiler emits a versioned renderer identity,
 mutation id, expected route, image hash, source-binding hash, and one artifact
 hash over that complete tuple. The offline verifier and trusted adapter validate

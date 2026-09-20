@@ -69,7 +69,16 @@ fixtures may remain legacy bundle-less inputs during migration.
 
 The schemas also require a SHA-256 case-set digest, source and licence metadata,
 redistribution status, a forward-chaining time split, fixed evaluation times,
-and group isolation across calibration and test. Each regular case also carries
+and group isolation across calibration and test. The case contract now uses
+schema version `2`. Each case carries a domain-separated
+`projectionBindingHash` over its trusted instrument identity, source, feature
+definition, temporal window, signals, and non-target evidence bindings. Both
+the adapter and retained builder verifier recompute that seal. A swapped
+instrument or changed signal timestamp is rejected before a provider call. The
+seal is evaluator-only and is removed before provider projection. It is an
+unkeyed integrity binding, not publisher authentication; migration from case
+schema version `1` requires the dataset builder to compute the new field and
+regenerate the case-set and build manifests. Each regular case also carries
 exact atomic gold labels for the four fixed finance questions and for every
 source-bound claim or citation question created for that case. Dynamic labels
 retain the candidate id and evidence hash; the question id must use the pack's

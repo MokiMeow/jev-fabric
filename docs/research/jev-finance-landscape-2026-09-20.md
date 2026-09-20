@@ -207,8 +207,8 @@ documents text or JSON state rather than image input. Reproducible benchmark
 runs therefore pin the concrete model, disable SDK/Fabric retries, retain both
 token counts, price from an explicit dated table, and put OCR/vision upstream
 of Jev. See [models](https://docs.typesafe.ai/models),
-[JavaScript SDK](https://docs.typesafe.ai/sdks/javascript), and
-[System One API](https://docs.typesafe.ai/api-reference/system-one).
+[JavaScript SDK](https://docs.typesafe.ai/sdk/javascript), and
+[System One API](https://docs.typesafe.ai/api).
 Gateway comparisons must also retain the transport route separately. If a
 gateway exposes only `typesafe-ai/jev` and not the concrete upstream version,
 the artifact is route-bound and cannot claim immutable model reproduction.
@@ -228,6 +228,21 @@ label agreement, total-variation distribution shift, joint correctness,
 regressions, recoveries, and valid-pair coverage. Agreement without independent
 gold remains stability evidence only; empty or missing pairs cannot become a
 zero-error accuracy claim.
+
+A subsequent pinned review of
+[`jevcal@ae8f314`](https://github.com/abhixhek/jevcal/tree/ae8f3144d69c9cb0e5e0a2c17f70b9d14714cb9f)
+found a complementary operational warning: that project reports two-decimal
+probabilities and occasional answer differences for identical live requests.
+Fabric has not reproduced either observation, so they remain community evidence,
+not a claim about the service. The reusable lesson is to keep repeat-call drift
+separate from batching, paraphrase, option-order, question-order, and state-order
+drift. The public robustness evaluator now emits an explicit result for every
+intervention family; a stable family cannot average away a weak one, and an
+unmeasured family remains `empty` rather than becoming a zero-error result.
+Fintech schema v3 retains those family results while its request-provenance trace
+schema remains v2. The current fintech comparison supplies batching pairs only,
+so every other family is honestly empty until a separately preregistered run
+provides matching evidence.
 
 A separate same-week
 [structured-output comparison](https://github.com/iammrduncan/typesafe-ai-benchmark)

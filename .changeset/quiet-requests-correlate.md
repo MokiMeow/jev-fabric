@@ -30,3 +30,7 @@ Update public runtime validation dependencies to Zod 4.6.5 after exercising
 the complete schema, package, benchmark, and release compatibility gates.
 Keep Zod declaration subpaths external to the CLI declaration bundle so the
 published surface does not traverse its CommonJS locale modules.
+Report paired categorical robustness separately for batching, paraphrase,
+option-order, question-order, state-order, and repeat-call interventions so a
+stable family cannot mask drift in another. Fintech evidence schema v3 retains
+those intervention-level results while preserving trace schema v2.

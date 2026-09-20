@@ -1,12 +1,15 @@
 import { isProxy } from "node:util/types";
 
-export type RobustnessIntervention =
-  | "batching"
-  | "paraphrase"
-  | "option_order"
-  | "question_order"
-  | "state_order"
-  | "repeat";
+export const robustnessInterventions = Object.freeze([
+  "batching",
+  "paraphrase",
+  "option_order",
+  "question_order",
+  "state_order",
+  "repeat",
+] as const);
+
+export type RobustnessIntervention = (typeof robustnessInterventions)[number];
 
 export interface CategoricalDecisionObservation {
   readonly probabilities: Readonly<Record<string, number>>;
@@ -21,7 +24,7 @@ export interface PairedCategoricalObservation {
   readonly gold?: string;
 }
 
-export interface PairedCategoricalRobustness {
+export interface PairedCategoricalRobustnessSummary {
   readonly pairCount: number;
   readonly labeledPairCount: number;
   readonly agreementCount: number;
@@ -42,14 +45,29 @@ export interface PairedCategoricalRobustness {
   readonly reason?: "empty";
 }
 
-const interventions = new Set<RobustnessIntervention>([
-  "batching",
-  "paraphrase",
-  "option_order",
-  "question_order",
-  "state_order",
-  "repeat",
-]);
+export interface PairedCategoricalRobustness
+  extends PairedCategoricalRobustnessSummary {
+  /** Prevents one stable intervention from masking drift in another. */
+  readonly byFamily: Readonly<
+    Record<RobustnessIntervention, PairedCategoricalRobustnessSummary>
+  >;
+}
+
+const interventions = new Set<RobustnessIntervention>(robustnessInterventions);
+
+interface RobustnessAccumulator {
+  pairCount: number;
+  labeledPairCount: number;
+  agreementCount: number;
+  referenceCorrect: number;
+  variantCorrect: number;
+  jointCorrect: number;
+  regressionCount: number;
+  recoveryCount: number;
+  stableErrorCount: number;
+  totalVariationSum: number;
+  maxTotalVariation: number;
+}
 
 /**
  * Measures paired sensitivity without treating agreement as correctness.
@@ -68,19 +86,12 @@ export function pairedCategoricalRobustness(
   if (rows.length > 1_000_000)
     throw new TypeError("rows exceed the paired robustness limit");
   assertPlainRowsArray(rows);
-  if (rows.length === 0) return emptyResult();
 
   const pairIds = new Set<string>();
-  let agreementCount = 0;
-  let referenceCorrect = 0;
-  let variantCorrect = 0;
-  let jointCorrect = 0;
-  let regressionCount = 0;
-  let recoveryCount = 0;
-  let stableErrorCount = 0;
-  let labeledPairCount = 0;
-  let totalVariationSum = 0;
-  let maxTotalVariation = 0;
+  const overall = createAccumulator();
+  const familyAccumulators = Object.fromEntries(
+    robustnessInterventions.map((family) => [family, createAccumulator()]),
+  ) as Record<RobustnessIntervention, RobustnessAccumulator>;
 
   for (const row of rows) {
     assertPlainRow(row);
@@ -92,8 +103,9 @@ export function pairedCategoricalRobustness(
     if (pairIds.has(row.pairId))
       throw new TypeError(`duplicate pair id: ${row.pairId}`);
     pairIds.add(row.pairId);
-    if (!interventions.has(row.family))
+    if (!isRobustnessIntervention(row.family))
       throw new TypeError(`unknown robustness intervention: ${row.family}`);
+    const family: RobustnessIntervention = row.family;
 
     const reference = validateDecision(row.reference, "reference");
     const variant = validateDecision(row.variant, "variant");
@@ -102,7 +114,7 @@ export function pairedCategoricalRobustness(
     if (JSON.stringify(referenceLabels) !== JSON.stringify(variantLabels))
       throw new TypeError("reference and variant must contain the same labels");
 
-    if (reference.selected === variant.selected) agreementCount++;
+    const agreed = reference.selected === variant.selected;
     const totalVariation =
       referenceLabels.reduce(
         (sum, label) =>
@@ -113,24 +125,102 @@ export function pairedCategoricalRobustness(
           ),
         0,
       ) / 2;
-    totalVariationSum += totalVariation;
-    maxTotalVariation = Math.max(maxTotalVariation, totalVariation);
-
-    if (row.gold === undefined) continue;
-    if (!reference.probabilities.has(row.gold))
-      throw new TypeError("gold must be a reference and variant label");
-    labeledPairCount++;
-    const isReferenceCorrect = reference.selected === row.gold;
-    const isVariantCorrect = variant.selected === row.gold;
-    if (isReferenceCorrect) referenceCorrect++;
-    if (isVariantCorrect) variantCorrect++;
-    if (isReferenceCorrect && isVariantCorrect) jointCorrect++;
-    else if (isReferenceCorrect) regressionCount++;
-    else if (isVariantCorrect) recoveryCount++;
-    else stableErrorCount++;
+    let correctness:
+      | { readonly reference: boolean; readonly variant: boolean }
+      | undefined;
+    if (row.gold !== undefined) {
+      if (!reference.probabilities.has(row.gold))
+        throw new TypeError("gold must be a reference and variant label");
+      correctness = {
+        reference: reference.selected === row.gold,
+        variant: variant.selected === row.gold,
+      };
+    }
+    recordObservation(overall, agreed, totalVariation, correctness);
+    recordObservation(
+      familyAccumulators[family],
+      agreed,
+      totalVariation,
+      correctness,
+    );
   }
 
-  const pairCount = rows.length;
+  return {
+    ...summarize(overall),
+    byFamily: Object.fromEntries(
+      robustnessInterventions.map((family) => [
+        family,
+        summarize(familyAccumulators[family]),
+      ]),
+    ) as Record<RobustnessIntervention, PairedCategoricalRobustnessSummary>,
+  };
+}
+
+function isRobustnessIntervention(
+  value: unknown,
+): value is RobustnessIntervention {
+  return (
+    typeof value === "string" &&
+    interventions.has(value as RobustnessIntervention)
+  );
+}
+
+function createAccumulator(): RobustnessAccumulator {
+  return {
+    pairCount: 0,
+    labeledPairCount: 0,
+    agreementCount: 0,
+    referenceCorrect: 0,
+    variantCorrect: 0,
+    jointCorrect: 0,
+    regressionCount: 0,
+    recoveryCount: 0,
+    stableErrorCount: 0,
+    totalVariationSum: 0,
+    maxTotalVariation: 0,
+  };
+}
+
+function recordObservation(
+  accumulator: RobustnessAccumulator,
+  agreed: boolean,
+  totalVariation: number,
+  correctness?: { readonly reference: boolean; readonly variant: boolean },
+): void {
+  accumulator.pairCount++;
+  if (agreed) accumulator.agreementCount++;
+  accumulator.totalVariationSum += totalVariation;
+  accumulator.maxTotalVariation = Math.max(
+    accumulator.maxTotalVariation,
+    totalVariation,
+  );
+  if (correctness === undefined) return;
+  accumulator.labeledPairCount++;
+  if (correctness.reference) accumulator.referenceCorrect++;
+  if (correctness.variant) accumulator.variantCorrect++;
+  if (correctness.reference && correctness.variant) accumulator.jointCorrect++;
+  else if (correctness.reference) accumulator.regressionCount++;
+  else if (correctness.variant) accumulator.recoveryCount++;
+  else accumulator.stableErrorCount++;
+}
+
+function summarize(
+  accumulator: RobustnessAccumulator,
+): PairedCategoricalRobustnessSummary {
+  if (accumulator.pairCount === 0) return emptySummary();
+  const {
+    pairCount,
+    labeledPairCount,
+    agreementCount,
+    referenceCorrect,
+    variantCorrect,
+    jointCorrect,
+    regressionCount,
+    recoveryCount,
+    stableErrorCount,
+    totalVariationSum,
+    maxTotalVariation,
+  } = accumulator;
   return {
     pairCount,
     labeledPairCount,
@@ -300,7 +390,7 @@ function ratio(numerator: number, denominator: number): number | null {
   return denominator === 0 ? null : numerator / denominator;
 }
 
-function emptyResult(): PairedCategoricalRobustness {
+function emptySummary(): PairedCategoricalRobustnessSummary {
   return {
     pairCount: 0,
     labeledPairCount: 0,

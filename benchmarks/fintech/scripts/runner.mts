@@ -276,7 +276,7 @@ export async function runFintechBenchmark(
   );
   const traces = traceGroups.flat();
   const partial: FintechEvidence = {
-    schemaVersion: "2",
+    schemaVersion: "3",
     runId: options.runId,
     executionState: "COMPLETED",
     createdAt: options.createdAt,

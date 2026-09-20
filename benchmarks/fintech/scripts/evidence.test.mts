@@ -147,7 +147,7 @@ function traceFor(
 function completedEvidence() {
   const dataset = buildDataset();
   const value = {
-    schemaVersion: "2",
+    schemaVersion: "3",
     runId: "fintech-contract-test-run",
     executionState: "COMPLETED",
     createdAt: "2026-09-20T00:00:00.000Z",
@@ -231,6 +231,15 @@ test("the public JSON Schema accepts both honest evidence states", async () => {
   oversized.pricing.inputNanoUsdPerToken = "9".repeat(1_000);
   assert.equal(validate(oversized), false);
   assert.match(JSON.stringify(validate.errors), /maxLength/u);
+
+  const legacy = completedEvidence() as unknown as Record<string, unknown>;
+  legacy.schemaVersion = "2";
+  assert.equal(validate(legacy), false);
+  assert.match(JSON.stringify(validate.errors), /schemaVersion/u);
+  assert.throws(
+    () => assertFintechEvidence(legacy),
+    /schema version is invalid/u,
+  );
 });
 
 test("NOT_RUN rejects traces and zero-shaped pseudo-metrics", async () => {
@@ -266,6 +275,19 @@ test("completed metrics are recomputed from group-disjoint retained traces", () 
     0,
   );
   assert.equal(evidence.metrics.batching.testSignalRobustness.jointAccuracy, 1);
+  assert.equal(
+    evidence.metrics.batching.testSignalRobustness.byFamily.batching.pairCount,
+    12,
+  );
+  assert.equal(
+    evidence.metrics.batching.testSignalRobustness.byFamily.batching
+      .labelAgreementRate,
+    1,
+  );
+  assert.equal(
+    evidence.metrics.batching.testSignalRobustness.byFamily.repeat.reason,
+    "empty",
+  );
   assert.equal(evidence.metrics.ablation.heldOutAccuracyDelta, 0.5);
   assert.equal(evidence.metrics.ablation.jevAddsMeasuredAccuracyValue, true);
 });
@@ -287,6 +309,18 @@ test("batching robustness exposes missing valid signal pairs instead of hiding t
     evidence.metrics.batching.testSignalRobustness.labelAgreementRate,
     1,
   );
+  assert.equal(
+    evidence.metrics.batching.testSignalRobustness.byFamily.batching.pairCount,
+    6,
+  );
+});
+
+test("robustness evidence cannot omit intervention-level results", () => {
+  const evidence = completedEvidence();
+  const robustness = evidence.metrics.batching
+    .testSignalRobustness as unknown as Record<string, unknown>;
+  delete robustness.byFamily;
+  assert.throws(() => assertFintechEvidence(evidence), /metrics.*recomputed/u);
 });
 
 test("counterbalanced arm order is retained and cannot be forged", () => {

@@ -67,6 +67,13 @@ unsafe attempts, malformed distributions, and dishonest token/cost accounting.
 Route-question calibration is reported only when that exact distribution was
 measured; unavailable calibration and accounting remain explicit.
 
+`pairedCategoricalRobustness(rows)` measures answer agreement, distribution
+shift, and labeled regressions without treating stability as correctness. Its
+`byFamily` result always reports batching, paraphrase, option order, question
+order, state order, and repeat-call interventions separately. Families with no
+pairs retain explicit `empty` evidence, preventing one stable intervention or
+an aggregate from hiding an unmeasured or unstable family.
+
 `evaluateHierarchicalConfidence(rows, config)` fits a leaf-reporting confidence
 threshold on one group-disjoint split, audits its group failure risk on a
 second split, and evaluates leaf-versus-parent fallback on a third. The policy

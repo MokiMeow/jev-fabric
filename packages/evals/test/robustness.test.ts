@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { pairedCategoricalRobustness } from "../src/robustness.js";
+import {
+  pairedCategoricalRobustness,
+  robustnessInterventions,
+  type RobustnessIntervention,
+} from "../src/robustness.js";
 
 const pair = (
   pairId: string,
-  family: "paraphrase" | "option_order",
+  family: RobustnessIntervention,
   reference: Readonly<Record<string, number>>,
   referenceSelected: string,
   variant: Readonly<Record<string, number>>,
@@ -18,6 +22,18 @@ const pair = (
 });
 
 describe("paired categorical robustness", () => {
+  it("publishes an immutable complete intervention catalogue", () => {
+    expect(Object.isFrozen(robustnessInterventions)).toBe(true);
+    expect(robustnessInterventions).toEqual([
+      "batching",
+      "paraphrase",
+      "option_order",
+      "question_order",
+      "state_order",
+      "repeat",
+    ]);
+  });
+
   it("separates answer stability, probability movement, and labeled outcomes", () => {
     const result = pairedCategoricalRobustness([
       pair(
@@ -59,6 +75,27 @@ describe("paired categorical robustness", () => {
     });
     expect(result.meanTotalVariation).toBeCloseTo(0.2);
     expect(result.maxTotalVariation).toBeCloseTo(0.3);
+    expect(result.byFamily.paraphrase).toMatchObject({
+      pairCount: 1,
+      agreementCount: 1,
+      labelAgreementRate: 1,
+      referenceAccuracy: 1,
+      variantAccuracy: 1,
+    });
+    expect(result.byFamily.paraphrase.meanTotalVariation).toBeCloseTo(0.1);
+    expect(result.byFamily.option_order).toMatchObject({
+      pairCount: 1,
+      agreementCount: 0,
+      labelAgreementRate: 0,
+      referenceAccuracy: 0,
+      variantAccuracy: 1,
+    });
+    expect(result.byFamily.option_order.meanTotalVariation).toBeCloseTo(0.3);
+    expect(result.byFamily.repeat).toMatchObject({
+      pairCount: 0,
+      labelAgreementRate: null,
+      reason: "empty",
+    });
   });
 
   it("keeps accuracy fields null when pairs have no independent gold labels", () => {
@@ -109,6 +146,20 @@ describe("paired categorical robustness", () => {
       meanTotalVariation: null,
       maxTotalVariation: null,
       reason: "empty",
+      byFamily: expect.objectContaining({
+        batching: expect.objectContaining({ pairCount: 0, reason: "empty" }),
+        paraphrase: expect.objectContaining({ pairCount: 0, reason: "empty" }),
+        option_order: expect.objectContaining({
+          pairCount: 0,
+          reason: "empty",
+        }),
+        question_order: expect.objectContaining({
+          pairCount: 0,
+          reason: "empty",
+        }),
+        state_order: expect.objectContaining({ pairCount: 0, reason: "empty" }),
+        repeat: expect.objectContaining({ pairCount: 0, reason: "empty" }),
+      }),
     });
   });
 

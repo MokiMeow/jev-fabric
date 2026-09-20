@@ -18,7 +18,7 @@
     "metrics"
   ],
   "properties": {
-    "schemaVersion": { "const": "2" },
+    "schemaVersion": { "const": "3" },
     "runId": { "$ref": "#/$defs/nonEmptyString" },
     "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
     "createdAt": { "$ref": "#/$defs/timestamp" },
@@ -412,7 +412,7 @@
     "nullableNonNegative": {
       "oneOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }]
     },
-    "pairedCategoricalRobustness": {
+    "pairedCategoricalRobustnessSummary": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -453,6 +453,82 @@
         "meanTotalVariation": { "$ref": "#/$defs/nullableProbability" },
         "maxTotalVariation": { "$ref": "#/$defs/nullableProbability" },
         "reason": { "const": "empty" }
+      }
+    },
+    "pairedCategoricalRobustness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pairCount",
+        "labeledPairCount",
+        "agreementCount",
+        "flipCount",
+        "regressionCount",
+        "recoveryCount",
+        "stableErrorCount",
+        "labelAgreementRate",
+        "flipRate",
+        "referenceAccuracy",
+        "variantAccuracy",
+        "jointAccuracy",
+        "regressionRate",
+        "recoveryRate",
+        "stableErrorRate",
+        "meanTotalVariation",
+        "maxTotalVariation",
+        "byFamily"
+      ],
+      "properties": {
+        "pairCount": { "type": "integer", "minimum": 0 },
+        "labeledPairCount": { "type": "integer", "minimum": 0 },
+        "agreementCount": { "type": "integer", "minimum": 0 },
+        "flipCount": { "type": "integer", "minimum": 0 },
+        "regressionCount": { "type": "integer", "minimum": 0 },
+        "recoveryCount": { "type": "integer", "minimum": 0 },
+        "stableErrorCount": { "type": "integer", "minimum": 0 },
+        "labelAgreementRate": { "$ref": "#/$defs/nullableProbability" },
+        "flipRate": { "$ref": "#/$defs/nullableProbability" },
+        "referenceAccuracy": { "$ref": "#/$defs/nullableProbability" },
+        "variantAccuracy": { "$ref": "#/$defs/nullableProbability" },
+        "jointAccuracy": { "$ref": "#/$defs/nullableProbability" },
+        "regressionRate": { "$ref": "#/$defs/nullableProbability" },
+        "recoveryRate": { "$ref": "#/$defs/nullableProbability" },
+        "stableErrorRate": { "$ref": "#/$defs/nullableProbability" },
+        "meanTotalVariation": { "$ref": "#/$defs/nullableProbability" },
+        "maxTotalVariation": { "$ref": "#/$defs/nullableProbability" },
+        "reason": { "const": "empty" },
+        "byFamily": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "batching",
+            "paraphrase",
+            "option_order",
+            "question_order",
+            "state_order",
+            "repeat"
+          ],
+          "properties": {
+            "batching": {
+              "$ref": "#/$defs/pairedCategoricalRobustnessSummary"
+            },
+            "paraphrase": {
+              "$ref": "#/$defs/pairedCategoricalRobustnessSummary"
+            },
+            "option_order": {
+              "$ref": "#/$defs/pairedCategoricalRobustnessSummary"
+            },
+            "question_order": {
+              "$ref": "#/$defs/pairedCategoricalRobustnessSummary"
+            },
+            "state_order": {
+              "$ref": "#/$defs/pairedCategoricalRobustnessSummary"
+            },
+            "repeat": {
+              "$ref": "#/$defs/pairedCategoricalRobustnessSummary"
+            }
+          }
+        }
       }
     },
     "latencyMetric": {

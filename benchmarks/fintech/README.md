@@ -33,7 +33,8 @@ cases never contribute to that accuracy. The verifier independently recomputes:
 - end-to-end and provider p50/p95/p99 latency;
 - batched/serial request, latency, cost, held-out case agreement, valid
   signal-pair coverage, signal agreement, total-variation distribution shift,
-  jointly correct signals, regressions, recoveries, and stable errors; and
+  jointly correct signals, regressions, recoveries, and stable errors, with
+  intervention-level results that cannot be hidden by an aggregate; and
 - the held-out accuracy delta against the deterministic no-Jev baseline.
 
 `jevAddsMeasuredAccuracyValue` means only that the batched arm beat the pinned
@@ -49,8 +50,10 @@ The executable contract in `scripts/evidence.mts` rejects an artifact unless:
 - calibration and test groups are disjoint;
 - every case commits to the exact provider-visible projected-state digest and
   each attempted Jev arm matches that frozen digest;
-- schema v2 retains exactly one hash-or-null upstream request-ID slot per
-  metered provider attempt, in attempt order; raw provider IDs are prohibited;
+- evidence schema v3 retains intervention-level robustness results; its trace
+  schema remains v2 and retains exactly one hash-or-null upstream request-ID
+  slot per metered provider attempt, in attempt order; raw provider IDs are
+  prohibited;
 - every case has exactly one no-Jev, batched, and serial trace;
 - the frozen `fintech-exception-routing-v2` task alternates which Jev arm runs
   first by canonical retained-case index, and every trace retains the expected
@@ -61,7 +64,8 @@ The executable contract in `scripts/evidence.mts` rejects an artifact unless:
   boolean agrees with `probabilityYes >= 0.5`;
 - paired batching robustness compares the same held-out case, signal, labels,
   and gold under batched and serial delivery; invalid or missing pairs reduce
-  explicit coverage rather than disappearing from the report;
+  explicit coverage rather than disappearing from the report, and unused
+  intervention families remain explicit empty evidence rather than zeros;
 - routes and route scores are reproducible from those answers;
 - invalid Jev output fails closed to `escalate` without invented probabilities;
 - cost is exactly reproducible from retained integer nano-USD pricing;

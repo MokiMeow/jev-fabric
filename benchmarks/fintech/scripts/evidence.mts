@@ -86,7 +86,7 @@ export interface FintechTrace {
 }
 
 export interface FintechEvidence {
-  readonly schemaVersion: "2";
+  readonly schemaVersion: "3";
   readonly runId: string;
   readonly executionState: "NOT_RUN" | "COMPLETED";
   readonly createdAt: string;
@@ -1322,7 +1322,7 @@ export function assertFintechEvidence(
     "fintech evidence",
   );
   invariant(
-    evidence.schemaVersion === "2",
+    evidence.schemaVersion === "3",
     "fintech evidence schema version is invalid",
   );
   nonEmptyString(evidence.runId, "run id");

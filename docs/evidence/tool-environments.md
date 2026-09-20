@@ -72,6 +72,21 @@ exporting, committing, building for release, or changing protected assets—the
 benchmark must include a rejected candidate. A positive score must not bypass
 the host's confirmation or authorization rule.
 
+## Visual-observation boundary
+
+The generic visual-observation envelope is conformance-only, not a vision or
+performance feature. It source-binds a chart, browser viewport, or DCC viewport
+artifact hash and bounded extractor metadata to an exact trusted environment
+projection; any annotation remains `untrusted_data_only`. It deliberately does
+not load image bytes or provide browser, renderer, OCR, pointer, keyboard, or
+desktop control.
+
+Before a visual fallback can contribute to a retained run, test capture-binding
+rejection for changed state/capability/frame-derived context/artifact/extractor,
+stale capture rejection, and hostile annotation rejection. Measure the external
+extractor and host action phases separately. No retained result currently
+measures visual extraction accuracy, browser speed, or a Jev advantage.
+
 ## WebMCP maturity and security
 
 WebMCP is relevant because it can expose structured web tools to an agent,

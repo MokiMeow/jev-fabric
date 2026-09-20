@@ -9,7 +9,11 @@ entitlements, supervisory controls, and every external side effect.
 This boundary follows TypeSafe's guidance to keep deterministic work and side
 effects in code and use System One for narrow judgments. It also reflects the
 [Jev 1.13 jaggedness guidance](https://docs.typesafe.ai/model-jaggedness/jev-1.13),
-which says arithmetic and date comparison belong in code.
+which says arithmetic and date comparison belong in code. The optional
+claim-to-excerpt check follows the decomposition in TypeSafe's
+[citation-check cookbook](https://docs.typesafe.ai/cookbooks/citation_check):
+host code binds the source candidate and one focused Choice judges its relation
+to the claim.
 
 ## Safe architecture
 
@@ -49,6 +53,16 @@ all excerpt, ordered-candidate, annotation, and visual-artifact hashes. Stable
 `FinanceAdvisoryBoundaryError` codes let callers distinguish look-ahead, stale,
 window, binding, and general input failures without matching error text.
 
+A trusted candidate binding may also include a SHA-256 hash for one proposed
+claim. Claim binding is all-or-none across the candidate list: the untrusted
+evidence must then supply one claim per excerpt in the same order, each limited
+to 1,000 characters and 8 KiB total. The emitted candidate retains `claim` and
+`excerpt` as separate `untrusted_data_only` strings. Trusted code may retain an
+optional byte range and section hash with a claim-bearing candidate. The host
+must first locate the exact excerpt in the authenticated document and calculate
+those offsets; the adapter validates and binds the metadata but cannot prove
+source authenticity or quote location without the source document itself.
+
 Then use `financeSurveillancePack`. Its finite output vocabulary is:
 
 | Result | Meaning | Permitted destination |
@@ -68,6 +82,14 @@ contingency, or none. Code maps those fine labels to broader parent families.
 The semantic result retains only the candidate id and fixed labels, explicitly
 named `provisionalFine` and `provisionalParent`; it never copies or generates a
 financial fact.
+
+For each claim-bearing candidate, the pack also asks one focused Choice question
+that compares only its exact `claim` and `excerpt` paths. `contradicts` escalates,
+`insufficient_context` investigates, and `supports` never grants authority or
+downgrades a route selected by another signal. Missing, malformed, duplicated,
+or extra citation answers fail closed. Citation confidence follows the same
+policy as claim classification: native calibrated confidence is retained only
+as unthresholded evidence, while all other probability semantics are ignored.
 
 No finance-specific confidence threshold has been calibrated yet. Therefore a
 non-`none` claim only upgrades the case to `investigate`, while malformed claim

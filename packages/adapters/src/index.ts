@@ -25,6 +25,14 @@ export {
   type WebMcpAdvisoryBinding,
 } from "./webmcp.js";
 export {
+  bindToolEnvironmentVisualObservation,
+  validateToolEnvironmentVisualObservation,
+  type ToolEnvironmentVisualObservation,
+  type TrustedToolEnvironmentVisualBinding,
+  type TrustedToolEnvironmentVisualCapture,
+  type UntrustedToolEnvironmentVisualEvidence,
+} from "./visual-observation.js";
+export {
   bindFinanceAdvisoryEvidence,
   bindFinanceAdvisoryEvidenceWithText,
   FinanceAdvisoryBoundaryError,

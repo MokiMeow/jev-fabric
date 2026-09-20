@@ -8,3 +8,4 @@ export * from "./replay.js";
 export * from "./report.js";
 export * from "./accounting.js";
 export * from "./finance.js";
+export * from "./finance-observe-gate.js";

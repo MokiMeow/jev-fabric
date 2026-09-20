@@ -67,6 +67,16 @@ by information learned by the later model, and is not evidence of predictive
 edge. Fabric adopts the separation of responsibilities and prospective,
 checkpointed evaluation pattern, not the forecasting claim or trade route.
 
+A same-day application scan also found
+[World Monitor's Jev expansion issue](https://github.com/koala73/worldmonitor/issues/8336),
+which starts with an opt-in headline classifier and ranks additional bounded
+intelligence judgments against existing code symbols. That is stronger product
+evidence than a free-form demo because it identifies the current deterministic
+decision point and places Jev behind a feature flag; it is still not accuracy or
+latency evidence. Fabric adopts the migration pattern—shadow an existing narrow
+decision, retain its old path as the comparator, and expand only after labeled
+evaluation—not its domain conclusions.
+
 Visual projects such as [jev-visual](https://github.com/hr98w/jev-visual) and
 [OpenJev](https://github.com/razorback16/openjev) explore local or
 Jev-compatible visual decision models. They are not evidence that the official
@@ -123,6 +133,10 @@ Two independent repositories added useful measurement patterns:
   strong batching benefits and failures on out-of-distribution formal tasks and
   authority-style prompt injection. These are community results, not Fabric
   results, and have not been reproduced here.
+- [Jev-is-odd](https://github.com/robipop22/Jev-is-odd) separates client
+  round-trip time, provider-reported usage, retries, and package-consumer tests.
+  Its 20-case result is intentionally tiny and task-specific; the reusable part
+  is the measurement disclosure, not the correctness headline.
 
 Fabric adopts the reproducibility ideas, not the headline numbers: retain raw
 attempt evidence, distinguish model time from network floor, preregister labels
@@ -194,6 +208,27 @@ extractor proposes literal spans; Jev selects among those candidates; code
 copies the selected span verbatim and parses money, dates, identifiers, and
 signs. Candidate count, normalization, locale, and arithmetic therefore remain
 testable code. Jev never invents an account number or monetary amount.
+
+The official
+[citation-check cookbook](https://docs.typesafe.ai/cookbooks/citation_check)
+adds a second useful stage for filings, news, and case notes. Code first proves
+that a quoted span occurs in the bound source; one focused Choice then labels
+the claim/span relationship as support, contradiction, or no support. Fabric's
+finance path adopts that decomposition with exact claim, excerpt, document,
+section, and byte-span bindings. A selected support label remains advisory
+evidence: it cannot authenticate the upstream document, establish materiality,
+or authorize an action. The cookbook's example confidence gate was measured on
+another model version and task, so it is not copied as a finance threshold.
+
+The current
+[SDE cascade cookbook](https://docs.typesafe.ai/cookbooks/sde_cascade) and
+[composite-scoring pattern](https://docs.typesafe.ai/patterns/composite-scoring)
+also clarify how a later calibrated finance cascade should compose evidence.
+Independent field checks may share one compact state and run together, but a
+serious failed check must route by an explicit any/maximum rule rather than be
+averaged away. Weighted dimensions are appropriate only for compensating,
+held-out-validated preferences. Fabric does not yet ship a finance threshold
+lock because its committed benchmark remains `NOT RUN`.
 
 The official
 [Jev 1.13 jaggedness note](https://docs.typesafe.ai/model-jaggedness/jev-1.13)

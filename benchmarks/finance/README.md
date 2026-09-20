@@ -5,6 +5,15 @@ three tracks by four architectures. It establishes neither performance nor
 trading results. Synthetic tests prove the runner and validator behave as
 specified; they are not model benchmarks.
 
+The eval package also exposes the experimental `finance.observe-gate.v1`
+building blocks. They compose the mandatory observe factors with a
+non-compensating minimum, fit only against caller-supplied calibration rows and
+a caller-declared **maximum observed** false-observe risk, and upgrade a rejected
+`observe` to `investigate`. The fitted value is empirical calibration evidence,
+not a statistical guarantee or permission to trade. This benchmark runner does
+not yet retain that gate's atomic ledgers or policy artifacts, so the committed
+`NOT_RUN` fixture deliberately makes no observe-gate performance claim.
+
 ## What the runner measures
 
 The tracks are market surveillance, structured visual evidence, and bounded

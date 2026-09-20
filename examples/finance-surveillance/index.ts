@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { bindFinanceAdvisoryEvidence } from "@mokimeow/jev-fabric-adapters";
+import { bindFinanceAdvisoryEvidenceWithText } from "@mokimeow/jev-fabric-adapters";
 import { financeSurveillancePack } from "@mokimeow/jev-fabric-packs";
 import { choice, runOfflineExample } from "../shared.js";
 
@@ -16,7 +16,9 @@ const observedAt = "2026-09-20T10:00:00.000+00:00";
 
 /** Synthetic and offline: code has already reduced exact market arithmetic. */
 export const example = () => {
-  const state = bindFinanceAdvisoryEvidence(
+  const excerpt = "The filing was published.";
+  const claim = "The filing was published.";
+  const state = bindFinanceAdvisoryEvidenceWithText(
     {
       instrumentRef: "ref:synthetic-instrument",
       assetClass: "equity",
@@ -67,8 +69,28 @@ export const example = () => {
           }),
         ),
       },
+      text: {
+        mode: "bounded_excerpts",
+        extractorId: "offline-filing-parser",
+        extractorVersion: "1.0.0",
+        documentHash: hash("1"),
+        sourceBindingHash: hash("2"),
+        candidateBindings: [
+          {
+            id: "publication-note",
+            excerptHash: sha256(excerpt),
+            claimHash: sha256(claim),
+            sourceSpan: {
+              byteStart: 0,
+              byteEnd: Buffer.byteLength(excerpt),
+              sectionHash: hash("3"),
+            },
+          },
+        ],
+      },
     },
     { annotations: ["No discontinuity detected in the bounded window"] },
+    { excerpts: [excerpt], claims: [claim] },
     Date.parse(observedAt) + 500,
   );
   return runOfflineExample({
@@ -92,6 +114,19 @@ export const example = () => {
         "insufficient",
       ]),
       choice("finance-untrusted-influence", "absent", ["absent", "present"]),
+      choice("finance-text-claim-cited:publication-note", "none", [
+        "performance_change",
+        "guidance_or_outlook_change",
+        "liquidity_or_going_concern",
+        "accounting_or_control_issue",
+        "legal_or_regulatory_contingency",
+        "none",
+      ]),
+      choice("finance-text-citation:publication-note", "supports", [
+        "supports",
+        "contradicts",
+        "insufficient_context",
+      ]),
     ],
     negativeState: { ...state, execution: "SUPPORTED" },
     expectedOutcome: "route",

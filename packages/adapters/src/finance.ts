@@ -61,21 +61,50 @@ const textExcerptSchema = z
     (value) => !hasControlCharacter(value),
     "must not contain control characters",
   );
+const textClaimSchema = z
+  .string()
+  .min(1)
+  .max(1_000)
+  .refine(
+    (value) => !hasControlCharacter(value),
+    "must not contain control characters",
+  );
 
 const MAX_TEXT_EXCERPTS = 8;
 const MAX_TEXT_EXCERPT_BYTES = 16_384;
+const MAX_TEXT_CLAIM_BYTES = 8_192;
 const textCandidateIdSchema = z
   .string()
   .regex(
     /^[A-Za-z][A-Za-z0-9._:-]{0,63}$/u,
     "must be a portable candidate identifier",
   );
+const trustedTextSourceSpanSchema = z
+  .object({
+    byteStart: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    byteEnd: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    sectionHash: hashSchema,
+  })
+  .strict()
+  .refine((value) => value.byteStart < value.byteEnd, {
+    message: "source span byteStart must be less than byteEnd",
+  });
 const trustedTextCandidateBindingSchema = z
   .object({
     id: textCandidateIdSchema,
     excerptHash: hashSchema,
+    claimHash: hashSchema.optional(),
+    sourceSpan: trustedTextSourceSpanSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.sourceSpan !== undefined && value.claimHash === undefined)
+      context.addIssue({
+        code: "custom",
+        message: "source span requires a bound claim",
+        path: ["sourceSpan"],
+      });
+  });
 
 export const marketAssetClassSchema = z.enum([
   "equity",
@@ -192,6 +221,19 @@ export const trustedFinanceProjectionSchema = z
             message: "candidate binding ids must be unique",
             path: ["candidateBindings"],
           });
+        const claimBindings = value.candidateBindings.filter(
+          (candidate) => candidate.claimHash !== undefined,
+        );
+        if (
+          claimBindings.length !== 0 &&
+          claimBindings.length !== value.candidateBindings.length
+        )
+          context.addIssue({
+            code: "custom",
+            message:
+              "candidate claim bindings must be supplied for all or none",
+            path: ["candidateBindings"],
+          });
       })
       .optional(),
   })
@@ -215,6 +257,7 @@ export interface UntrustedVisualFinanceEvidence {
 
 export interface UntrustedTextFinanceEvidence {
   readonly excerpts: unknown;
+  readonly claims?: unknown;
 }
 
 export const financeAdvisoryStateSchema = z
@@ -273,8 +316,31 @@ export const financeAdvisoryStateSchema = z
                 id: textCandidateIdSchema,
                 excerptHash: hashSchema,
                 excerpt: textExcerptSchema,
+                claimHash: hashSchema.optional(),
+                claim: textClaimSchema.optional(),
+                sourceSpan: trustedTextSourceSpanSchema.optional(),
               })
-              .strict(),
+              .strict()
+              .superRefine((candidate, context) => {
+                if (
+                  (candidate.claimHash === undefined) !==
+                  (candidate.claim === undefined)
+                )
+                  context.addIssue({
+                    code: "custom",
+                    message:
+                      "candidate claim and claim hash must be supplied together",
+                  });
+                if (
+                  candidate.sourceSpan !== undefined &&
+                  candidate.claimHash === undefined
+                )
+                  context.addIssue({
+                    code: "custom",
+                    message: "candidate source span requires a bound claim",
+                    path: ["sourceSpan"],
+                  });
+              }),
           )
           .min(1)
           .max(MAX_TEXT_EXCERPTS),
@@ -289,6 +355,18 @@ export const financeAdvisoryStateSchema = z
             message: "candidate ids must be unique",
             path: ["candidates"],
           });
+        const claimCandidates = value.candidates.filter(
+          (candidate) => candidate.claim !== undefined,
+        );
+        if (
+          claimCandidates.length !== 0 &&
+          claimCandidates.length !== value.candidates.length
+        )
+          context.addIssue({
+            code: "custom",
+            message: "candidate claims must be supplied for all or none",
+            path: ["candidates"],
+          });
         const totalBytes = value.candidates.reduce(
           (total, candidate) =>
             total + Buffer.byteLength(candidate.excerpt, "utf8"),
@@ -298,6 +376,20 @@ export const financeAdvisoryStateSchema = z
           context.addIssue({
             code: "custom",
             message: "excerpts exceed the total byte limit",
+            path: ["candidates"],
+          });
+        const totalClaimBytes = value.candidates.reduce(
+          (total, candidate) =>
+            total +
+            (candidate.claim === undefined
+              ? 0
+              : Buffer.byteLength(candidate.claim, "utf8")),
+          0,
+        );
+        if (totalClaimBytes > MAX_TEXT_CLAIM_BYTES)
+          context.addIssue({
+            code: "custom",
+            message: "claims exceed the total byte limit",
             path: ["candidates"],
           });
       })
@@ -464,7 +556,7 @@ export function bindFinanceAdvisoryEvidenceWithText(
     trustedText === undefined || untrustedTextInput === undefined
       ? undefined
       : bindEvidence(() =>
-          bindText(trustedText, textExcerpts(untrustedTextInput)),
+          bindText(trustedText, textEvidence(untrustedTextInput)),
         );
   return financeAdvisoryStateSchema.parse({
     contractVersion: FINANCE_ADVISORY_CONTRACT_VERSION,
@@ -546,12 +638,30 @@ function bindVisual(
 
 function bindText(
   trusted: NonNullable<TrustedFinanceProjection["text"]>,
-  excerptsInput: unknown,
+  evidence: { readonly excerpts: unknown; readonly claims?: unknown },
 ) {
-  const excerpts = sanitizeTextExcerpts(excerptsInput);
+  const excerpts = sanitizeTextExcerpts(evidence.excerpts);
   if (excerpts.length !== trusted.candidateBindings.length)
     throw new TypeError(
       "finance text candidate bindings and excerpts must have the same length",
+    );
+  const hasBoundClaims = trusted.candidateBindings.every(
+    (binding) => binding.claimHash !== undefined,
+  );
+  if (hasBoundClaims !== (evidence.claims !== undefined))
+    throw new TypeError(
+      "finance text claim bindings and claims must be supplied together",
+    );
+  const claims =
+    evidence.claims === undefined
+      ? undefined
+      : sanitizeTextClaims(evidence.claims);
+  if (
+    claims !== undefined &&
+    claims.length !== trusted.candidateBindings.length
+  )
+    throw new TypeError(
+      "finance text candidate bindings and claims must have the same length",
     );
   const candidates = excerpts.map((excerpt, index) => {
     const binding = trusted.candidateBindings[index];
@@ -560,10 +670,28 @@ function bindText(
     const excerptHash = sha256(excerpt);
     if (excerptHash !== binding.excerptHash)
       throw new TypeError("finance text candidate excerpt hash mismatch");
+    const claim = claims?.[index];
+    if (
+      binding.claimHash !== undefined &&
+      (claim === undefined || sha256(claim) !== binding.claimHash)
+    )
+      throw new TypeError("finance text candidate claim hash mismatch");
     return Object.freeze({
       id: binding.id,
       excerptHash,
       excerpt,
+      ...(binding.claimHash === undefined || claim === undefined
+        ? {}
+        : { claimHash: binding.claimHash, claim }),
+      ...(binding.sourceSpan === undefined
+        ? {}
+        : {
+            sourceSpan: Object.freeze({
+              byteStart: binding.sourceSpan.byteStart,
+              byteEnd: binding.sourceSpan.byteEnd,
+              sectionHash: binding.sourceSpan.sectionHash,
+            }),
+          }),
     });
   });
   const excerptHash = `sha256:${createHash("sha256")
@@ -571,9 +699,15 @@ function bindText(
     .digest("hex")}`;
   const candidateBindingHash = sha256(
     JSON.stringify(
-      candidates.map(({ id, excerptHash: candidateExcerptHash }) => ({
-        id,
-        excerptHash: candidateExcerptHash,
+      candidates.map((candidate) => ({
+        id: candidate.id,
+        excerptHash: candidate.excerptHash,
+        ...(candidate.claimHash === undefined
+          ? {}
+          : { claimHash: candidate.claimHash }),
+        ...(candidate.sourceSpan === undefined
+          ? {}
+          : { sourceSpan: candidate.sourceSpan }),
       })),
     ),
   );
@@ -729,7 +863,10 @@ function visualAnnotations(input: UntrustedVisualFinanceEvidence): unknown {
   return descriptor.value;
 }
 
-function textExcerpts(input: UntrustedTextFinanceEvidence): unknown {
+function textEvidence(input: UntrustedTextFinanceEvidence): {
+  readonly excerpts: unknown;
+  readonly claims?: unknown;
+} {
   if (!input || typeof input !== "object" || isProxy(input))
     throw new TypeError("finance text evidence must be a plain object");
   const prototype = Object.getPrototypeOf(input) as unknown;
@@ -739,17 +876,27 @@ function textExcerpts(input: UntrustedTextFinanceEvidence): unknown {
     throw new TypeError("finance text evidence must not contain symbols");
   const descriptors = Object.getOwnPropertyDescriptors(input);
   const keys = Object.keys(descriptors);
-  const descriptor = descriptors.excerpts;
+  const excerptsDescriptor = descriptors.excerpts;
+  const claimsDescriptor = descriptors.claims;
   if (
-    keys.length !== 1 ||
-    !descriptor ||
-    !("value" in descriptor) ||
-    !descriptor.enumerable
+    keys.length < 1 ||
+    keys.length > 2 ||
+    keys.some((key) => key !== "excerpts" && key !== "claims") ||
+    !excerptsDescriptor ||
+    !("value" in excerptsDescriptor) ||
+    !excerptsDescriptor.enumerable ||
+    (claimsDescriptor !== undefined &&
+      (!("value" in claimsDescriptor) || !claimsDescriptor.enumerable))
   )
     throw new TypeError(
-      "finance text evidence must contain one plain excerpts field",
+      "finance text evidence must contain plain excerpts and optional claims fields",
     );
-  return descriptor.value;
+  return {
+    excerpts: excerptsDescriptor.value,
+    ...(claimsDescriptor === undefined
+      ? {}
+      : { claims: claimsDescriptor.value }),
+  };
 }
 
 function sanitizeAnnotations(input: unknown): readonly string[] {
@@ -804,5 +951,37 @@ function sanitizeTextExcerpts(input: unknown): readonly string[] {
   }
   if (Reflect.ownKeys(descriptors).some((key) => !allowed.has(String(key))))
     throw new TypeError("finance text excerpts contain extra properties");
+  return Object.freeze(output);
+}
+
+function sanitizeTextClaims(input: unknown): readonly string[] {
+  if (isProxy(input as object))
+    throw new TypeError("finance text claims must not be a proxy");
+  if (!Array.isArray(input))
+    throw new TypeError("finance text claims must be an array");
+  if (
+    Object.getPrototypeOf(input) !== Array.prototype ||
+    input.length < 1 ||
+    input.length > MAX_TEXT_EXCERPTS
+  )
+    throw new TypeError("finance text claims are not a bounded array");
+  const descriptors = Object.getOwnPropertyDescriptors(input);
+  const allowed = new Set(["length"]);
+  const output: string[] = [];
+  let totalBytes = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    const key = String(index);
+    allowed.add(key);
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable)
+      throw new TypeError("finance text claims must contain plain data");
+    const claim = textClaimSchema.parse(descriptor.value);
+    totalBytes += Buffer.byteLength(claim, "utf8");
+    if (totalBytes > MAX_TEXT_CLAIM_BYTES)
+      throw new TypeError("finance text claims exceed the total byte limit");
+    output.push(claim);
+  }
+  if (Reflect.ownKeys(descriptors).some((key) => !allowed.has(String(key))))
+    throw new TypeError("finance text claims contain extra properties");
   return Object.freeze(output);
 }

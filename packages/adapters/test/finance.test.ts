@@ -92,6 +92,36 @@ const trustedWithText = {
     ],
   },
 } as const;
+const candidateClaims = [
+  "Revenue increased year over year.",
+  "Management retained its outlook.",
+] as const;
+const trustedWithClaims = {
+  ...trustedWithText,
+  text: {
+    ...trustedWithText.text,
+    candidateBindings: [
+      {
+        ...trustedWithText.text.candidateBindings[0],
+        claimHash: sha256(candidateClaims[0]),
+        sourceSpan: {
+          byteStart: 0,
+          byteEnd: Buffer.byteLength(candidateExcerpts[0]),
+          sectionHash: hash("7"),
+        },
+      },
+      {
+        ...trustedWithText.text.candidateBindings[1],
+        claimHash: sha256(candidateClaims[1]),
+        sourceSpan: {
+          byteStart: 100,
+          byteEnd: 100 + Buffer.byteLength(candidateExcerpts[1]),
+          sectionHash: hash("8"),
+        },
+      },
+    ],
+  },
+} as const;
 
 describe("finance advisory evidence boundary", () => {
   it("binds code-derived buckets and structured visual annotations without execution", () => {
@@ -266,6 +296,117 @@ describe("finance advisory evidence boundary", () => {
       },
     });
     expect(JSON.stringify(result.text)).not.toMatch(/authority|orderSide/u);
+  });
+
+  it("binds ordered proposed claims separately from their cited excerpts", () => {
+    const result = bindFinanceAdvisoryEvidenceWithText(
+      trustedWithClaims,
+      { annotations: [] },
+      { excerpts: [...candidateExcerpts], claims: [...candidateClaims] },
+      Date.parse(at) + 500,
+    );
+
+    expect(financeAdvisoryStateSchema.parse(result)).toEqual(result);
+    expect(result.text?.candidates).toEqual([
+      {
+        id: "reported-results",
+        excerptHash: sha256(candidateExcerpts[0]),
+        excerpt: candidateExcerpts[0],
+        claimHash: sha256(candidateClaims[0]),
+        claim: candidateClaims[0],
+        sourceSpan: trustedWithClaims.text.candidateBindings[0].sourceSpan,
+      },
+      {
+        id: "management-outlook",
+        excerptHash: sha256(candidateExcerpts[1]),
+        excerpt: candidateExcerpts[1],
+        claimHash: sha256(candidateClaims[1]),
+        claim: candidateClaims[1],
+        sourceSpan: trustedWithClaims.text.candidateBindings[1].sourceSpan,
+      },
+    ]);
+    expect(result.text?.trust).toBe("untrusted_data_only");
+    expect(result.execution).toBe("NOT_SUPPORTED");
+
+    const changedSpan = bindFinanceAdvisoryEvidenceWithText(
+      {
+        ...trustedWithClaims,
+        text: {
+          ...trustedWithClaims.text,
+          candidateBindings: [
+            {
+              ...trustedWithClaims.text.candidateBindings[0],
+              sourceSpan: {
+                ...trustedWithClaims.text.candidateBindings[0].sourceSpan,
+                byteStart: 1,
+              },
+            },
+            trustedWithClaims.text.candidateBindings[1],
+          ],
+        },
+      },
+      { annotations: [] },
+      { excerpts: [...candidateExcerpts], claims: [...candidateClaims] },
+      Date.parse(at) + 500,
+    );
+    expect(changedSpan.text?.candidateBindingHash).not.toBe(
+      result.text?.candidateBindingHash,
+    );
+  });
+
+  it("requires all claim bindings and claim evidence in exact count, order, and hash", () => {
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        {
+          ...trustedWithClaims,
+          text: {
+            ...trustedWithClaims.text,
+            candidateBindings: [
+              trustedWithClaims.text.candidateBindings[0],
+              trustedWithText.text.candidateBindings[1],
+            ],
+          },
+        },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts], claims: [...candidateClaims] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/trusted projection is invalid/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithClaims,
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/supplied together/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithText,
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts], claims: [...candidateClaims] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/supplied together/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithClaims,
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts], claims: [candidateClaims[0]] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/same length/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithClaims,
+        { annotations: [] },
+        {
+          excerpts: [...candidateExcerpts],
+          claims: [...candidateClaims].reverse(),
+        },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/claim hash mismatch/u);
   });
 
   it("requires trusted text metadata and untrusted excerpts together", () => {
@@ -597,6 +738,80 @@ describe("finance advisory evidence boundary", () => {
         ),
       ).toThrow();
     }
+
+    const claimGetter: string[] = [];
+    Object.defineProperty(claimGetter, "0", {
+      get: () => "forged claim",
+      enumerable: true,
+    });
+    claimGetter.length = 1;
+    for (const claims of [
+      claimGetter,
+      new Proxy([...candidateClaims], {}),
+      ["line one\nline two", candidateClaims[1]],
+      ["x".repeat(1_001), candidateClaims[1]],
+      Array.from({ length: 8 }, () => "€".repeat(400)),
+    ]) {
+      expect(() =>
+        bindFinanceAdvisoryEvidenceWithText(
+          trustedWithClaims,
+          { annotations: [] },
+          { excerpts: [...candidateExcerpts], claims },
+          Date.parse(at) + 500,
+        ),
+      ).toThrow();
+    }
+  });
+
+  it("validates optional trusted claim source spans without treating them as proof", () => {
+    for (const sourceSpan of [
+      { byteStart: -1, byteEnd: 10, sectionHash: hash("7") },
+      { byteStart: 10, byteEnd: 10, sectionHash: hash("7") },
+      { byteStart: 10, byteEnd: 9, sectionHash: hash("7") },
+      { byteStart: 0, byteEnd: 10, sectionHash: "not-a-hash" },
+    ]) {
+      expect(() =>
+        bindFinanceAdvisoryEvidenceWithText(
+          {
+            ...trustedWithClaims,
+            text: {
+              ...trustedWithClaims.text,
+              candidateBindings: [
+                {
+                  ...trustedWithClaims.text.candidateBindings[0],
+                  sourceSpan,
+                },
+                trustedWithClaims.text.candidateBindings[1],
+              ],
+            },
+          },
+          { annotations: [] },
+          { excerpts: [...candidateExcerpts], claims: [...candidateClaims] },
+          Date.parse(at) + 500,
+        ),
+      ).toThrow(FinanceAdvisoryBoundaryError);
+    }
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        {
+          ...trustedWithText,
+          text: {
+            ...trustedWithText.text,
+            candidateBindings: [
+              {
+                ...trustedWithText.text.candidateBindings[0],
+                sourceSpan:
+                  trustedWithClaims.text.candidateBindings[0].sourceSpan,
+              },
+              trustedWithText.text.candidateBindings[1],
+            ],
+          },
+        },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/trusted projection is invalid/u);
   });
 
   it("rejects sparse, excessive, control-bearing, and oversized excerpts", () => {

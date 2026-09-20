@@ -32,11 +32,16 @@ advisory state without reading or populating the cache and without dispatching
 a provider request.
 
 Tool-environment schemas are structural validators, not authority. Use
-`validateToolEnvironmentSnapshot(input, trustedCatalogue)` and
+`validateToolEnvironmentSnapshot(input, trustedCatalogue, observedNowMs,
+trustedVisualCapture?)` and
 `validateToolEnvironmentProposal(proposal, snapshot, trustedCatalogue,
-observedNowMs)` with a code-reviewed catalogue that untrusted inputs cannot
-modify. The latter returns the exact validated action only after identity,
-state, capability-manifest, freshness, and positive-catalogue checks pass.
+observedNowMs, trustedVisualCapture?)` with a code-reviewed catalogue that
+untrusted inputs cannot modify. When a snapshot carries a visual observation,
+the separate capture argument is mandatory and must come directly from the
+trusted extractor; a digest supplied inside the snapshot cannot authenticate
+itself. The latter returns the exact validated action only after identity,
+state, capability-manifest, freshness, capture, and positive-catalogue checks
+pass.
 
 `bindFinanceAdvisoryEvidence(trustedProjection, visualEvidence, observedNowMs)`
 validates source/feature hashes, time ordering, age, per-signal cutoff, and an

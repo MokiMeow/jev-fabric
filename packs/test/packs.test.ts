@@ -476,7 +476,7 @@ describe("built-in decision packs", () => {
           ],
         },
       }),
-    ).toThrow(/exactly/u);
+    ).toThrow(/unsupported fields/u);
     expect(() =>
       project({
         ...fullState,
@@ -735,6 +735,300 @@ describe("built-in decision packs", () => {
     expect(influenced).toMatchObject({
       selectedId: "escalate",
       proposedOutcome: "escalate",
+    });
+
+    const proposedClaims = [
+      "Management withdrew its outlook.",
+      "Liquidity remains constrained.",
+    ] as const;
+    const citedCandidates = textCandidates.map((candidate, index) => ({
+      ...candidate,
+      claim: proposedClaims[index] ?? "",
+      claimHash: sha256(proposedClaims[index] ?? ""),
+      sourceSpan: {
+        byteStart: index * 100,
+        byteEnd: index * 100 + 50,
+        sectionHash: `sha256:${index === 0 ? "7".repeat(64) : "8".repeat(64)}`,
+      },
+    }));
+    const citedOutlook = citedCandidates[0];
+    const citedLiquidity = citedCandidates[1];
+    if (citedOutlook === undefined || citedLiquidity === undefined)
+      throw new Error("citation candidates missing");
+    const citedState = {
+      ...fullState,
+      text: {
+        ...fullState.text,
+        candidateBindingHash: sha256(
+          JSON.stringify(
+            citedCandidates.map(
+              ({ id, excerptHash, claimHash, sourceSpan }) => ({
+                id,
+                excerptHash,
+                claimHash,
+                sourceSpan,
+              }),
+            ),
+          ),
+        ),
+        candidates: citedCandidates,
+      },
+    };
+    const citedQuestions = implementation.questions(citedState, candidates);
+    expect(
+      citedQuestions
+        .filter((question) =>
+          question.id.startsWith("finance-text-claim-cited:"),
+        )
+        .map((question) => question.id),
+    ).toEqual([
+      "finance-text-claim-cited:outlook",
+      "finance-text-claim-cited:liquidity",
+    ]);
+    const citationQuestions = citedQuestions.filter((question) =>
+      question.id.startsWith("finance-text-citation:"),
+    );
+    expect(citationQuestions).toHaveLength(2);
+    expect(citationQuestions[0]).toMatchObject({
+      type: "choice",
+      instructions: {
+        inspect: ["`text.candidates[0].claim`", "`text.candidates[0].excerpt`"],
+        candidateId: "outlook",
+      },
+      options: ["supports", "contradicts", "insufficient_context"],
+    });
+    expect(JSON.stringify(citationQuestions)).not.toContain(proposedClaims[0]);
+    expect(project(citedState)).toMatchObject({
+      text: {
+        candidates: citedCandidates,
+        candidateBindingHash: citedState.text.candidateBindingHash,
+      },
+    });
+    expect(() =>
+      project({
+        ...citedState,
+        text: {
+          ...citedState.text,
+          candidates: [
+            { ...citedOutlook, claim: "A different claim." },
+            citedLiquidity,
+          ],
+        },
+      }),
+    ).toThrow(/claim is invalid/u);
+    expect(() =>
+      project({
+        ...citedState,
+        text: {
+          ...citedState.text,
+          candidates: [
+            citedOutlook,
+            {
+              id: citedLiquidity.id,
+              excerptHash: citedLiquidity.excerptHash,
+              excerpt: citedLiquidity.excerpt,
+            },
+          ],
+        },
+      }),
+    ).toThrow(/all or none/u);
+    expect(() =>
+      project({
+        ...citedState,
+        text: {
+          ...citedState.text,
+          candidates: [
+            {
+              ...citedOutlook,
+              sourceSpan: {
+                ...citedOutlook.sourceSpan,
+                byteEnd: citedOutlook.sourceSpan.byteStart,
+              },
+            },
+            citedLiquidity,
+          ],
+        },
+      }),
+    ).toThrow(/source span is invalid/u);
+
+    const citationOptions = [
+      "supports",
+      "contradicts",
+      "insufficient_context",
+    ] as const;
+    const citedClaimAnswers = [
+      choice("finance-text-claim-cited:outlook", "none", claimOptions, 0.2),
+      choice("finance-text-claim-cited:liquidity", "none", claimOptions, 0.2),
+    ];
+    const support = interpret(
+      [
+        ...baseAnswers(),
+        ...citedClaimAnswers,
+        choice(
+          "finance-text-citation:outlook",
+          "supports",
+          citationOptions,
+          0.01,
+        ),
+        choice(
+          "finance-text-citation:liquidity",
+          "supports",
+          citationOptions,
+          0.02,
+        ),
+      ],
+      candidates,
+      { probabilitySemantics: "native_calibrated" },
+    );
+    expect(support).toMatchObject({
+      selectedId: "observe",
+      proposedOutcome: "route",
+      metadata: {
+        calibratedTextCitationTiers: false,
+        textCitationConfidencePolicy: "native_unthresholded",
+        textCitations: [
+          {
+            candidateId: "outlook",
+            relation: "supports",
+            verificationStatus: "provisional_unthresholded",
+            nativeConfidence: 0.01,
+          },
+          {
+            candidateId: "liquidity",
+            relation: "supports",
+            verificationStatus: "provisional_unthresholded",
+            nativeConfidence: 0.02,
+          },
+        ],
+      },
+    });
+    const supportCannotDowngrade = interpret(
+      [
+        choice(
+          "finance-route",
+          "investigate",
+          ["observe", "investigate", "escalate"],
+          1,
+        ),
+        ...baseAnswers().slice(1),
+        ...citedClaimAnswers,
+        choice("finance-text-citation:outlook", "supports", citationOptions, 1),
+        choice(
+          "finance-text-citation:liquidity",
+          "supports",
+          citationOptions,
+          1,
+        ),
+      ],
+      candidates,
+      { probabilitySemantics: "native_calibrated" },
+    );
+    expect(supportCannotDowngrade).toMatchObject({
+      selectedId: "investigate",
+      proposedOutcome: "ask",
+    });
+    const contradiction = interpret(
+      [
+        ...baseAnswers(),
+        ...citedClaimAnswers,
+        choice(
+          "finance-text-citation:outlook",
+          "contradicts",
+          citationOptions,
+          1,
+        ),
+        choice(
+          "finance-text-citation:liquidity",
+          "supports",
+          citationOptions,
+          1,
+        ),
+      ],
+      candidates,
+      { probabilitySemantics: "native_calibrated" },
+    );
+    expect(contradiction).toMatchObject({
+      selectedId: "escalate",
+      proposedOutcome: "escalate",
+    });
+    const insufficient = interpret(
+      [
+        ...baseAnswers(),
+        ...citedClaimAnswers,
+        choice(
+          "finance-text-citation:outlook",
+          "insufficient_context",
+          citationOptions,
+          1,
+        ),
+        choice(
+          "finance-text-citation:liquidity",
+          "supports",
+          citationOptions,
+          1,
+        ),
+      ],
+      candidates,
+      { probabilitySemantics: "native_calibrated" },
+    );
+    expect(insufficient).toMatchObject({
+      selectedId: "investigate",
+      proposedOutcome: "ask",
+    });
+    const missingCitation = interpret(
+      [
+        ...baseAnswers(),
+        ...citedClaimAnswers,
+        choice("finance-text-citation:outlook", "supports", citationOptions, 1),
+      ],
+      candidates,
+      { probabilitySemantics: "native_calibrated" },
+    );
+    expect(missingCitation).toMatchObject({
+      selectedId: "escalate",
+      proposedOutcome: "escalate",
+      metadata: { malformedAnswer: true },
+    });
+    const malformedCitation = interpret(
+      [
+        ...baseAnswers(),
+        ...citedClaimAnswers,
+        choice("finance-text-citation:outlook", "supports", citationOptions),
+        choice(
+          "finance-text-citation:liquidity",
+          "supports",
+          citationOptions,
+          1,
+        ),
+      ],
+      candidates,
+      { probabilitySemantics: "native_calibrated" },
+    );
+    expect(malformedCitation).toMatchObject({
+      selectedId: "escalate",
+      proposedOutcome: "escalate",
+      metadata: { malformedAnswer: true },
+    });
+    const syntheticCitation = interpret(
+      [
+        ...baseAnswers(),
+        ...citedClaimAnswers,
+        choice("finance-text-citation:outlook", "supports", citationOptions, 1),
+        choice(
+          "finance-text-citation:liquidity",
+          "supports",
+          citationOptions,
+          1,
+        ),
+      ],
+      candidates,
+      { probabilitySemantics: "synthetic" },
+    );
+    expect(syntheticCitation).toMatchObject({
+      metadata: {
+        textCitationConfidencePolicy: "ignored_non_native",
+        textCitations: [{ nativeConfidence: null }, { nativeConfidence: null }],
+      },
     });
   });
 

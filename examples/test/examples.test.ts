@@ -11,6 +11,7 @@ import { example as route } from "../route-skills/index.js";
 import { example as support } from "../support-triage/index.js";
 import { example as toolEnvironment } from "../tool-environment-advice/index.js";
 import { example as webmcp } from "../webmcp-action/index.js";
+import { example as visualObservation } from "../visual-observation-advice/index.js";
 import { example as nativeProvider } from "../provider-native-fake/index.js";
 import { example as compatibleProvider } from "../provider-compatible-fake/index.js";
 import { example as gatewayProvider } from "../provider-gateway-typesafe-fake/index.js";
@@ -26,6 +27,12 @@ describe("offline public examples", () => {
     ["completion", completion, "allow", "complete"],
     ["evaluate", evaluate, "allow", "in_progress"],
     ["tool-environment", toolEnvironment, "route", "ask-user"],
+    [
+      "visual-observation",
+      visualObservation,
+      "route",
+      "request-structured-data",
+    ],
     ["finance-surveillance", finance, "route", "observe"],
   ] as const) {
     it(`${name} validates a receipt and a fail-closed path`, async () => {

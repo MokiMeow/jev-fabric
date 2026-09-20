@@ -12,13 +12,26 @@ The projection contains opaque references, hashes, freshness metadata, and a
 finite allowlist of native operations. A proposal carries hashes for its
 arguments and evidence, never the arguments themselves.
 
+When a decision needs a chart, browser viewport, or DCC viewport observation,
+bind a compact visual observation to the same trusted snapshot. The contract
+contains only an artifact hash, capture/extractor provenance, freshness, a
+snapshot-binding hash, and bounded annotations marked `untrusted_data_only`.
+It contains no image bytes, paths, URLs, selectors, coordinates, or action
+fields. A visual extractor stays outside Fabric; use its annotations only to
+request structured evidence or human review, never as authorization.
+Validation also requires the host to pass the extractor's trusted capture
+projection separately from the snapshot. The public hashes detect mismatch;
+they do not authenticate a caller-supplied capture by themselves.
+
 The exported Zod schemas validate structure; they are deliberately not an
 authorization allowlist. A host must keep a code-reviewed
 `TrustedToolEnvironmentCatalogue` outside page, model, project, and request
 data. Call `validateToolEnvironmentSnapshot` to require an exact descriptor
-match, then `validateToolEnvironmentProposal` with an explicit trusted clock
-observation to bind adapter/session/workspace identity, state, capability
-manifest, freshness, and the exact catalogue action. Only then may the host
+match and, for visual snapshots, an independently trusted capture projection;
+then call `validateToolEnvironmentProposal` with the same capture and an
+explicit trusted clock observation to bind adapter/session/workspace identity,
+state, capability manifest, freshness, and the exact catalogue action. Only
+then may the host
 continue to its separate policy, approval, ticket, and native-operation gates.
 
 ## Recommended flow
@@ -77,6 +90,12 @@ their own policy and user approval. For non-WebMCP sites, pin a stable
 [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/1-3/)
 version; never use its general runtime-evaluation capability as an action
 candidate.
+
+For screenshot or viewport fallback, hash-bind the capture to the trusted
+origin/frame-derived state projection before using an annotation. If the browser
+state, frame binding, capture, extractor version, or freshness changes, reject
+the observation and rediscover structured state rather than attempting a visual
+action.
 
 ## Product-specific notes
 

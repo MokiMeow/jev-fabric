@@ -5,6 +5,7 @@
 "@mokimeow/jev-fabric-mcp": patch
 "@mokimeow/jev-fabric-protocol": patch
 "@mokimeow/jev-fabric-provider-openai-compatible": patch
+"@mokimeow/jev-fabric-cli": patch
 ---
 
 Retain a domain-separated SHA-256 digest of the official TypeSafe SDK request
@@ -27,3 +28,5 @@ order-invariant hashes, plus a separate digest over the test evaluation.
 
 Update public runtime validation dependencies to Zod 4.6.5 after exercising
 the complete schema, package, benchmark, and release compatibility gates.
+Keep Zod declaration subpaths external to the CLI declaration bundle so the
+published surface does not traverse its CommonJS locale modules.

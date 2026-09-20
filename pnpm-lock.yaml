@@ -253,6 +253,9 @@ importers:
       '@mokimeow/jev-fabric-provider-typesafe':
         specifier: workspace:*
         version: link:../provider-typesafe
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/core:
     dependencies:

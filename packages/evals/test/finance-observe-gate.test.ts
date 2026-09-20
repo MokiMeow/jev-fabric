@@ -9,6 +9,8 @@ import {
   financeObserveGateMetrics,
   financeObserveSupport,
   fitFinanceObserveGate,
+  oneSidedWilsonUpperBound95,
+  partitionFinanceObserveGateCalibrationGroups,
   validateFinanceObserveGatePolicyArtifact,
   type FinanceAtomicEvidenceLedger,
   type FinanceObserveCalibrationCase,
@@ -84,7 +86,7 @@ function ledger(
   };
 }
 
-describe("finance.observe-gate.v2", () => {
+describe("finance.observe-gate.v3", () => {
   it("uses the non-compensating minimum across base, claim, and citation evidence", () => {
     expect(financeObserveSupport(ledger("jev"))).toEqual({
       score: 0.8,
@@ -181,7 +183,7 @@ describe("finance.observe-gate.v2", () => {
     expect(() => financeObserveSupport(uncited)).toThrow(/coverage/u);
   });
 
-  it("fits maximum coverage under a caller-owned false-observe risk", () => {
+  it("fits on one group partition and audits risk on the other", () => {
     const rows: FinanceObserveCalibrationCase[] = [
       calibration("a", 0.9, "observe"),
       calibration("b", 0.8, "investigate"),
@@ -192,19 +194,24 @@ describe("finance.observe-gate.v2", () => {
       rows,
       "financial_text_triage",
       "jev_advisory",
-      0.34,
+      1,
       2,
     );
     expect(policy).toMatchObject({
       status: "CALIBRATED",
-      threshold: 0.7,
-      acceptedObserveCount: 3,
-      acceptedObserveGroupCount: 3,
-      falseObserveCount: 1,
-      observedFalseObserveRisk: 1 / 3,
+      schemaVersion: "3",
+      riskSemantics: "one_sided_wilson_group_audit",
+      riskConfidenceLevel: 0.95,
+      acceptedObserveCount: 2,
+      acceptedObserveGroupCount: 2,
+      auditAcceptedObserveCount: 2,
+      auditAcceptedObserveGroupCount: 2,
       calibrationCaseCount: 4,
       calibrationGroupCount: 4,
+      thresholdFitGroupCount: 2,
+      riskAuditGroupCount: 2,
     });
+    expect(policy.auditFalseObserveGroupRiskUpperBound).toBeLessThanOrEqual(1);
     const forged = structuredClone(policy) as unknown as {
       acceptedObserveGroupCount: number;
     };
@@ -215,31 +222,233 @@ describe("finance.observe-gate.v2", () => {
         0.9,
         forged as unknown as typeof policy,
       ),
-    ).toThrow(/counts are inconsistent/u);
+    ).toThrow(/counts|observed/u);
   });
 
   it("requires the selected threshold to cover enough independent groups", () => {
-    const rows: FinanceObserveCalibrationCase[] = [
-      { ...calibration("a", 0.9, "observe"), groupId: "accepted" },
-      { ...calibration("b", 0.85, "observe"), groupId: "accepted" },
-      { ...calibration("c", 0.8, "investigate"), groupId: "rejected-a" },
-      { ...calibration("d", 0.7, "investigate"), groupId: "rejected-b" },
+    const groupIds = [
+      "group-a",
+      "group-b",
+      "group-c",
+      "group-d",
+      "group-e",
+      "group-f",
     ];
+    const partition = partitionFinanceObserveGateCalibrationGroups(
+      groupIds,
+      "financial_text_triage",
+      "jev_advisory",
+    );
+    const acceptedFitGroup = partition.thresholdFitGroupIds[0];
+    if (acceptedFitGroup === undefined)
+      throw new Error("fixture omitted threshold-fit group");
+    const rows: FinanceObserveCalibrationCase[] = groupIds.map(
+      (groupId, index) => ({
+        ...calibration(
+          String(index),
+          groupId === acceptedFitGroup ? 0.9 : 0.8,
+          groupId === acceptedFitGroup ||
+            partition.riskAuditGroupIds.includes(groupId)
+            ? "observe"
+            : "investigate",
+        ),
+        groupId,
+      }),
+    );
     expect(
       fitFinanceObserveGate(
         rows,
         "financial_text_triage",
         "jev_advisory",
         0,
-        2,
+        3,
       ),
     ).toMatchObject({
       status: "UNAVAILABLE",
       reason: "insufficient_accepted_calibration_groups",
-      calibrationGroupCount: 3,
-      eligibleObserveCount: 4,
+      calibrationGroupCount: 6,
+      eligibleObserveCount: 3,
       acceptedObserveCount: 0,
       acceptedObserveGroupCount: 0,
+    });
+  });
+
+  it("partitions calibration groups deterministically without overlap", () => {
+    const groupIds = ["group-a", "group-b", "group-c", "group-d", "group-e"];
+    const first = partitionFinanceObserveGateCalibrationGroups(
+      groupIds,
+      "market_surveillance",
+      "host_plus_jev",
+    );
+    const reordered = partitionFinanceObserveGateCalibrationGroups(
+      [...groupIds].reverse(),
+      "market_surveillance",
+      "host_plus_jev",
+    );
+    expect(reordered).toEqual(first);
+    expect(
+      new Set([...first.thresholdFitGroupIds, ...first.riskAuditGroupIds]),
+    ).toEqual(new Set(groupIds));
+    expect(
+      first.thresholdFitGroupIds.filter((groupId) =>
+        first.riskAuditGroupIds.includes(groupId),
+      ),
+    ).toEqual([]);
+    expect(
+      Math.abs(
+        first.thresholdFitGroupIds.length - first.riskAuditGroupIds.length,
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(() =>
+      partitionFinanceObserveGateCalibrationGroups(
+        ["duplicate", "duplicate"],
+        "market_surveillance",
+        "host_plus_jev",
+      ),
+    ).toThrow(/unique strings/u);
+  });
+
+  it("computes and validates the one-sided 95% Wilson group-risk bound", () => {
+    expect(oneSidedWilsonUpperBound95(0, 1)).toBeCloseTo(
+      0.730_134_051_215_945_8,
+      12,
+    );
+    expect(oneSidedWilsonUpperBound95(0, 10)).toBeCloseTo(
+      0.212_941_970_083_406_98,
+      12,
+    );
+    expect(oneSidedWilsonUpperBound95(1, 10)).toBeGreaterThan(
+      oneSidedWilsonUpperBound95(0, 10),
+    );
+    expect(oneSidedWilsonUpperBound95(10, 10)).toBe(1);
+    expect(() => oneSidedWilsonUpperBound95(-1, 10)).toThrow(/Wilson inputs/u);
+    expect(() => oneSidedWilsonUpperBound95(11, 10)).toThrow(/Wilson inputs/u);
+    expect(() => oneSidedWilsonUpperBound95(0, 0)).toThrow(/Wilson inputs/u);
+  });
+
+  it("fails closed when held-out audit groups exceed the risk bound", () => {
+    const groupIds = ["group-a", "group-b", "group-c", "group-d"];
+    const partition = partitionFinanceObserveGateCalibrationGroups(
+      groupIds,
+      "financial_text_triage",
+      "jev_advisory",
+    );
+    const rows = groupIds.map((groupId, index) => ({
+      ...calibration(
+        String(index),
+        0.9,
+        partition.riskAuditGroupIds.includes(groupId)
+          ? "investigate"
+          : "observe",
+      ),
+      groupId,
+    }));
+    expect(
+      fitFinanceObserveGate(
+        rows,
+        "financial_text_triage",
+        "jev_advisory",
+        0.5,
+        2,
+      ),
+    ).toMatchObject({
+      status: "UNAVAILABLE",
+      reason: "risk_audit_bound_exceeded",
+      acceptedObserveGroupCount: 2,
+      auditAcceptedObserveGroupCount: 2,
+      auditFalseObserveGroupCount: 2,
+      auditObservedFalseObserveGroupRisk: 1,
+      auditFalseObserveGroupRiskUpperBound: 1,
+    });
+  });
+
+  it("rejects a forged calibrated policy that violates fit-risk evidence", () => {
+    const groupIds = Array.from({ length: 10 }, (_, index) => `group-${index}`);
+    const partition = partitionFinanceObserveGateCalibrationGroups(
+      groupIds,
+      "financial_text_triage",
+      "jev_advisory",
+    );
+    const falseFitGroups = new Set(partition.thresholdFitGroupIds.slice(0, 2));
+    const rows = groupIds.map((groupId, index) => ({
+      ...calibration(
+        String(index),
+        0.9,
+        falseFitGroups.has(groupId) ? "investigate" : "observe",
+      ),
+      groupId,
+    }));
+    const policy = fitFinanceObserveGate(
+      rows,
+      "financial_text_triage",
+      "jev_advisory",
+      0.5,
+      5,
+    );
+    expect(policy).toMatchObject({
+      status: "CALIBRATED",
+      acceptedObserveCount: 5,
+      falseObserveCount: 2,
+      fitFalseObserveGroupCount: 2,
+      fitObservedFalseObserveGroupRisk: 0.4,
+      auditFalseObserveGroupCount: 0,
+    });
+    const relaxedAuditOnly = structuredClone(policy) as unknown as {
+      maxFalseObserveGroupRiskUpperBound: number;
+    };
+    relaxedAuditOnly.maxFalseObserveGroupRiskUpperBound = 0.39;
+    expect(() =>
+      applyFinanceObserveGate(
+        "observe",
+        0.9,
+        relaxedAuditOnly as unknown as typeof policy,
+      ),
+    ).toThrow(/counts/u);
+
+    const impossibleCounts = structuredClone(policy) as unknown as {
+      falseObserveCount: number;
+      observedFalseObserveRisk: number;
+    };
+    impossibleCounts.falseObserveCount = 1;
+    impossibleCounts.observedFalseObserveRisk = 0.2;
+    expect(() =>
+      applyFinanceObserveGate(
+        "observe",
+        0.9,
+        impossibleCounts as unknown as typeof policy,
+      ),
+    ).toThrow(/counts/u);
+  });
+
+  it("fails closed when the selected threshold lacks audit-group support", () => {
+    const groupIds = ["group-a", "group-b", "group-c", "group-d"];
+    const partition = partitionFinanceObserveGateCalibrationGroups(
+      groupIds,
+      "financial_text_triage",
+      "jev_advisory",
+    );
+    const rows = groupIds.map((groupId, index) => ({
+      ...calibration(
+        String(index),
+        partition.riskAuditGroupIds.includes(groupId) ? 0.1 : 0.9,
+        "observe",
+      ),
+      groupId,
+    }));
+    expect(
+      fitFinanceObserveGate(
+        rows,
+        "financial_text_triage",
+        "jev_advisory",
+        1,
+        2,
+      ),
+    ).toMatchObject({
+      status: "UNAVAILABLE",
+      reason: "insufficient_risk_audit_groups",
+      acceptedObserveGroupCount: 2,
+      auditAcceptedObserveGroupCount: 0,
+      auditFalseObserveGroupRiskUpperBound: null,
     });
   });
 
@@ -264,10 +473,10 @@ describe("finance.observe-gate.v2", () => {
 
   it("only upgrades an unaccepted observe route to investigate", () => {
     const policy = fitFinanceObserveGate(
-      [calibration("a", 0.8, "observe")],
+      [calibration("a", 0.8, "observe"), calibration("b", 0.8, "observe")],
       "financial_text_triage",
       "jev_advisory",
-      0,
+      1,
       1,
     );
     expect(applyFinanceObserveGate("observe", 0.79, policy)).toEqual({
@@ -368,6 +577,15 @@ describe("finance.observe-gate.v2", () => {
         tampered as unknown as typeof artifact,
       ),
     ).toThrow(/digest/u);
+    const legacy = structuredClone(artifact) as unknown as {
+      policy: { schemaVersion: string };
+    };
+    legacy.policy.schemaVersion = "2";
+    expect(() =>
+      validateFinanceObserveGatePolicyArtifact(
+        legacy as unknown as typeof artifact,
+      ),
+    ).toThrow(/identity/u);
     const component = artifact.binding.components[0];
     if (component === undefined) throw new Error("fixture omitted component");
     expect(() =>

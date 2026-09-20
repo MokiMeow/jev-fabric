@@ -9,6 +9,10 @@ import {
 } from "../../../packages/adapters/src/index.js";
 import {
   financeArchitectures,
+  financeObserveGateCalibrationSplitId,
+  financeObserveGateFormulaId,
+  financeObserveGatePolicyId,
+  financeObserveGateRiskConfidenceLevel,
   financeTracks,
   stableJson,
 } from "../../../packages/evals/src/index.js";
@@ -81,7 +85,7 @@ interface FinanceMetricInterval {
 }
 
 interface FinanceRunDocument {
-  readonly schemaVersion: "2";
+  readonly schemaVersion: "3";
   readonly runId: string;
   readonly executionState: "NOT_RUN" | "COMPLETED";
   readonly sampleCount: number;
@@ -113,11 +117,13 @@ interface FinanceRunDocument {
   readonly uncertaintyConfiguration: typeof financeUncertaintyConfiguration;
   readonly observeGate: Readonly<{
     status: "NOT_RUN" | "COMPLETED";
-    policyId: "finance.observe-gate.v2";
-    formulaId: "minimum-required-observe-support.group-coverage.v2";
-    riskSemantics: "empirical_calibration_only";
-    maxObservedFalseObserveRisk: number | null;
-    minimumCalibrationGroups: number | null;
+    policyId: typeof financeObserveGatePolicyId;
+    formulaId: typeof financeObserveGateFormulaId;
+    calibrationSplitId: typeof financeObserveGateCalibrationSplitId;
+    riskSemantics: "one_sided_wilson_group_audit";
+    riskConfidenceLevel: typeof financeObserveGateRiskConfidenceLevel;
+    maxFalseObserveGroupRiskUpperBound: number | null;
+    minimumCalibrationGroupsPerPartition: number | null;
     calibrationCaseCount: number;
     calibrationTraceCount: number;
     testCaseCount: number;
@@ -130,7 +136,7 @@ interface FinanceRunDocument {
 
 export function validateFinanceRun(value: unknown): void {
   const run = value as FinanceRunDocument;
-  invariant(run.schemaVersion === "2", "finance run schemaVersion is invalid");
+  invariant(run.schemaVersion === "3", "finance run schemaVersion is invalid");
   invariant(
     run.executionState === "NOT_RUN" || run.executionState === "COMPLETED",
     "finance executionState is invalid",
@@ -292,8 +298,8 @@ export function validateFinanceRun(value: unknown): void {
     invariant(
       run.calibrationSampleCount === 0 &&
         run.observeGate.status === "NOT_RUN" &&
-        run.observeGate.maxObservedFalseObserveRisk === null &&
-        run.observeGate.minimumCalibrationGroups === null &&
+        run.observeGate.maxFalseObserveGroupRiskUpperBound === null &&
+        run.observeGate.minimumCalibrationGroupsPerPartition === null &&
         run.observeGate.policies === null,
       "NOT_RUN finance run cannot claim an observe-gate calibration",
     );
@@ -387,13 +393,18 @@ export function validateFinanceRun(value: unknown): void {
   );
   invariant(
     run.observeGate.status === "COMPLETED" &&
-      run.observeGate.policyId === "finance.observe-gate.v2" &&
-      run.observeGate.formulaId ===
-        "minimum-required-observe-support.group-coverage.v2" &&
-      run.observeGate.riskSemantics === "empirical_calibration_only" &&
-      finite(run.observeGate.maxObservedFalseObserveRisk) &&
-      Number.isSafeInteger(run.observeGate.minimumCalibrationGroups) &&
-      (run.observeGate.minimumCalibrationGroups ?? 0) >= 1 &&
+      run.observeGate.policyId === financeObserveGatePolicyId &&
+      run.observeGate.formulaId === financeObserveGateFormulaId &&
+      run.observeGate.calibrationSplitId ===
+        financeObserveGateCalibrationSplitId &&
+      run.observeGate.riskSemantics === "one_sided_wilson_group_audit" &&
+      run.observeGate.riskConfidenceLevel ===
+        financeObserveGateRiskConfidenceLevel &&
+      finite(run.observeGate.maxFalseObserveGroupRiskUpperBound) &&
+      Number.isSafeInteger(
+        run.observeGate.minimumCalibrationGroupsPerPartition,
+      ) &&
+      (run.observeGate.minimumCalibrationGroupsPerPartition ?? 0) >= 1 &&
       run.observeGate.calibrationCaseCount === run.calibrationSampleCount &&
       run.observeGate.calibrationTraceCount ===
         financeArchitectures.length * run.calibrationSampleCount &&
@@ -552,10 +563,10 @@ export async function validateFinanceArtifactDirectory(
     dataset,
     run.runtime,
     {
-      maxObservedFalseObserveRisk: run.observeGate
-        .maxObservedFalseObserveRisk as number,
-      minimumCalibrationGroups: run.observeGate
-        .minimumCalibrationGroups as number,
+      maxFalseObserveGroupRiskUpperBound: run.observeGate
+        .maxFalseObserveGroupRiskUpperBound as number,
+      minimumCalibrationGroupsPerPartition: run.observeGate
+        .minimumCalibrationGroupsPerPartition as number,
     } satisfies FinanceObserveGateConfiguration,
   );
   invariant(

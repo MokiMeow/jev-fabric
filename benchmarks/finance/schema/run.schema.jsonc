@@ -72,7 +72,7 @@
     "rows"
   ],
   "properties": {
-    "schemaVersion": { "const": "2" },
+    "schemaVersion": { "const": "3" },
     "runId": { "type": "string", "minLength": 1, "maxLength": 160 },
     "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
     "sampleCount": { "type": "integer", "minimum": 0 },
@@ -668,9 +668,11 @@
         "status",
         "policyId",
         "formulaId",
+        "calibrationSplitId",
         "riskSemantics",
-        "maxObservedFalseObserveRisk",
-        "minimumCalibrationGroups",
+        "riskConfidenceLevel",
+        "maxFalseObserveGroupRiskUpperBound",
+        "minimumCalibrationGroupsPerPartition",
         "calibrationCaseCount",
         "calibrationTraceCount",
         "testCaseCount",
@@ -679,13 +681,15 @@
       ],
       "properties": {
         "status": { "const": "NOT_RUN" },
-        "policyId": { "const": "finance.observe-gate.v2" },
+        "policyId": { "const": "finance.observe-gate.v3" },
         "formulaId": {
-          "const": "minimum-required-observe-support.group-coverage.v2"
+          "const": "minimum-required-observe-support.group-audit-wilson.v3"
         },
-        "riskSemantics": { "const": "empirical_calibration_only" },
-        "maxObservedFalseObserveRisk": { "type": "null" },
-        "minimumCalibrationGroups": { "type": "null" },
+        "calibrationSplitId": { "const": "sha256-alternating-groups.v1" },
+        "riskSemantics": { "const": "one_sided_wilson_group_audit" },
+        "riskConfidenceLevel": { "const": 0.95 },
+        "maxFalseObserveGroupRiskUpperBound": { "type": "null" },
+        "minimumCalibrationGroupsPerPartition": { "type": "null" },
         "calibrationCaseCount": { "const": 0 },
         "calibrationTraceCount": { "const": 0 },
         "testCaseCount": { "const": 0 },
@@ -700,9 +704,11 @@
         "status",
         "policyId",
         "formulaId",
+        "calibrationSplitId",
         "riskSemantics",
-        "maxObservedFalseObserveRisk",
-        "minimumCalibrationGroups",
+        "riskConfidenceLevel",
+        "maxFalseObserveGroupRiskUpperBound",
+        "minimumCalibrationGroupsPerPartition",
         "calibrationCaseCount",
         "calibrationTraceCount",
         "testCaseCount",
@@ -711,17 +717,22 @@
       ],
       "properties": {
         "status": { "const": "COMPLETED" },
-        "policyId": { "const": "finance.observe-gate.v2" },
+        "policyId": { "const": "finance.observe-gate.v3" },
         "formulaId": {
-          "const": "minimum-required-observe-support.group-coverage.v2"
+          "const": "minimum-required-observe-support.group-audit-wilson.v3"
         },
-        "riskSemantics": { "const": "empirical_calibration_only" },
-        "maxObservedFalseObserveRisk": {
+        "calibrationSplitId": { "const": "sha256-alternating-groups.v1" },
+        "riskSemantics": { "const": "one_sided_wilson_group_audit" },
+        "riskConfidenceLevel": { "const": 0.95 },
+        "maxFalseObserveGroupRiskUpperBound": {
           "type": "number",
           "minimum": 0,
           "maximum": 1
         },
-        "minimumCalibrationGroups": { "type": "integer", "minimum": 1 },
+        "minimumCalibrationGroupsPerPartition": {
+          "type": "integer",
+          "minimum": 1
+        },
         "calibrationCaseCount": { "type": "integer", "minimum": 1 },
         "calibrationTraceCount": { "type": "integer", "minimum": 12 },
         "testCaseCount": { "type": "integer", "minimum": 1 },
@@ -757,41 +768,69 @@
         "schemaVersion",
         "policyId",
         "formulaId",
+        "calibrationSplitId",
         "track",
         "architecture",
         "riskSemantics",
-        "maxObservedFalseObserveRisk",
-        "minimumCalibrationGroups",
+        "riskConfidenceLevel",
+        "maxFalseObserveGroupRiskUpperBound",
+        "minimumCalibrationGroupsPerPartition",
         "status",
         "threshold",
         "calibrationCaseCount",
         "calibrationGroupCount",
+        "thresholdFitGroupCount",
+        "riskAuditGroupCount",
         "eligibleObserveCount",
         "acceptedObserveCount",
         "acceptedObserveGroupCount",
         "falseObserveCount",
-        "observedFalseObserveRisk"
+        "observedFalseObserveRisk",
+        "fitFalseObserveGroupCount",
+        "fitObservedFalseObserveGroupRisk",
+        "auditAcceptedObserveCount",
+        "auditAcceptedObserveGroupCount",
+        "auditFalseObserveGroupCount",
+        "auditObservedFalseObserveGroupRisk",
+        "auditFalseObserveGroupRiskUpperBound"
       ],
       "properties": {
-        "schemaVersion": { "const": "2" },
-        "policyId": { "const": "finance.observe-gate.v2" },
+        "schemaVersion": { "const": "3" },
+        "policyId": { "const": "finance.observe-gate.v3" },
         "formulaId": {
-          "const": "minimum-required-observe-support.group-coverage.v2"
+          "const": "minimum-required-observe-support.group-audit-wilson.v3"
         },
+        "calibrationSplitId": { "const": "sha256-alternating-groups.v1" },
         "track": { "$ref": "#/$defs/track" },
         "architecture": { "$ref": "#/$defs/architecture" },
-        "riskSemantics": { "const": "empirical_calibration_only" },
-        "maxObservedFalseObserveRisk": { "$ref": "#/$defs/unit" },
-        "minimumCalibrationGroups": { "type": "integer", "minimum": 1 },
+        "riskSemantics": { "const": "one_sided_wilson_group_audit" },
+        "riskConfidenceLevel": { "const": 0.95 },
+        "maxFalseObserveGroupRiskUpperBound": { "$ref": "#/$defs/unit" },
+        "minimumCalibrationGroupsPerPartition": {
+          "type": "integer",
+          "minimum": 1
+        },
         "status": { "const": "CALIBRATED" },
         "threshold": { "$ref": "#/$defs/unit" },
         "calibrationCaseCount": { "type": "integer", "minimum": 0 },
         "calibrationGroupCount": { "type": "integer", "minimum": 0 },
+        "thresholdFitGroupCount": { "type": "integer", "minimum": 1 },
+        "riskAuditGroupCount": { "type": "integer", "minimum": 1 },
         "eligibleObserveCount": { "type": "integer", "minimum": 1 },
         "acceptedObserveCount": { "type": "integer", "minimum": 1 },
         "acceptedObserveGroupCount": { "type": "integer", "minimum": 1 },
         "falseObserveCount": { "type": "integer", "minimum": 0 },
-        "observedFalseObserveRisk": { "$ref": "#/$defs/unit" }
+        "observedFalseObserveRisk": { "$ref": "#/$defs/unit" },
+        "fitFalseObserveGroupCount": { "type": "integer", "minimum": 0 },
+        "fitObservedFalseObserveGroupRisk": { "$ref": "#/$defs/unit" },
+        "auditAcceptedObserveCount": { "type": "integer", "minimum": 1 },
+        "auditAcceptedObserveGroupCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "auditFalseObserveGroupCount": { "type": "integer", "minimum": 0 },
+        "auditObservedFalseObserveGroupRisk": { "$ref": "#/$defs/unit" },
+        "auditFalseObserveGroupRiskUpperBound": { "$ref": "#/$defs/unit" }
       }
     },
     "unavailableObserveGatePolicy": {
@@ -801,51 +840,89 @@
         "schemaVersion",
         "policyId",
         "formulaId",
+        "calibrationSplitId",
         "track",
         "architecture",
         "riskSemantics",
-        "maxObservedFalseObserveRisk",
-        "minimumCalibrationGroups",
+        "riskConfidenceLevel",
+        "maxFalseObserveGroupRiskUpperBound",
+        "minimumCalibrationGroupsPerPartition",
         "status",
         "reason",
         "threshold",
         "calibrationCaseCount",
         "calibrationGroupCount",
+        "thresholdFitGroupCount",
+        "riskAuditGroupCount",
         "eligibleObserveCount",
         "acceptedObserveCount",
         "acceptedObserveGroupCount",
         "falseObserveCount",
-        "observedFalseObserveRisk"
+        "observedFalseObserveRisk",
+        "fitFalseObserveGroupCount",
+        "fitObservedFalseObserveGroupRisk",
+        "auditAcceptedObserveCount",
+        "auditAcceptedObserveGroupCount",
+        "auditFalseObserveGroupCount",
+        "auditObservedFalseObserveGroupRisk",
+        "auditFalseObserveGroupRiskUpperBound"
       ],
       "properties": {
-        "schemaVersion": { "const": "2" },
-        "policyId": { "const": "finance.observe-gate.v2" },
+        "schemaVersion": { "const": "3" },
+        "policyId": { "const": "finance.observe-gate.v3" },
         "formulaId": {
-          "const": "minimum-required-observe-support.group-coverage.v2"
+          "const": "minimum-required-observe-support.group-audit-wilson.v3"
         },
+        "calibrationSplitId": { "const": "sha256-alternating-groups.v1" },
         "track": { "$ref": "#/$defs/track" },
         "architecture": { "$ref": "#/$defs/architecture" },
-        "riskSemantics": { "const": "empirical_calibration_only" },
-        "maxObservedFalseObserveRisk": { "$ref": "#/$defs/unit" },
-        "minimumCalibrationGroups": { "type": "integer", "minimum": 1 },
+        "riskSemantics": { "const": "one_sided_wilson_group_audit" },
+        "riskConfidenceLevel": { "const": 0.95 },
+        "maxFalseObserveGroupRiskUpperBound": { "$ref": "#/$defs/unit" },
+        "minimumCalibrationGroupsPerPartition": {
+          "type": "integer",
+          "minimum": 1
+        },
         "status": { "const": "UNAVAILABLE" },
         "reason": {
           "enum": [
             "deterministic_only",
             "insufficient_calibration_groups",
             "insufficient_accepted_calibration_groups",
+            "insufficient_risk_audit_groups",
             "no_eligible_observe_cases",
-            "no_threshold_meets_risk_bound"
+            "no_threshold_meets_risk_bound",
+            "risk_audit_bound_exceeded"
           ]
         },
         "threshold": { "type": "null" },
         "calibrationCaseCount": { "type": "integer", "minimum": 0 },
         "calibrationGroupCount": { "type": "integer", "minimum": 0 },
+        "thresholdFitGroupCount": { "type": "integer", "minimum": 0 },
+        "riskAuditGroupCount": { "type": "integer", "minimum": 0 },
         "eligibleObserveCount": { "type": "integer", "minimum": 0 },
-        "acceptedObserveCount": { "const": 0 },
-        "acceptedObserveGroupCount": { "const": 0 },
-        "falseObserveCount": { "const": 0 },
-        "observedFalseObserveRisk": { "type": "null" }
+        "acceptedObserveCount": { "type": "integer", "minimum": 0 },
+        "acceptedObserveGroupCount": { "type": "integer", "minimum": 0 },
+        "falseObserveCount": { "type": "integer", "minimum": 0 },
+        "observedFalseObserveRisk": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/unit" }]
+        },
+        "fitFalseObserveGroupCount": { "type": "integer", "minimum": 0 },
+        "fitObservedFalseObserveGroupRisk": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/unit" }]
+        },
+        "auditAcceptedObserveCount": { "type": "integer", "minimum": 0 },
+        "auditAcceptedObserveGroupCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "auditFalseObserveGroupCount": { "type": "integer", "minimum": 0 },
+        "auditObservedFalseObserveGroupRisk": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/unit" }]
+        },
+        "auditFalseObserveGroupRiskUpperBound": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/unit" }]
+        }
       }
     },
     "observeGatePolicyBinding": {

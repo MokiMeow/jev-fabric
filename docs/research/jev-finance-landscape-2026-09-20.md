@@ -279,13 +279,24 @@ abstention makes a small apparent accuracy gain look more precise than the
 evidence permits.
 
 The same independent-group principle now applies when fitting the automatic
-observe threshold. `finance.observe-gate.v2` requires the cases accepted by the
-selected threshold—not merely the surrounding calibration split—to span the
-configured minimum number of groups. This closes a small-sample loophole where
-a threshold could satisfy an empirical error budget on one accepted group while
-unrelated rejected groups made the calibration set look broad. The retained
-accepted-group count is recomputed from traces. This is an evidence-breadth
-guard, not a binomial or distribution-free upper confidence bound.
+observe threshold. `finance.observe-gate.v3` deterministically SHA-256-orders
+groups within each track/architecture cell and alternates them into threshold-
+fit and risk-audit partitions. Selection sees only the fit partition; the frozen
+threshold is then evaluated on the untouched audit partition. Both partitions
+must meet the configured coverage floor. The audit unit is a group and its
+binary failure outcome is “at least one accepted false observe in this group.”
+
+The retained policy records the observed audit-group rate and its one-sided 95%
+Wilson score upper bound. The
+[NIST confidence-interval reference](https://itl.nist.gov/div898/handbook/prc/section2/prc241.htm)
+gives the Wilson expression and specifies replacing the two-sided normal
+quantile with the one-sided quantile. Fabric uses `z = 1.6448536269514722`,
+recomputes the bound from retained integer counts, and fails closed when it
+exceeds policy. Wilson is still a large-sample score approximation, not an exact
+binomial or distribution-free promise. Its interpretation also depends on the
+audit groups being representative and sufficiently independent; the artifact
+therefore preserves the split method, group counts, observed rate, and bound
+rather than claiming that confidence equals correctness.
 
 On 2026-09-20 the community
 [TypeSafe playground native-browser change](https://github.com/TypeSafeAI/typesafe-playground/commit/9d3d990604c4680a397db813a9058bd40597cc67)

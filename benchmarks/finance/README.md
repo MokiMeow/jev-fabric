@@ -5,23 +5,29 @@ three tracks by four architectures. It establishes neither performance nor
 trading results. Synthetic tests prove the runner and validator behave as
 specified; they are not model benchmarks.
 
-The runner implements the experimental `finance.observe-gate.v2`. It retains
+The runner implements the experimental `finance.observe-gate.v3`. It retains
 the complete atomic Choice ledgers, composes every mandatory observe factor
-with a non-compensating minimum, fits a threshold only on the calibration
-split, and upgrades a rejected `observe` to `investigate`. It never turns a
-more restrictive route into `observe`. The fitted threshold enforces only the
-caller-declared **maximum observed** false-observe risk on retained calibration
-rows. Version 2 also requires the decisions accepted by the selected threshold
-to span at least `minimumCalibrationGroups` distinct groups; merely having that
-many groups elsewhere in the calibration split is insufficient. A risk-eligible
-threshold with narrower group support becomes explicitly unavailable with
-`insufficient_accepted_calibration_groups`. The retained policy includes its
-accepted-group count, and the offline validator recomputes it from calibration
-traces. Version 1 policy ids, formula ids, schema versions, and digests are not
-reusable. Finance `run.json` schema version 2 makes that incompatibility
-explicit and also covers the required uncertainty configuration introduced with
-the completed-row intervals. This remains empirical evidence, not a confidence
-bound, statistical guarantee, authorization, or permission to trade. The
+with a non-compensating minimum, and upgrades a rejected `observe` to
+`investigate`. It never turns a more restrictive route into `observe`.
+
+Version 3 deterministically orders independent calibration groups by a
+cell-bound SHA-256 digest, alternates them into threshold-fit and risk-audit
+partitions, fits only on the first partition, and audits the selected threshold
+only on the second. A candidate threshold must cover at least
+`minimumCalibrationGroupsPerPartition` fit groups and satisfy the configured
+empirical fit-group risk. The untouched audit groups then must provide the same
+minimum coverage and place their one-sided 95% Wilson upper bound for group
+false-observe risk at or below `maxFalseObserveGroupRiskUpperBound`. One audit
+group is a failure when any accepted case in that group is a false observe.
+Missing audit coverage and an exceeded bound are retained as distinct
+fail-closed reasons.
+
+The offline validator independently repeats the partition, fit, audit, count,
+and bound calculations. Version 1 and 2 policy ids, formulas, schemas, and
+digests are not reusable; finance `run.json` schema version 3 makes that break
+explicit. The Wilson score bound is an approximate interval conditional on the
+audit groups being sufficiently independent and representative. It is not a
+distribution-free guarantee, authorization, or permission to trade. The
 committed fixture remains strictly `NOT_RUN`: its policy set, threshold inputs,
 atomic metrics, and performance metrics are null or empty and make no
 observe-gate claim.
@@ -163,9 +169,10 @@ the repository; publish only evidence whose licence permits it.
 ## Running it
 
 `run.mts` is a programmatic API. Supply four code-reviewed drivers, complete
-per-component runtime provenance, the observe-gate empirical risk limit and
-minimum calibration-group count, and the canonical runtime-evidence documents
-whose hashes that provenance claims. Then call `loadFinanceDataset`,
+per-component runtime provenance, the observe-gate group-risk upper-bound limit
+and minimum group count per fit/audit partition, and the canonical
+runtime-evidence documents whose hashes that provenance claims. Then call
+`loadFinanceDataset`,
 `runFinanceBenchmark`, and `writeFinanceArtifacts`. There is deliberately no
 CLI option that imports an arbitrary provider module.
 
@@ -187,9 +194,10 @@ evidence of deterministic drift detection, not evidence of model correctness,
 market correctness, source authenticity, or trading safety.
 
 The runner executes every calibration case first for all four architectures,
-retains those traces with `observeGateStatus: CALIBRATION`, and fits one policy
-for each of the twelve track/architecture cells. Calibration traces have no
-policy digest and are never passed through the policy they are used to create.
+retains those traces with `observeGateStatus: CALIBRATION`, partitions groups,
+and fits and audits one policy for each of the twelve track/architecture cells.
+Calibration traces have no policy digest and are never passed through the
+policy they are used to create.
 The frozen policy artifacts bind the dataset digest, pack and question-set
 identity, cell, provider/model/version/response identities, and probability
 semantics; their digest is then attached to test traces. An unavailable policy

@@ -88,10 +88,11 @@ be converted into a zero-valued accuracy replicate; the artifact instead
 retains an explicit unavailable reason, and the offline validator independently
 recomputes every interval.
 
-The finance observe gate is versioned to `finance.observe-gate.v2`. A selected
-threshold must now cover the configured minimum number of independent
-calibration groups, not merely draw from a cell whose rejected cases make the
-overall group count look sufficient. Policies retain and independently verify
-their accepted-group count; narrow thresholds fail closed with an explicit
-reason. Finance run artifacts move to schema version 2 so version-1 policy and
-pre-interval artifacts cannot be mistaken for the new contract.
+The finance observe gate is versioned to `finance.observe-gate.v3`. Independent
+calibration groups are deterministically split before selection: one partition
+fits the threshold and an untouched partition audits it. Both must meet the
+configured group-coverage floor, and the audit's one-sided 95% Wilson upper
+bound for group false-observe risk must stay within policy. Missing audit
+coverage and exceeded bounds fail closed with distinct reasons. Finance run
+artifacts move to schema version 3 so version-1/v2 policies and pre-audit
+artifacts cannot be mistaken for the new contract.

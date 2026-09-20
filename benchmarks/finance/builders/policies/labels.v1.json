@@ -3,8 +3,11 @@
   "policyId": "finance.labels.v1",
   "scope": "operational_triage_not_investment_advice",
   "observeGate": {
-    "policyId": "finance.observe-gate.v2",
-    "formulaId": "minimum-required-observe-support.group-coverage.v2",
+    "policyId": "finance.observe-gate.v3",
+    "formulaId": "minimum-required-observe-support.group-audit-wilson.v3",
+    "calibrationSplitId": "sha256-alternating-groups.v1",
+    "riskSemantics": "one_sided_wilson_group_audit",
+    "riskConfidenceLevel": 0.95,
     "baseQuestionIds": [
       "finance-route",
       "finance-anomaly",

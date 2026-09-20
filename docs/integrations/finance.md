@@ -1,5 +1,9 @@
 # Finance and fintech
 
+evidence class: design and validation contract; live model evidence `NOT RUN`.
+Source review date: 2026-09-20. Contract version:
+`finance.observe-gate.v3` / finance run schema 3.
+
 Jev Fabric supports finance only as an advisory surveillance and triage layer.
 It does not provide investment advice, choose trades, calculate indicators,
 size positions, or connect a model decision to an order-entry interface. The
@@ -201,13 +205,22 @@ pixels and not Jev.
 8. Version the dataset digest, feature definitions, model, provider, policy,
    and question set. Re-run after any change or detected drift.
 
-The experimental `finance.observe-gate.v2` also requires every selected
-automatic-observe threshold to retain support from the configured minimum
-number of independent calibration groups. A large calibration table does not
-make a narrow one-group threshold representative. This guard improves evidence
-breadth but is still not a statistical risk guarantee; report the empirical
-false-observe rate and group count, and use a separately reviewed uncertainty
-method before making a population-risk claim.
+The experimental `finance.observe-gate.v3` deterministically partitions
+independent calibration groups before fitting. It chooses a threshold on the
+threshold-fit partition and audits that frozen threshold on the untouched
+risk-audit partition. Both partitions must supply the configured minimum group
+coverage. The audit treats a group as a failure when any accepted case in it is
+a false observe and requires its one-sided ninety-five percent Wilson upper
+bound to remain
+within the configured maximum. Missing audit coverage or an exceeded bound
+fails closed to `investigate`.
+
+This is stronger evidence than reusing one calibration sample for selection and
+evaluation, but it is not a universal safety guarantee. Wilson is an approximate
+score bound and its interpretation depends on representative, sufficiently
+independent groups. Preserve the raw group counts and observed rates, review
+group construction, and keep all trading or money movement outside Jev's
+authority.
 
 TypeSafe confidence is distribution concentration, not correctness
 probability. Calibrate thresholds against your own labels and never reuse a

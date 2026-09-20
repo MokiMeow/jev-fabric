@@ -195,8 +195,10 @@
                 "deterministic_only",
                 "insufficient_calibration_groups",
                 "insufficient_accepted_calibration_groups",
+                "insufficient_risk_audit_groups",
                 "no_eligible_observe_cases",
-                "no_threshold_meets_risk_bound"
+                "no_threshold_meets_risk_bound",
+                "risk_audit_bound_exceeded"
               ]
             }
           ]
@@ -266,8 +268,10 @@
             "deterministic_only",
             "insufficient_calibration_groups",
             "insufficient_accepted_calibration_groups",
+            "insufficient_risk_audit_groups",
             "no_eligible_observe_cases",
-            "no_threshold_meets_risk_bound"
+            "no_threshold_meets_risk_bound",
+            "risk_audit_bound_exceeded"
           ]
         },
         "observeGatePolicyDigest": { "$ref": "#/$defs/hash" }

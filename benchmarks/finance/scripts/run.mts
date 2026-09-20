@@ -41,9 +41,11 @@ import {
   financeArchitectures,
   financeAtomicEvidenceRoute,
   financeAtomicMetrics,
+  financeObserveGateCalibrationSplitId,
   financeObserveGateFormulaId,
   financeObserveGateMetrics,
   financeObserveGatePolicyId,
+  financeObserveGateRiskConfidenceLevel,
   financeRoutes,
   financeTracks,
   fitFinanceObserveGate,
@@ -325,8 +327,8 @@ export interface FinanceCounterfactualTrace {
 }
 
 export interface FinanceObserveGateConfiguration {
-  readonly maxObservedFalseObserveRisk: number;
-  readonly minimumCalibrationGroups: number;
+  readonly maxFalseObserveGroupRiskUpperBound: number;
+  readonly minimumCalibrationGroupsPerPartition: number;
 }
 
 export async function loadFinanceDataset(
@@ -496,7 +498,7 @@ export async function runFinanceBenchmark(options: {
   const rows = recomputed.rows;
   const tracesJsonl = `${ordered.map(canonicalCompactJson).join("\n")}\n`;
   const run = {
-    schemaVersion: "2",
+    schemaVersion: "3",
     runId: options.runId,
     executionState: "COMPLETED",
     sampleCount: testCases.length,
@@ -525,10 +527,13 @@ export async function runFinanceBenchmark(options: {
       status: "COMPLETED",
       policyId: financeObserveGatePolicyId,
       formulaId: financeObserveGateFormulaId,
-      riskSemantics: "empirical_calibration_only",
-      maxObservedFalseObserveRisk:
-        options.observeGate.maxObservedFalseObserveRisk,
-      minimumCalibrationGroups: options.observeGate.minimumCalibrationGroups,
+      calibrationSplitId: financeObserveGateCalibrationSplitId,
+      riskSemantics: "one_sided_wilson_group_audit",
+      riskConfidenceLevel: financeObserveGateRiskConfidenceLevel,
+      maxFalseObserveGroupRiskUpperBound:
+        options.observeGate.maxFalseObserveGroupRiskUpperBound,
+      minimumCalibrationGroupsPerPartition:
+        options.observeGate.minimumCalibrationGroupsPerPartition,
       calibrationCaseCount: calibrationCases.length,
       calibrationTraceCount: calibrationTraces.length,
       testCaseCount: testCases.length,
@@ -1064,8 +1069,8 @@ function fitObserveGatePolicies(
         rows,
         track,
         architecture,
-        configuration.maxObservedFalseObserveRisk,
-        configuration.minimumCalibrationGroups,
+        configuration.maxFalseObserveGroupRiskUpperBound,
+        configuration.minimumCalibrationGroupsPerPartition,
       );
       const components = runtime.architectures[architecture].components
         .filter((component) => component.role !== "deterministic")
@@ -1384,15 +1389,15 @@ function validateObserveGateConfiguration(
   invariant(
     value !== null &&
       typeof value === "object" &&
-      Number.isFinite(value.maxObservedFalseObserveRisk) &&
-      value.maxObservedFalseObserveRisk >= 0 &&
-      value.maxObservedFalseObserveRisk <= 1,
-    "finance maximum observed false-observe risk must be in [0, 1]",
+      Number.isFinite(value.maxFalseObserveGroupRiskUpperBound) &&
+      value.maxFalseObserveGroupRiskUpperBound >= 0 &&
+      value.maxFalseObserveGroupRiskUpperBound <= 1,
+    "finance maximum false-observe group-risk upper bound must be in [0, 1]",
   );
   invariant(
-    Number.isSafeInteger(value.minimumCalibrationGroups) &&
-      value.minimumCalibrationGroups >= 1,
-    "finance minimum calibration groups must be positive",
+    Number.isSafeInteger(value.minimumCalibrationGroupsPerPartition) &&
+      value.minimumCalibrationGroupsPerPartition >= 1,
+    "finance minimum calibration groups per partition must be positive",
   );
 }
 

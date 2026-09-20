@@ -278,7 +278,10 @@ function cases(): FinanceBenchmarkCase[] {
         "visual_evidence",
         "financial_text_triage",
       ] as const
-    ).map((track) => benchmarkCase(track, "calibration", false)),
+    ).flatMap((track) => [
+      benchmarkCase(track, "calibration", false),
+      benchmarkCase(track, "calibration", false, "secondary"),
+    ]),
     ...(
       [
         "market_surveillance",
@@ -545,8 +548,8 @@ const evidenceHash = (evidence: FinanceRuntimeEvidence) =>
 
 const runtimeEvidence = [pricingEvidence, jevModelEvidence] as const;
 const observeGate = {
-  maxObservedFalseObserveRisk: 0,
-  minimumCalibrationGroups: 1,
+  maxFalseObserveGroupRiskUpperBound: 1,
+  minimumCalibrationGroupsPerPartition: 1,
 } as const;
 
 const component = (
@@ -642,7 +645,7 @@ test("NOT_RUN schema and runtime reject legacy or fabricated evidence", async ()
     ).then(JSON.parse),
   ]);
   const legacy = structuredClone(fixture) as { schemaVersion: string };
-  legacy.schemaVersion = "1";
+  legacy.schemaVersion = "2";
   assert.throws(
     () => validateAgainstSchema(schema, legacy, "legacy finance run"),
     /does not match its schema/u,
@@ -694,8 +697,8 @@ test("runs, retains, and independently validates the complete finance matrix", a
       now: () => 100,
     });
     assert.equal(artifacts.run.sampleCount, 9);
-    assert.equal(artifacts.run.calibrationSampleCount, 3);
-    assert.equal(artifacts.run.traceCount, 48);
+    assert.equal(artifacts.run.calibrationSampleCount, 6);
+    assert.equal(artifacts.run.traceCount, 60);
     assert.deepEqual(artifacts.run.uncertaintyConfiguration, {
       method: "cluster_percentile",
       confidenceLevel: 0.95,
@@ -761,7 +764,7 @@ test("runs, retains, and independently validates the complete finance matrix", a
       (trace) =>
         trace.evaluationSplit === "test" && trace.status === "predicted",
     );
-    assert.equal(calibrationTraces.length, 12);
+    assert.equal(calibrationTraces.length, 24);
     assert.ok(
       calibrationTraces.every(
         (trace) =>
@@ -797,22 +800,30 @@ test("runs, retains, and independently validates the complete finance matrix", a
         policy: {
           schemaVersion: string;
           status: string;
-          minimumCalibrationGroups: number;
+          minimumCalibrationGroupsPerPartition: number;
           acceptedObserveGroupCount: number;
+          auditAcceptedObserveGroupCount: number;
+          auditFalseObserveGroupRiskUpperBound: number | null;
+          maxFalseObserveGroupRiskUpperBound: number;
         };
       }[];
       riskSemantics: string;
     };
-    assert.equal(gate.riskSemantics, "empirical_calibration_only");
+    assert.equal(gate.riskSemantics, "one_sided_wilson_group_audit");
     assert.equal(gate.policies.length, 12);
     assert.ok(
       gate.policies.every(
         ({ policy }) =>
-          policy.schemaVersion === "2" &&
+          policy.schemaVersion === "3" &&
           (policy.status === "UNAVAILABLE"
             ? policy.acceptedObserveGroupCount === 0
             : policy.acceptedObserveGroupCount >=
-              policy.minimumCalibrationGroups),
+                policy.minimumCalibrationGroupsPerPartition &&
+              policy.auditAcceptedObserveGroupCount >=
+                policy.minimumCalibrationGroupsPerPartition &&
+              policy.auditFalseObserveGroupRiskUpperBound !== null &&
+              policy.auditFalseObserveGroupRiskUpperBound <=
+                policy.maxFalseObserveGroupRiskUpperBound),
       ),
     );
     assert.equal(
@@ -984,25 +995,28 @@ test("does not fabricate a selective-accuracy interval when a cluster can have z
           state,
           context.questionSetHash,
         );
-        const atomicEvidence = state.instrumentRef.endsWith(".secondary")
-          ? [
-              {
-                ...ledger,
-                questions: ledger.questions.map((question) =>
-                  question.questionId === "finance-evidence-quality"
-                    ? {
-                        ...question,
-                        probabilities: {
-                          sufficient: 0.5,
-                          conflicted: 0.25,
-                          insufficient: 0.25,
-                        },
-                      }
-                    : question,
-                ),
-              },
-            ]
-          : [ledger];
+        const atomicEvidence =
+          state.instrumentRef.endsWith(".secondary") &&
+          context.evaluationNowEpochMs ===
+            Date.parse("2026-02-15T12:01:00.000Z")
+            ? [
+                {
+                  ...ledger,
+                  questions: ledger.questions.map((question) =>
+                    question.questionId === "finance-evidence-quality"
+                      ? {
+                          ...question,
+                          probabilities: {
+                            sufficient: 0.5,
+                            conflicted: 0.25,
+                            insufficient: 0.25,
+                          },
+                        }
+                      : question,
+                  ),
+                },
+              ]
+            : [ledger];
         return {
           ...predicted,
           atomicEvidence,
@@ -1482,10 +1496,10 @@ test("rejects digest drift, split leakage, and unsafe driver output", async () =
 
   const splitFixture = await datasetDirectory((values) => {
     const calibration = values.at(0);
-    const testCase = values.at(3);
+    const testCase = values.at(6);
     assert.ok(calibration);
     assert.ok(testCase);
-    values[3] = { ...testCase, groupId: calibration.groupId };
+    values[6] = { ...testCase, groupId: calibration.groupId };
   });
   try {
     await assert.rejects(
@@ -2180,8 +2194,8 @@ test("token and price accounting remain independently unavailable rather than ze
         (row) =>
           row.tokenAccountingStatus === "MEASURED" &&
           row.costAccountingStatus === "UNMETERED" &&
-          row.metrics.inputTokens === 30 &&
-          row.metrics.outputTokens === 6 &&
+          row.metrics.inputTokens === 40 &&
+          row.metrics.outputTokens === 8 &&
           row.metrics.estimatedCostUsd === null,
       ),
     );

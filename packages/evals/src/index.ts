@@ -7,3 +7,4 @@ export * from "./manifest.js";
 export * from "./replay.js";
 export * from "./report.js";
 export * from "./accounting.js";
+export * from "./finance.js";

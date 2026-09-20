@@ -26,6 +26,8 @@ export {
 } from "./webmcp.js";
 export {
   bindFinanceAdvisoryEvidence,
+  bindFinanceAdvisoryEvidenceWithText,
+  FinanceAdvisoryBoundaryError,
   financeAdvisoryStateSchema,
   FINANCE_ADVISORY_CONTRACT_VERSION,
   marketAssetClassSchema,
@@ -33,9 +35,11 @@ export {
   trustedFinanceProjectionSchema,
   trustedMarketSignalSchema,
   type FinanceAdvisoryState,
+  type FinanceAdvisoryBoundaryErrorCode,
   type MarketAssetClass,
   type MarketSignalBucket,
   type TrustedFinanceProjection,
   type TrustedMarketSignal,
   type UntrustedVisualFinanceEvidence,
+  type UntrustedTextFinanceEvidence,
 } from "./finance.js";

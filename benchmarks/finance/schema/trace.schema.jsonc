@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": [
+            "predictedRoute",
+            "routeQuestionProbabilities",
+            "calibrationStatus",
+            "abstained",
+            "responseDigest"
+          ],
+          "properties": {
+            "status": { "const": "predicted" },
+            "lookaheadRejected": { "const": false },
+            "predictedRoute": { "$ref": "#/$defs/route" },
+            "routeQuestionProbabilities": { "$ref": "#/$defs/probabilities" },
+            "calibrationStatus": { "const": "measured" },
+            "abstained": { "type": "boolean" },
+            "responseDigest": { "$ref": "#/$defs/hash" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": [
+            "predictedRoute",
+            "routeQuestionProbabilities",
+            "calibrationStatus",
+            "calibrationReason",
+            "abstained",
+            "responseDigest"
+          ],
+          "properties": {
+            "status": { "const": "predicted" },
+            "lookaheadRejected": { "const": false },
+            "predictedRoute": { "$ref": "#/$defs/route" },
+            "routeQuestionProbabilities": { "type": "null" },
+            "calibrationStatus": { "const": "unavailable" },
+            "calibrationReason": {
+              "enum": ["deterministic_only", "composite_no_distribution"]
+            },
+            "abstained": { "type": "boolean" },
+            "responseDigest": { "$ref": "#/$defs/hash" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["boundaryCode"],
+          "properties": {
+            "status": { "const": "rejected_lookahead" },
+            "lookaheadProbe": { "const": true },
+            "lookaheadRejected": { "const": true },
+            "inputTokens": { "const": 0 },
+            "costMicros": { "const": "0" },
+            "boundaryCode": {
+              "enum": ["NO_LOOKAHEAD_ORDER", "SIGNAL_OUTSIDE_WINDOW"]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "traceId",
+        "runId",
+        "caseId",
+        "groupId",
+        "track",
+        "architecture",
+        "goldRoute",
+        "status",
+        "lookaheadProbe",
+        "lookaheadRejected",
+        "unsafeExecutionAttempt",
+        "durationMs",
+        "inputTokens",
+        "costMicros",
+        "stateDigest"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "traceId": { "type": "string", "minLength": 1, "maxLength": 320 },
+        "runId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "caseId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "groupId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "track": {
+          "enum": [
+            "market_surveillance",
+            "visual_evidence",
+            "financial_text_triage"
+          ]
+        },
+        "architecture": {
+          "enum": [
+            "deterministic_only",
+            "host_model_only",
+            "jev_advisory",
+            "host_plus_jev"
+          ]
+        },
+        "goldRoute": { "$ref": "#/$defs/route" },
+        "status": { "enum": ["predicted", "rejected_lookahead"] },
+        "lookaheadProbe": { "type": "boolean" },
+        "lookaheadRejected": { "type": "boolean" },
+        "unsafeExecutionAttempt": { "const": false },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "costMicros": {
+          "type": ["string", "null"],
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "stateDigest": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "route": { "enum": ["observe", "investigate", "escalate"] },
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "probabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observe", "investigate", "escalate"],
+      "properties": {
+        "observe": { "type": "number", "minimum": 0, "maximum": 1 },
+        "investigate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "escalate": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

@@ -51,3 +51,41 @@ documentation were the reproducible discovery sources for this iteration.
 - An explicit visual-extractor boundary with axes and source binding.
 - A permanent execution air gap: surveillance can only observe, investigate,
   or escalate.
+
+## Retained benchmark source plan
+
+The preferred benchmark is not a scrape of social-media trading claims. It is
+an auditable combination of public filings, reproducible simulation, and
+repository-rendered charts:
+
+1. Use the SEC's [EDGAR submissions and bulk archives](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)
+   for timestamped financial-text routing. Derive narrow labels from filing
+   form and 8-K item metadata in code, remove that metadata from model input,
+   group by accession and CIK, and split by filing time. These labels measure
+   routing—not investment risk or sentiment. The SEC's
+   [reuse FAQ](https://www.sec.gov/about/webmaster-frequently-asked-questions)
+   permits copying and distributing public EDGAR filing content.
+2. Render finance-specific charts from the SEC's
+   [Financial Statement and Notes datasets](https://www.sec.gov/data-research/sec-markets-data/financial-statement-notes-data-sets).
+   Retain the filing accession, source table, chart recipe, filing cutoff, and
+   hashes. Deterministic legend, axis, source-date, and series mutations create
+   exact visual-quality labels without asking a model to invent ground truth.
+3. Generate market-surveillance ground truth with seeded
+   [ABIDES](https://github.com/abides-sim/abides) scenarios under its BSD-3
+   license. Report these only as synthetic anomalies. Use
+   [SEC MIDAS market-structure data](https://www.sec.gov/data-research/market-structure-data)
+   as real-distribution background and out-of-distribution testing; MIDAS does
+   not provide manipulation labels.
+
+[PlotQA](https://github.com/NiteshMethani/PlotQA) can test the upstream chart
+extractor, but it is not finance-specific and has no forward-time finance split.
+[FinQA](https://github.com/czyssrs/FinQA) can supplement numerical reasoning
+tests after regrouping by issuer and report year, but it is not a triage label
+set. Neither may be used to claim finance no-lookahead performance by itself.
+
+FINRA short-sale and fixed-income feeds are fetch-only optional sources because
+their terms restrict use or redistribution. SEC fails-to-deliver data is also
+excluded as an abuse label: the SEC cautions that a fail does not by itself show
+abusive or naked short selling. Dataset manifests must therefore retain the
+source URL, license statement, redistribution flag, exact case-set hash, and
+forward-time split before a completed run can be published.

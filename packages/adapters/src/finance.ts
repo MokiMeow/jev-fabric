@@ -4,6 +4,27 @@ import { z } from "zod";
 
 export const FINANCE_ADVISORY_CONTRACT_VERSION = "1" as const;
 
+export type FinanceAdvisoryBoundaryErrorCode =
+  | "NO_LOOKAHEAD_ORDER"
+  | "STALE_OBSERVATION"
+  | "SIGNAL_OUTSIDE_WINDOW"
+  | "EVIDENCE_BINDING"
+  | "INVALID_INPUT";
+
+export class FinanceAdvisoryBoundaryError extends TypeError {
+  readonly code: FinanceAdvisoryBoundaryErrorCode;
+
+  constructor(
+    code: FinanceAdvisoryBoundaryErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "FinanceAdvisoryBoundaryError";
+    this.code = code;
+  }
+}
+
 const hashSchema = z
   .string()
   .regex(/^sha256:[a-f0-9]{64}$/u, "must be a SHA-256 hash");
@@ -26,6 +47,17 @@ const oneLineSchema = z
   .min(1)
   .max(240)
   .refine((value) => !hasControlCharacter(value), "must be one line");
+const textExcerptSchema = z
+  .string()
+  .min(1)
+  .max(1_000)
+  .refine(
+    (value) => !hasControlCharacter(value),
+    "must not contain control characters",
+  );
+
+const MAX_TEXT_EXCERPTS = 16;
+const MAX_TEXT_EXCERPT_BYTES = 16_384;
 
 export const marketAssetClassSchema = z.enum([
   "equity",
@@ -87,6 +119,16 @@ export const trustedFinanceProjectionSchema = z
       })
       .strict()
       .optional(),
+    text: z
+      .object({
+        mode: z.literal("bounded_excerpts"),
+        extractorId: identifierSchema,
+        extractorVersion: z.string().min(1).max(128),
+        documentHash: hashSchema,
+        sourceBindingHash: hashSchema,
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -104,6 +146,10 @@ export type TrustedFinanceProjection = z.infer<
 
 export interface UntrustedVisualFinanceEvidence {
   readonly annotations: unknown;
+}
+
+export interface UntrustedTextFinanceEvidence {
+  readonly excerpts: unknown;
 }
 
 export const financeAdvisoryStateSchema = z
@@ -138,6 +184,31 @@ export const financeAdvisoryStateSchema = z
         trust: z.literal("untrusted_data_only"),
       })
       .strict()
+      .optional(),
+    text: z
+      .object({
+        mode: z.literal("bounded_excerpts"),
+        extractorId: identifierSchema,
+        extractorVersion: z.string().min(1).max(128),
+        documentHash: hashSchema,
+        sourceBindingHash: hashSchema,
+        excerptHash: hashSchema,
+        excerpts: z.array(textExcerptSchema).max(MAX_TEXT_EXCERPTS),
+        trust: z.literal("untrusted_data_only"),
+      })
+      .strict()
+      .superRefine((value, context) => {
+        const totalBytes = value.excerpts.reduce(
+          (total, excerpt) => total + Buffer.byteLength(excerpt, "utf8"),
+          0,
+        );
+        if (totalBytes > MAX_TEXT_EXCERPT_BYTES)
+          context.addIssue({
+            code: "custom",
+            message: "excerpts exceed the total byte limit",
+            path: ["excerpts"],
+          });
+      })
       .optional(),
     candidates: z
       .tuple([
@@ -202,9 +273,40 @@ export function bindFinanceAdvisoryEvidence(
   untrustedVisualInput: UntrustedVisualFinanceEvidence | undefined,
   nowEpochMs: number,
 ): FinanceAdvisoryState {
+  return bindFinanceAdvisoryEvidenceWithText(
+    trustedInput,
+    untrustedVisualInput,
+    undefined,
+    nowEpochMs,
+  );
+}
+
+/**
+ * Binds trusted market metadata to independently bounded visual and text
+ * evidence. Extracted text remains advisory, untrusted data and cannot add
+ * candidates, authority, or execution fields to the resulting state.
+ */
+export function bindFinanceAdvisoryEvidenceWithText(
+  trustedInput: unknown,
+  untrustedVisualInput: UntrustedVisualFinanceEvidence | undefined,
+  untrustedTextInput: UntrustedTextFinanceEvidence | undefined,
+  nowEpochMs: number,
+): FinanceAdvisoryState {
   if (!Number.isFinite(nowEpochMs))
-    throw new TypeError("finance advisory clock must be finite");
-  const trusted = trustedFinanceProjectionSchema.parse(trustedInput);
+    throw new FinanceAdvisoryBoundaryError(
+      "INVALID_INPUT",
+      "finance advisory clock must be finite",
+    );
+  let trusted: TrustedFinanceProjection;
+  try {
+    trusted = trustedFinanceProjectionSchema.parse(trustedInput);
+  } catch (cause) {
+    throw new FinanceAdvisoryBoundaryError(
+      "INVALID_INPUT",
+      "finance advisory trusted projection is invalid",
+      { cause },
+    );
+  }
   const observedAt = Date.parse(trusted.observedAt);
   const windowStart = Date.parse(trusted.windowStart);
   const windowEnd = Date.parse(trusted.windowEnd);
@@ -215,29 +317,50 @@ export function bindFinanceAdvisoryEvidence(
     cutoffAt > observedAt ||
     observedAt > nowEpochMs
   )
-    throw new TypeError(
+    throw new FinanceAdvisoryBoundaryError(
+      "NO_LOOKAHEAD_ORDER",
       "finance advisory timestamps violate the no-lookahead ordering",
     );
   if (nowEpochMs - observedAt > trusted.maxAgeMs)
-    throw new TypeError("finance advisory observation is stale");
+    throw new FinanceAdvisoryBoundaryError(
+      "STALE_OBSERVATION",
+      "finance advisory observation is stale",
+    );
   if (
     trusted.signals.some((signal) => {
       const asOf = Date.parse(signal.asOf);
       return asOf < windowStart || asOf > cutoffAt;
     })
   )
-    throw new TypeError(
+    throw new FinanceAdvisoryBoundaryError(
+      "SIGNAL_OUTSIDE_WINDOW",
       "finance advisory signal is outside the declared window",
     );
   if ((trusted.visual === undefined) !== (untrustedVisualInput === undefined))
-    throw new TypeError(
+    throw new FinanceAdvisoryBoundaryError(
+      "EVIDENCE_BINDING",
       "finance advisory visual projection and annotations must be supplied together",
     );
+  if ((trusted.text === undefined) !== (untrustedTextInput === undefined))
+    throw new FinanceAdvisoryBoundaryError(
+      "EVIDENCE_BINDING",
+      "finance advisory text projection and excerpts must be supplied together",
+    );
 
+  const trustedVisual = trusted.visual;
   const visual =
-    trusted.visual === undefined || untrustedVisualInput === undefined
+    trustedVisual === undefined || untrustedVisualInput === undefined
       ? undefined
-      : bindVisual(trusted.visual, visualAnnotations(untrustedVisualInput));
+      : bindEvidence(() =>
+          bindVisual(trustedVisual, visualAnnotations(untrustedVisualInput)),
+        );
+  const trustedText = trusted.text;
+  const text =
+    trustedText === undefined || untrustedTextInput === undefined
+      ? undefined
+      : bindEvidence(() =>
+          bindText(trustedText, textExcerpts(untrustedTextInput)),
+        );
   return financeAdvisoryStateSchema.parse({
     contractVersion: FINANCE_ADVISORY_CONTRACT_VERSION,
     advisoryOnly: true,
@@ -257,8 +380,24 @@ export function bindFinanceAdvisoryEvidence(
     temporalIntegrity: "verified_no_lookahead",
     signals: trusted.signals,
     ...(visual === undefined ? {} : { visual }),
+    ...(text === undefined ? {} : { text }),
     candidates,
   });
+}
+
+function bindEvidence<T>(bind: () => T): T {
+  try {
+    return bind();
+  } catch (cause) {
+    if (cause instanceof FinanceAdvisoryBoundaryError) throw cause;
+    throw new FinanceAdvisoryBoundaryError(
+      "EVIDENCE_BINDING",
+      cause instanceof Error
+        ? cause.message
+        : "finance advisory evidence binding failed",
+      { cause },
+    );
+  }
 }
 
 function bindVisual(
@@ -273,6 +412,22 @@ function bindVisual(
     ...trusted,
     annotationHash,
     annotations,
+    trust: "untrusted_data_only" as const,
+  };
+}
+
+function bindText(
+  trusted: NonNullable<TrustedFinanceProjection["text"]>,
+  excerptsInput: unknown,
+) {
+  const excerpts = sanitizeTextExcerpts(excerptsInput);
+  const excerptHash = `sha256:${createHash("sha256")
+    .update(JSON.stringify(excerpts))
+    .digest("hex")}`;
+  return {
+    ...trusted,
+    excerptHash,
+    excerpts,
     trust: "untrusted_data_only" as const,
   };
 }
@@ -300,6 +455,29 @@ function visualAnnotations(input: UntrustedVisualFinanceEvidence): unknown {
   return descriptor.value;
 }
 
+function textExcerpts(input: UntrustedTextFinanceEvidence): unknown {
+  if (!input || typeof input !== "object" || isProxy(input))
+    throw new TypeError("finance text evidence must be a plain object");
+  const prototype = Object.getPrototypeOf(input) as unknown;
+  if (prototype !== Object.prototype && prototype !== null)
+    throw new TypeError("finance text evidence must be a plain object");
+  if (Object.getOwnPropertySymbols(input).length > 0)
+    throw new TypeError("finance text evidence must not contain symbols");
+  const descriptors = Object.getOwnPropertyDescriptors(input);
+  const keys = Object.keys(descriptors);
+  const descriptor = descriptors.excerpts;
+  if (
+    keys.length !== 1 ||
+    !descriptor ||
+    !("value" in descriptor) ||
+    !descriptor.enumerable
+  )
+    throw new TypeError(
+      "finance text evidence must contain one plain excerpts field",
+    );
+  return descriptor.value;
+}
+
 function sanitizeAnnotations(input: unknown): readonly string[] {
   if (isProxy(input as object))
     throw new TypeError("finance visual annotations must not be a proxy");
@@ -320,5 +498,36 @@ function sanitizeAnnotations(input: unknown): readonly string[] {
   }
   if (Reflect.ownKeys(descriptors).some((key) => !allowed.has(String(key))))
     throw new TypeError("finance visual annotations contain extra properties");
+  return Object.freeze(output);
+}
+
+function sanitizeTextExcerpts(input: unknown): readonly string[] {
+  if (isProxy(input as object))
+    throw new TypeError("finance text excerpts must not be a proxy");
+  if (!Array.isArray(input))
+    throw new TypeError("finance text excerpts must be an array");
+  if (
+    Object.getPrototypeOf(input) !== Array.prototype ||
+    input.length > MAX_TEXT_EXCERPTS
+  )
+    throw new TypeError("finance text excerpts are not a bounded array");
+  const descriptors = Object.getOwnPropertyDescriptors(input);
+  const allowed = new Set(["length"]);
+  const output: string[] = [];
+  let totalBytes = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    const key = String(index);
+    allowed.add(key);
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable)
+      throw new TypeError("finance text excerpts must contain plain data");
+    const excerpt = textExcerptSchema.parse(descriptor.value);
+    totalBytes += Buffer.byteLength(excerpt, "utf8");
+    if (totalBytes > MAX_TEXT_EXCERPT_BYTES)
+      throw new TypeError("finance text excerpts exceed the total byte limit");
+    output.push(excerpt);
+  }
+  if (Reflect.ownKeys(descriptors).some((key) => !allowed.has(String(key))))
+    throw new TypeError("finance text excerpts contain extra properties");
   return Object.freeze(output);
 }

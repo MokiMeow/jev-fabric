@@ -7,31 +7,100 @@
   "traceSetHash": null,
   "dataset": {
     "status": "NOT_SELECTED",
+    "datasetId": null,
+    "sourceUrl": null,
     "digest": null,
     "license": null,
+    "evidenceClass": null,
+    "redistributionAllowed": null,
     "splitMethod": "forward_chaining_time_split",
     "trainEnd": null,
     "testStart": null
   },
   "runtime": {
-    "providerId": null,
-    "modelId": null,
-    "modelVersion": null,
     "questionSetHash": null,
     "policyVersion": null,
     "featureSetHash": null,
     "hardware": null,
-    "region": null
+    "region": null,
+    "concurrency": null,
+    "timeoutMs": null,
+    "architectures": {
+      "deterministic_only": {
+        "components": [
+          {
+            "role": "deterministic",
+            "providerId": null,
+            "modelId": null,
+            "modelVersion": null,
+            "probabilitySemantics": null
+          }
+        ],
+        "combinerId": null,
+        "combinerVersion": null
+      },
+      "host_model_only": {
+        "components": [
+          {
+            "role": "host",
+            "providerId": null,
+            "modelId": null,
+            "modelVersion": null,
+            "probabilitySemantics": null
+          }
+        ],
+        "combinerId": null,
+        "combinerVersion": null
+      },
+      "jev_advisory": {
+        "components": [
+          {
+            "role": "jev",
+            "providerId": null,
+            "modelId": null,
+            "modelVersion": null,
+            "probabilitySemantics": null
+          }
+        ],
+        "combinerId": null,
+        "combinerVersion": null
+      },
+      "host_plus_jev": {
+        "components": [
+          {
+            "role": "host",
+            "providerId": null,
+            "modelId": null,
+            "modelVersion": null,
+            "probabilitySemantics": null
+          },
+          {
+            "role": "jev",
+            "providerId": null,
+            "modelId": null,
+            "modelVersion": null,
+            "probabilitySemantics": null
+          }
+        ],
+        "combinerId": null,
+        "combinerVersion": null
+      }
+    }
   },
   "rows": [
     {
       "track": "market_surveillance",
       "architecture": "deterministic_only",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -44,11 +113,16 @@
     {
       "track": "market_surveillance",
       "architecture": "host_model_only",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -61,11 +135,16 @@
     {
       "track": "market_surveillance",
       "architecture": "jev_advisory",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -78,11 +157,16 @@
     {
       "track": "market_surveillance",
       "architecture": "host_plus_jev",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -95,11 +179,16 @@
     {
       "track": "visual_evidence",
       "architecture": "deterministic_only",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -112,11 +201,16 @@
     {
       "track": "visual_evidence",
       "architecture": "host_model_only",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -129,11 +223,16 @@
     {
       "track": "visual_evidence",
       "architecture": "jev_advisory",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -146,11 +245,16 @@
     {
       "track": "visual_evidence",
       "architecture": "host_plus_jev",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -163,11 +267,16 @@
     {
       "track": "financial_text_triage",
       "architecture": "deterministic_only",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -180,11 +289,16 @@
     {
       "track": "financial_text_triage",
       "architecture": "host_model_only",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -197,11 +311,16 @@
     {
       "track": "financial_text_triage",
       "architecture": "jev_advisory",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,
@@ -214,11 +333,16 @@
     {
       "track": "financial_text_triage",
       "architecture": "host_plus_jev",
+      "sampleCount": 0,
+      "calibrationStatus": "NOT_RUN",
+      "calibrationReason": null,
+      "accountingStatus": "NOT_RUN",
+      "accountingReason": null,
       "metrics": {
         "accuracy": null,
         "macroF1": null,
-        "brier": null,
-        "ece": null,
+        "routeQuestionBrier": null,
+        "routeQuestionEce": null,
         "coverage": null,
         "unsafeExecutionAttemptRate": null,
         "lookaheadRejectionRate": null,

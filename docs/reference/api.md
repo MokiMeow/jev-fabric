@@ -24,8 +24,19 @@ state, capability-manifest, freshness, and positive-catalogue checks pass.
 
 `bindFinanceAdvisoryEvidence(trustedProjection, visualEvidence, observedNowMs)`
 validates source/feature hashes, time ordering, age, per-signal cutoff, and an
-optional structured visual-extractor binding. It emits only opaque references,
-semantic buckets, bounded untrusted annotations, and the three advisory
-finance candidates. It has no order or execution API. Pass the result to
-`financeSurveillancePack`; preserve the separate host authorization and
-execution boundary described in the [finance guide](../integrations/finance.md).
+optional structured visual-extractor binding.
+`bindFinanceAdvisoryEvidenceWithText(trustedProjection, visualEvidence,
+textEvidence, observedNowMs)` adds source-bound bounded text excerpts.
+`FinanceAdvisoryBoundaryError.code` exposes stable failure categories. Both
+binders emit only opaque references, semantic buckets, bounded untrusted data,
+and the three advisory finance candidates. They have no order or execution API.
+Pass the result to `financeSurveillancePack`; preserve the separate host
+authorization and execution boundary described in the
+[finance guide](../integrations/finance.md).
+
+`aggregateFinanceBenchmarkTraces(traces)` in
+`@mokimeow/jev-fabric-evals` strictly aggregates retained finance traces into
+the three-by-four benchmark matrix. It rejects duplicates, incomplete cells,
+unsafe attempts, malformed distributions, and dishonest token/cost accounting.
+Route-question calibration is reported only when that exact distribution was
+measured; unavailable calibration and accounting remain explicit.

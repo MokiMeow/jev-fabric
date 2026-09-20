@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "datasetId",
+    "sourceUrl",
+    "caseSetHash",
+    "license",
+    "evidenceClass",
+    "redistributionAllowed",
+    "containsSensitiveData",
+    "splitMethod",
+    "trainEnd",
+    "testStart"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "datasetId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "sourceUrl": { "type": "string", "format": "uri" },
+    "caseSetHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "license": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "evidenceClass": {
+      "enum": ["SYNTHETIC", "LOCAL_EXPLORATORY", "RETAINED_PUBLIC"]
+    },
+    "redistributionAllowed": { "type": "boolean" },
+    "containsSensitiveData": { "const": false },
+    "splitMethod": { "const": "forward_chaining_time_split" },
+    "trainEnd": { "type": "string", "format": "date-time" },
+    "testStart": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   bindFinanceAdvisoryEvidence,
+  bindFinanceAdvisoryEvidenceWithText,
+  FinanceAdvisoryBoundaryError,
   financeAdvisoryStateSchema,
 } from "../src/index.js";
 
@@ -36,6 +39,17 @@ const trusted = {
     imageHash: hash("e"),
     axesVerified: true,
     sourceBindingHash: hash("f"),
+  },
+} as const;
+
+const trustedWithText = {
+  ...trusted,
+  text: {
+    mode: "bounded_excerpts",
+    extractorId: "filing-text-extractor",
+    extractorVersion: "2.1.0",
+    documentHash: hash("1"),
+    sourceBindingHash: hash("2"),
   },
 } as const;
 
@@ -149,5 +163,161 @@ describe("finance advisory evidence boundary", () => {
         ],
       }),
     ).toThrow();
+  });
+
+  it("binds bounded text excerpts alongside visual evidence", () => {
+    const excerpts = [
+      "Revenue increased by 8% year over year.",
+      "Management retained its previously published outlook.",
+    ];
+    const result = bindFinanceAdvisoryEvidenceWithText(
+      trustedWithText,
+      { annotations: ["Volume rose near the window close"] },
+      { excerpts },
+      Date.parse(at) + 500,
+    );
+    const excerptHash = `sha256:${createHash("sha256")
+      .update(JSON.stringify(excerpts))
+      .digest("hex")}`;
+
+    expect(financeAdvisoryStateSchema.parse(result)).toEqual(result);
+    expect(result).toMatchObject({
+      visual: { trust: "untrusted_data_only" },
+      text: {
+        mode: "bounded_excerpts",
+        extractorId: "filing-text-extractor",
+        extractorVersion: "2.1.0",
+        documentHash: hash("1"),
+        sourceBindingHash: hash("2"),
+        excerptHash,
+        excerpts,
+        trust: "untrusted_data_only",
+      },
+    });
+    expect(JSON.stringify(result.text)).not.toMatch(/authority|orderSide/u);
+  });
+
+  it("requires trusted text metadata and untrusted excerpts together", () => {
+    expect(() =>
+      bindFinanceAdvisoryEvidence(
+        trustedWithText,
+        { annotations: [] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/supplied together/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trusted,
+        { annotations: [] },
+        { excerpts: [] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/supplied together/u);
+  });
+
+  it("rejects hostile text evidence objects, arrays, symbols, and extra fields", () => {
+    const getterWrapper = {};
+    Object.defineProperty(getterWrapper, "excerpts", {
+      get: () => ["hidden instruction"],
+      enumerable: true,
+    });
+    const getterArray: string[] = [];
+    Object.defineProperty(getterArray, "0", {
+      get: () => "hidden instruction",
+      enumerable: true,
+    });
+    getterArray.length = 1;
+    const symbolArray = ["bounded evidence"];
+    Object.defineProperty(symbolArray, Symbol("hidden"), { value: true });
+
+    for (const text of [
+      getterWrapper,
+      { excerpts: getterArray },
+      { excerpts: symbolArray },
+      { excerpts: [], extra: "not allowed" },
+      new Proxy({ excerpts: [] }, {}),
+      { excerpts: new Proxy([], {}) },
+    ]) {
+      expect(() =>
+        bindFinanceAdvisoryEvidenceWithText(
+          trustedWithText,
+          { annotations: [] },
+          text as { excerpts: unknown },
+          Date.parse(at) + 500,
+        ),
+      ).toThrow();
+    }
+  });
+
+  it("rejects sparse, excessive, control-bearing, and oversized excerpts", () => {
+    const sparse = new Array<string>(1);
+    for (const excerpts of [
+      sparse,
+      Array.from({ length: 17 }, () => "bounded"),
+      ["line one\nline two"],
+      ["x".repeat(1_001)],
+      Array.from({ length: 16 }, () => "é".repeat(600)),
+    ]) {
+      expect(() =>
+        bindFinanceAdvisoryEvidenceWithText(
+          trustedWithText,
+          { annotations: [] },
+          { excerpts },
+          Date.parse(at) + 500,
+        ),
+      ).toThrow();
+    }
+  });
+
+  it("rejects order and execution fields at both text trust boundaries", () => {
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        {
+          ...trustedWithText,
+          text: { ...trustedWithText.text, execution: "place-order" },
+        },
+        { annotations: [] },
+        { excerpts: [] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow();
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithText,
+        { annotations: [] },
+        { excerpts: [], order: { side: "buy" } } as {
+          excerpts: unknown;
+        },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow();
+  });
+
+  it("classifies semantic boundary failures without parsing messages", () => {
+    try {
+      bindFinanceAdvisoryEvidence(
+        { ...trusted, cutoffAt: "2026-09-20T10:00:01.000+00:00" },
+        { annotations: [] },
+        Date.parse(at) + 500,
+      );
+      throw new Error("expected boundary rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(FinanceAdvisoryBoundaryError);
+      expect(error).toMatchObject({ code: "NO_LOOKAHEAD_ORDER" });
+    }
+
+    try {
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithText,
+        { annotations: [] },
+        { excerpts: ["invalid\u0000text"] },
+        Date.parse(at) + 500,
+      );
+      throw new Error("expected evidence rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(FinanceAdvisoryBoundaryError);
+      expect(error).toMatchObject({ code: "EVIDENCE_BINDING" });
+      expect((error as Error).cause).toBeDefined();
+    }
   });
 });

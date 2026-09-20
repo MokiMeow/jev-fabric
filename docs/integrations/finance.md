@@ -29,11 +29,18 @@ flowchart LR
 The dotted relationship is intentionally not implemented. A Jev answer is
 never an order, authorization, approval, or strategy signal.
 
-Use `bindFinanceAdvisoryEvidence` to create the projection. It accepts only
-opaque instrument references, source and feature hashes, code-derived semantic
-buckets, code-checked timestamps, and optional structured visual annotations. It
-rejects stale observations, future observations, signals after the declared
-cutoff, raw order fields, unbound visual input, and malformed annotations.
+Use `bindFinanceAdvisoryEvidence` for structured visual evidence or
+`bindFinanceAdvisoryEvidenceWithText` when a filing, news, or case-note
+extractor also supplies bounded excerpts. Both accept only opaque instrument
+references, source and feature hashes, code-derived semantic buckets, and
+code-checked timestamps. The text-aware binder limits excerpts to 16 items,
+1,000 characters each, and 16 KiB total; binds them to a trusted document and
+extractor identity; hashes the exact accepted excerpts; and marks them as
+`untrusted_data_only`. The binders reject stale or future observations,
+post-cutoff signals, raw order fields, unbound evidence, proxy/accessor input,
+control characters, and malformed annotations or excerpts. Stable
+`FinanceAdvisoryBoundaryError` codes let callers distinguish look-ahead, stale,
+window, binding, and general input failures without matching error text.
 
 Then use `financeSurveillancePack`. Its finite output vocabulary is:
 
@@ -102,8 +109,12 @@ pixels and not Jev.
 
 TypeSafe confidence is distribution concentration, not correctness
 probability. Calibrate and threshold the returned option probabilities against
-your own labels. The committed [finance benchmark contract](../../benchmarks/finance/README.md)
-is `NOT RUN`; it prevents placeholder data from becoming a performance claim.
+your own labels. The executable
+[finance benchmark](../../benchmarks/finance/README.md) compares four
+architectures across all three tracks and independently validates retained
+traces, digests, provenance, look-ahead rejection, calibration semantics,
+latency, tokens, and cost. Its committed evidence remains `NOT RUN`; no
+placeholder or synthetic result is presented as live model performance.
 
 The offline [finance-surveillance example](../../examples/finance-surveillance/README.md)
 shows the complete boundary with synthetic evidence.

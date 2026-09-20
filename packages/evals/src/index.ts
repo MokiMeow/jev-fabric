@@ -11,3 +11,4 @@ export * from "./finance.js";
 export * from "./finance-observe-gate.js";
 export * from "./robustness.js";
 export * from "./comparability.js";
+export * from "./hierarchical-confidence.js";

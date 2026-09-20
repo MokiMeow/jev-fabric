@@ -11,3 +11,7 @@ fail closed when an exposed request ID is malformed.
 Carry the hash-only upstream request identity into versioned finance and
 fintech benchmark evidence, with explicit `null` for an absent optional header
 and one retained provenance slot for every metered provider attempt.
+
+Add a group-disjoint hierarchical-confidence evaluator for finance document
+taxonomies. It fits and independently audits a version-bound threshold before
+allowing leaf labels, otherwise falling back to deterministic parent labels.

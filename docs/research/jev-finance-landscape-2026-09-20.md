@@ -327,7 +327,14 @@ and percentages came from `jev-1.12` on a small, filtered sample with
 self-reported labels; they are not a production threshold for `jev-1.13`, a
 correctness probability, or Fabric benchmark evidence. Fabric will calibrate
 each primitive, dataset, model, and route separately and may send uncertain
-finance cases to a person instead of forcing a broad label.
+finance cases to a person instead of forcing a broad label. The public
+`evaluateHierarchicalConfidence` evaluator now makes that separation
+executable: disjoint groups fit a candidate threshold, untouched groups audit
+its one-sided Wilson failure bound, and a third split measures leaf-versus-parent
+reporting. A failed fit or audit forces parent-only output. Its reconstructible
+policy digest binds the taxonomy, dataset, question contract, provider,
+concrete model, and native probability semantics; it grants no financial
+authority.
 
 The official
 [pre-parsed extraction cookbook](https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook)

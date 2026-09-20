@@ -66,3 +66,10 @@ the three-by-four benchmark matrix. It rejects duplicates, incomplete cells,
 unsafe attempts, malformed distributions, and dishonest token/cost accounting.
 Route-question calibration is reported only when that exact distribution was
 measured; unavailable calibration and accounting remain explicit.
+
+`evaluateHierarchicalConfidence(rows, config)` fits a leaf-reporting confidence
+threshold on one group-disjoint split, audits its group failure risk on a
+second split, and evaluates leaf-versus-parent fallback on a third. The policy
+hash binds the hierarchy, dataset, question contract, provider, concrete model,
+and native probability semantics. Missing support or a failed audit produces
+parent-only results; the evaluator never grants application authority.

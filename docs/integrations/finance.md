@@ -2,7 +2,7 @@
 
 evidence class: design and validation contract; live model evidence `NOT RUN`.
 Source review date: 2026-09-20. Contract version:
-`finance.observe-gate.v3` / finance run schema 3.
+`finance.observe-gate.v3` / finance run schema 4.
 
 Jev Fabric supports finance only as an advisory surveillance and triage layer.
 It does not provide investment advice, choose trades, calculate indicators,
@@ -136,6 +136,32 @@ validated on held-out finance evidence.
 Do not use this integration for direct buy/sell/hold decisions, price targets,
 credit approvals, eligibility, suitability, market access, or unattended
 financial execution.
+
+## Hierarchical document classification
+
+The public `evaluateHierarchicalConfidence` evaluator supports bounded finance
+taxonomies such as SEC SIC major groups rolling up to divisions. It consumes
+already-retained Choice results; it never fetches filings, calls Jev, or takes
+an action. A threshold is fitted on `threshold_fit` groups, checked with a
+one-sided ninety-five percent Wilson group-failure bound on disjoint
+`risk_audit` groups, and
+only then applied to `test`. Above the audited threshold it reports the leaf;
+otherwise it deterministically reports the leaf's parent. If fitting or audit
+coverage fails, every test result falls back to its parent.
+
+Policies bind the hierarchy, dataset and question-set hashes, provider,
+concrete model version, and `native_calibrated` probability semantics. Moving
+model aliases and non-native confidence are rejected. TypeSafe confidence is
+distribution concentration—not correctness probability—so do not reuse the
+official cookbook's example cutoff or its earlier-model results as a production
+policy. The current docs still require a threshold evaluated on the target
+domain and consequences. See TypeSafe's
+[SEC classification cookbook](https://docs.typesafe.ai/cookbooks/classification_using_confidence),
+[confidence guidance](https://docs.typesafe.ai/confidence), and
+[current model contract](https://docs.typesafe.ai/models).
+
+Industry classification may organize research or review queues. It cannot
+authorize a trade, recommendation, eligibility decision, or financial action.
 
 FINRA says firms using AI should address model risk, data privacy and integrity,
 reliability, accuracy, governance, and supervision. The SEC's market-access

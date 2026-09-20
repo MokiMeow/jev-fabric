@@ -10,6 +10,7 @@ Pick the narrowest pack that matches the question. Each pack is advisory and req
 | `risk` | signal risk and escalation needs | granting access | static deny remains deny |
 | `progress` | classify task state | certify completion | uncertain state abstains |
 | `completion` | assess observed checks | accept claimed-but-unobserved work | unobserved claim denies |
+| `finance-research-router` | propose one fixed read-only market-research tool and bounded arguments | trading, advice, arbitrary tools, URLs, commands, or execution | unsafe, unsupported, malformed, or influenced requests investigate or escalate |
 | `finance-surveillance` | route bounded, time-checked market evidence | trading, investment advice, credit, suitability, or execution | uncertainty and failure escalate |
 | `fintech-exception` | detect explicit exception indicators in one redacted case note | payment approval, fraud determination, AML/KYC/sanctions disposition, identity, authority, or execution | malformed, urgent-harm, influence, and provider failures escalate |
 
@@ -38,6 +39,12 @@ The [TypeSafe patterns index](https://docs.typesafe.ai/patterns) and [choice pri
 `finance-surveillance` is intentionally not an allow/deny pack. It returns only
 `observe`, `investigate`, or `escalate`, and it requires the
 [finance evidence boundary](../integrations/finance.md).
+
+`finance-research-router` batches safety, tool, symbol, and window judgments over
+one host-redacted request. It returns only an advisory proposal for a fixed
+read-only tool; the host must revalidate every argument before using its own
+least-privilege analytics executor. Read the
+[research-routing boundary](../integrations/finance-research-routing.md).
 
 `fintech-exception` is also routing-only. It batches six independent Noul
 questions over one host-redacted, hash-bound note and lets code compose the

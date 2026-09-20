@@ -6,7 +6,7 @@ Begin with the [offline quickstart](../quickstart/offline.md), then select a [pa
 | --- | --- |
 | [Concepts](../concepts/README.md) | bounded decisions, state, candidates, uncertainty, receipts |
 | [Glossary](../concepts/glossary.md) | stable terms used across the documentation |
-| [Packs](../packs/selection.md) | choose among the nine built-in packs |
+| [Packs](../packs/selection.md) | choose among the ten built-in packs |
 | [Adapters](../adapters/hosts.md) | generated agent-host configurations |
 | [Recipes](../recipes/README.md) | safe integration patterns |
 | [Security](../security/README.md) | threats, boundaries, and reporting |
@@ -21,4 +21,5 @@ Begin with the [offline quickstart](../quickstart/offline.md), then select a [pa
 | [Experimental WebMCP](../recipes/webmcp-browser.md) | origin/tool/schema-bound browser advice without execution |
 | [Tool environments](../integrations/tool-environments.md) | advisory contracts for browsers, DCC tools, engines, and CAD |
 | [Fintech exception triage](../integrations/fintech.md) | six batched Noul checks with routing-only, no-execution controls |
+| [Finance research routing](../integrations/finance-research-routing.md) | one batched, advisory-only proposal for a bounded read-only analytics tool |
 | [Finance ecosystem scan](../research/jev-finance-landscape-2026-09-20.md) | dated official/community discovery with explicit evidence limits |

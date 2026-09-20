@@ -20,6 +20,7 @@
     "risk/fixtures.jsonl",
     "progress/fixtures.jsonl",
     "completion/fixtures.jsonl",
+    "finance-research-router/fixtures.jsonl",
     "finance-surveillance/fixtures.jsonl",
     "fintech-exception/fixtures.jsonl"
   ],

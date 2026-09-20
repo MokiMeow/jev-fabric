@@ -17,6 +17,7 @@ their own offline evidence. Run from a built checkout with
 | [evaluate-pack](evaluate-pack/README.md) | progress | evaluates a pack | empty set abstains |
 | [tool-environment-advice](tool-environment-advice/README.md) | route | chooses a declared environment action | empty set abstains |
 | [finance-surveillance](finance-surveillance/README.md) | finance-surveillance | records an advisory observation | invalid execution boundary denies |
+| [finance-research-router](finance-research-router/README.md) | finance-research-router | proposes one bounded read-only chart tool | invalid execution boundary denies |
 | [fintech-exception](fintech-exception/README.md) | fintech-exception | routes a bounded exception to investigation | execution-capable boundary denies |
 | [hierarchical-confidence](hierarchical-confidence/README.md) | evals | admits an independently audited leaf threshold | insufficient audit support forces parent-only output |
 | [webmcp-action](webmcp-action/README.md) | boundary | binds trusted origin/tool/schema fingerprints | rejects cross-origin metadata |

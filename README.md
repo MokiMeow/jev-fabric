@@ -38,6 +38,7 @@ Server applications can also use the pinned [Vercel AI Gateway route](docs/provi
 | Assist an instrumented website | [WebMCP recipe](docs/recipes/webmcp-browser.md) | Bind origin, frame, tool, schema, policy epoch, and page state; the host still executes. |
 | Route work in Blender, Unreal, Unity, Godot, or CAD | [Tool environments](docs/integrations/tool-environments.md) | Select only from adapter-declared native actions; revalidate and execute in the trusted plugin. |
 | Triage finance or market evidence | [Finance and fintech](docs/integrations/finance.md) | Route synthetic or licensed, time-bound evidence to observe, investigate, or escalate; no trading. |
+| Route a read-only market-research request | [Finance research routing](docs/integrations/finance-research-routing.md) | Propose one allowlisted analytics tool and bounded arguments; the trusted host revalidates and executes read-only. |
 
 ## Decision boundary
 
@@ -69,6 +70,7 @@ This is an integration-shape comparison, not a speed, cost, or quality ranking. 
 | `risk` | surface risk, authorization need, and untrusted influence | escalate |
 | `progress` | classify bounded workflow state | abstain |
 | `completion` | assess observed completion evidence | abstain |
+| `finance-research-router` | propose one bounded read-only analytics tool; never execute it | escalate |
 | `finance-surveillance` | route bounded market evidence without execution | escalate |
 | `fintech-exception` | route explicit indicators in a redacted fintech case note | escalate |
 

@@ -5,6 +5,7 @@ import { example as ci } from "../ci-triage/index.js";
 import { example as completion } from "../completion-check/index.js";
 import { example as evaluate } from "../evaluate-pack/index.js";
 import { example as finance } from "../finance-surveillance/index.js";
+import { example as financeResearch } from "../finance-research-router/index.js";
 import { example as fintech } from "../fintech-exception/index.js";
 import { example as gate } from "../gate-tool-action/index.js";
 import { example as hierarchicalConfidence } from "../hierarchical-confidence/index.js";
@@ -43,6 +44,7 @@ describe("offline public examples", () => {
       "request-structured-data",
     ],
     ["finance-surveillance", finance, "route", "observe"],
+    ["finance-research-router", financeResearch, "route", "plot_price"],
     ["fintech-exception", fintech, "ask", "investigate"],
   ] as const) {
     it(`${name} validates a receipt and a fail-closed path`, async () => {

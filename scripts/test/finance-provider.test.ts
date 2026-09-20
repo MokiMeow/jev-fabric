@@ -1,5 +1,6 @@
 import { compileTypeSafeRequest } from "../../packages/provider-typesafe/src/mapping.js";
 import { builtinPacks } from "../../packs/index.js";
+import { financeResearchRouterPack } from "../../packs/finance-research-router/pack.js";
 import { financeSurveillancePack } from "../../packs/finance-surveillance/pack.js";
 import { fintechExceptionPack } from "../../packs/fintech-exception/pack.js";
 import { describe, expect, it } from "vitest";
@@ -55,6 +56,52 @@ describe("finance pack native TypeSafe compatibility", () => {
     }
   });
 
+  it("compiles the read-only finance research router as one native batch", () => {
+    const implementation = financeResearchRouterPack.implementations;
+    if (!implementation)
+      throw new Error("finance research implementation missing");
+    const candidates = [
+      ["plot_price", "Propose a read-only historical price chart"],
+      [
+        "compare_returns",
+        "Propose a read-only comparison of historical returns",
+      ],
+      [
+        "rolling_correlation",
+        "Propose a read-only rolling-correlation calculation",
+      ],
+      ["summary_stats", "Propose read-only descriptive statistics"],
+      ["market_summary", "Propose a read-only market summary"],
+      ["list_symbols", "List the host-declared research symbols"],
+      [
+        "investigate",
+        "Route an unsafe, unsupported, or ambiguous request to review",
+      ],
+    ].map(([id, description]) => ({
+      id: id ?? "",
+      description: description ?? "",
+    }));
+    const state = {
+      request: { text: "Show AAPL price history." },
+      symbols: [
+        {
+          id: "AAPL",
+          displayName: "Apple Inc.",
+          available: true as const,
+          freshness: "current" as const,
+        },
+      ],
+    };
+    const questions = implementation.questions(state, candidates);
+    expect(questions).toHaveLength(6);
+    expect(() =>
+      compileTypeSafeRequest(
+        { id: "finance-research-native-compile", state, questions },
+        "jev-1.13.0",
+      ),
+    ).not.toThrow();
+  });
+
   it("compiles every generic built-in pack through the native TypeSafe mapper", () => {
     const candidates = [
       { id: "candidate-one", description: "First bounded candidate" },
@@ -62,6 +109,7 @@ describe("finance pack native TypeSafe compatibility", () => {
     ];
     for (const pack of builtinPacks) {
       if (
+        pack.manifest.id === "finance-research-router" ||
         pack.manifest.id === "finance-surveillance" ||
         pack.manifest.id === "fintech-exception"
       )

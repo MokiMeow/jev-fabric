@@ -561,3 +561,31 @@ belongs in Fabric. A public third-party repository also exposed an apparent
 TypeSafe credential; its value was not copied or used. This is additional
 evidence for secret scanning and server-side credential isolation, not a test
 fixture.
+
+## Read-only function-routing pass
+
+A same-day official-documentation pass reviewed the current TypeSafe
+[function-calling cookbook](https://docs.typesafe.ai/cookbooks/function_calling),
+[parallel-questions cookbook](https://docs.typesafe.ai/cookbooks/parallel_questions),
+[fan-out pattern](https://docs.typesafe.ai/patterns/fan-out), and
+[Jev 1.13 jaggedness note](https://docs.typesafe.ai/model-jaggedness/jev-1.13).
+The function example batches a tool choice and every branch argument over one
+request, then consumes only the applicable answers. The parallel-questions
+cookbook reports a large saving on its own fixed GDPR experiment, but that
+number is not transferable to finance or this repository.
+
+Fabric adopts only the measurable integration shape. The new
+`finance-research-router` batches six independent judgments over one redacted
+request: prohibited intent, untrusted influence, one fixed read-only tool,
+primary and secondary symbols from a host allowlist, and a semantic historical
+window. Code owns expiry, allowlist identity, exact window values, arithmetic,
+candidate coverage, and every side effect. Prohibited advice and missing symbol
+coverage investigate; influence, malformed answers, and provider failure
+escalate. The output is a proposal with `authority: NONE` and
+`execution: NOT_SUPPORTED`, never a callable command.
+
+This closes a practical gap between a demonstration dispatcher and a deployable
+financial boundary. It does not establish Jev accuracy, batching parity,
+latency, or cost. Those fields remain `NOT_RUN` until a preregistered retained
+dataset measures the batched router against serial questions and a no-Jev host
+baseline using a newly issued server-side credential.

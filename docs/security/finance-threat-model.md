@@ -1,10 +1,10 @@
 # Finance integration threat model
 
 This model covers the finance evidence adapter, `finance-surveillance` pack,
-hierarchical-confidence evaluator, and their use through the existing Fabric
-runtime. Scenarios are hypotheses for review, not confirmed vulnerabilities.
-The integration is an advisory surveillance and evaluation component, not a
-trading system.
+`finance-research-router` pack, hierarchical-confidence evaluator, and their
+use through the existing Fabric runtime. Scenarios are hypotheses for review,
+not confirmed vulnerabilities. The integration is an advisory surveillance,
+research-routing, and evaluation component, not a trading system.
 
 This iteration received independent correctness and security reviews. Their
 accessor-execution, direct-pack binding, stale replay, bidirectional-text, and
@@ -18,6 +18,7 @@ regression tests before publication.
 | Trusted finance host | Calculate exact features, authenticate and locate source excerpts, verify time cutoffs, and supply ordered candidate ids, excerpt hashes, and optional proposed-claim bindings. | `packages/adapters/src/finance.ts` |
 | Finance evidence adapter | Reject stale, future, look-ahead, post-cutoff, unbound, hash-mismatched, or malformed evidence; emit no execution interface. | `packages/adapters/src/finance.ts` |
 | Finance surveillance pack | Ask bounded route, anomaly, evidence-quality, influence, per-candidate claim, and claim-to-excerpt citation questions; upgrade unsafe or malformed results to review. | `packs/finance-surveillance/pack.ts` |
+| Finance research router | Batch prohibited-intent, influence, fixed-tool, allowlisted-symbol, and semantic-window questions; emit only a host-revalidated read-only proposal. | `packs/finance-research-router/pack.ts` |
 | Hierarchical-confidence evaluator | Fit a leaf-reporting threshold on one group partition, audit it on another, and measure deterministic parent fallback on a third without making provider calls. | `packages/evals/src/hierarchical-confidence.ts` |
 | Fabric runtime | Apply state limits, candidate coverage, provider capability checks, deterministic policy, budgets, deadlines, and redacted receipts. | `packages/core/src/runtime.ts:81-83`, `packages/core/src/runtime.ts:235-237`, `packages/core/src/runtime.ts:282-317` |
 | Authorized host queue | Consume only `observe`, `investigate`, or `escalate` as case-routing advice. | `packs/finance-surveillance/pack.ts:12-34` |
@@ -46,6 +47,7 @@ flowchart LR
 | Visual advisory | Image and extracted annotations | Trusted host selects the canonical renderer/version and binds image/source hashes, mutation, and route. Benchmark cases additionally retain unique SVG bytes and canonical compiler input. | Image stays outside live Fabric; bounded annotations enter as untrusted data. Mutation ids, expected routes, and gold labels stay evaluator-side and are stripped before provider projection. Benchmark SVGs remain in the evidence artifact. | Extractor, adapter, provider, benchmark verifier. | Artifact tuple hash, compiler-owned route, exact rerendered SVG-byte comparison, one-to-one asset paths, axes literal, target-label exclusion, hostile-data snapshot, bidi/C1 rejection, and influence question. | `packages/adapters/src/finance.ts`; `packs/finance-surveillance/pack.ts`; `benchmarks/finance/scripts/drivers.test.mts`; `benchmarks/finance/builders/visual/render.mts`; `benchmarks/finance/builders/lib/verify.mts` |
 | Text advisory | Extracted claim candidates | Trusted host fixes candidate ids, order, per-excerpt SHA-256 hashes, and, for every claim, its claim hash plus source-span metadata. | At most eight source-bound excerpt/claim pairs marked `untrusted_data_only`. | Extractor, adapter, provider. | Exact count/order/hash checks, strict plain-data sanitization, fixed claim taxonomy, focused citation relation question, influence question. | `packages/adapters/src/finance.ts`; `packs/finance-surveillance/pack.ts` |
 | Surveillance route | Case-routing capability | Pack-owned candidate list wins over state text. | `observe`, `investigate`, `escalate`. | Fabric policy and authorized queue. | Exact candidate comparison and no `allow` result. | `packs/finance-surveillance/pack.ts:12-34`, `packs/finance-surveillance/pack.ts:238-256` |
+| Research-tool proposal | Read-only descriptive analytics | Host allowlist and pack-owned catalogue take precedence over request text. | One fixed tool id plus bounded symbols/window, or `investigate`. | Trusted read-only analytics host only. | Hash-bound redacted request, exact current catalogue, sorted symbol allowlist, safety Nouls, no executor, and mandatory host revalidation. | `packs/finance-research-router/pack.ts`; `docs/integrations/finance-research-routing.md` |
 | External execution | Orders, broker keys, venue sessions | Not configurable in this integration. | Absent. | None. | `execution: NOT_SUPPORTED`; no executor API. | `packages/adapters/src/finance.ts:113`; a consuming application must preserve this separation. |
 
 ## Threat model, trust boundaries, and assumptions
@@ -67,6 +69,10 @@ Trust boundaries are:
   images, and credentials do not.
 - Jev to Fabric: answers are typed advisory evidence. A malformed or uncertain
   result escalates rather than authorizes (`packs/finance-surveillance/pack.ts:168-205`).
+- Research request to Jev: request text remains untrusted; the host owns a
+  closed symbol allowlist and the pack owns a closed read-only tool catalogue.
+  Prohibited advice investigates, influence or malformed coverage escalates,
+  and the output never invokes a tool.
 - Labeled observations to evaluator: labels, group identities, confidence, the
   hierarchy, and external dataset/question hashes are caller-controlled until
   a trusted evaluation pipeline verifies them. The evaluator checks exact
@@ -119,6 +125,10 @@ Assumptions and open questions:
   boundary.
 - The application maps advisory results only to read-only telemetry or an
   authorized human case queue. That host mapping is not implemented here.
+- The research router's consuming host provides a genuinely read-only analytics
+  executor and revalidates the tool, symbols, entitlements, data rights,
+  freshness, and resource limits. Fabric intentionally does not implement that
+  executor.
 - Domain calibration, drift monitoring, and representative held-out evaluation
   are not yet established; the benchmark remains `NOT RUN`.
 - The hierarchical evaluator is reusable evaluation machinery, not evidence
@@ -142,6 +152,8 @@ Assumptions and open questions:
 | Priority | Scenario and capability gain | Prerequisites | Impact | Existing controls | Mitigation | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Critical hypothesis | An advisory answer reaches an order API, gaining financial execution. | Consuming host adds an unauthorized bridge to a trading system. | Market, financial, regulatory, and credential impact. | No executor; literal `NOT_SUPPORTED`; finite non-trading candidates; pack never returns `allow`. | Keep network/process isolation, separate identities and services, and a code-reviewed positive queue mapping. | `packages/adapters/src/finance.ts:113`; `packs/finance-surveillance/pack.ts:12-34`, `packs/finance-surveillance/pack.ts:190-207` |
+| Critical hypothesis | A nominally read-only research proposal is mapped to a broker, shell, URL fetcher, or mutation-capable tool. | Consuming host violates the fixed positive mapping or supplies an overprivileged credential. | Trading, exfiltration, arbitrary execution, or data-rights impact. | Pack-owned finite tool catalogue; no URL/command field; literal no-execution metadata; prohibited-intent and influence checks; mandatory host revalidation. | Isolate the analytics service, use read-only identities and fixed tool handlers, and reject every undeclared argument at the executor boundary. | `packs/finance-research-router/pack.ts`; `docs/integrations/finance-research-routing.md` |
+| High hypothesis | An unlisted, stale, duplicated, or substituted symbol becomes an analytics argument. | Attacker controls request text or caller state. | Wrong-instrument research presented as if correctly bound. | Sorted unique host allowlist, fixed special outcomes, exact state snapshot and hash, stale-state rejection, two-symbol distinctness, and review on missing coverage. | Bind the executor lookup to the same allowlist revision and record the resolved dataset identity in host audit evidence. | `packs/finance-research-router/pack.ts` |
 | High hypothesis | Future or stale data influences a current case, creating look-ahead or replay bias. | Attacker or bad pipeline controls timestamps or delayed data. | False surveillance conclusions and invalid evaluation. | Code orders window, cutoff, observation, and clock; signal timestamps cannot cross cutoff; state carries a bound expiry; runtime supplies trusted evaluation time and the pack rejects stale state before cache/provider access. | Authenticate source timestamps, use monotonic ingestion telemetry, and retain cutoff/source digests. | `packages/adapters/src/finance.ts`; `packages/core/src/context.ts`; `packs/finance-surveillance/pack.ts` |
 | High hypothesis | An instrument reference or signal-to-time association is substituted after a case is retained. | Attacker or faulty pipeline can rewrite trusted projection fields without rebuilding their binding. | A semantically plausible model answer is attributed to the wrong instrument or time state. | A domain-separated projection binding is recomputed before provider use; the retained benchmark derives wrong-instrument and timestamp-rotation probes and requires both to fail before any driver call. | Authenticate publisher identity separately, retain signed ingestion provenance, and keep counterfactual traces outside model-accuracy metrics. | `packages/adapters/src/finance.ts`; `benchmarks/finance/scripts/run.mts`; `benchmarks/finance/scripts/validate.mts` |
 | High hypothesis | Chart text injects instructions or forged authority. | Attacker controls labels, OCR text, or a document image. | Route manipulation or false dismissal. | Plain bounded annotations, C0/C1/bidi/isolate rejection, untrusted tag, independently bound annotation hash, separate influence question, and escalation on influence. | Keep extractor adversarial tests and exclude rich markup, URIs, and hidden metadata. | `packages/adapters/src/finance.ts`; `packs/finance-surveillance/pack.ts` |

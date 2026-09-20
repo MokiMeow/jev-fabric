@@ -11,6 +11,7 @@ export const fixturePackIds = [
   "risk",
   "progress",
   "completion",
+  "finance-research-router",
   "finance-surveillance",
   "fintech-exception",
 ] as const;

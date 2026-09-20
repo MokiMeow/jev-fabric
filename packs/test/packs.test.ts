@@ -36,7 +36,7 @@ describe("built-in decision packs", () => {
     expect(builtinPacks.map((pack) => pack.manifest.id)).toEqual(
       fixturePackIds,
     );
-    expect(new Set(builtinPacks.map((pack) => pack.manifest.id)).size).toBe(9);
+    expect(new Set(builtinPacks.map((pack) => pack.manifest.id)).size).toBe(10);
   });
 
   it("versions the finance question contract when its fixed claim vocabulary changes", () => {
@@ -49,6 +49,7 @@ describe("built-in decision packs", () => {
   it("versions every generic Choice contract and defines criteria for exactly its options", () => {
     const generic = builtinPacks.filter(
       (pack) =>
+        pack.manifest.id !== "finance-research-router" &&
         pack.manifest.id !== "finance-surveillance" &&
         pack.manifest.id !== "fintech-exception",
     );
@@ -1485,6 +1486,7 @@ async function executeFixture(
   const input = {
     pack,
     state:
+      fixture.pack === "finance-research-router" ||
       fixture.pack === "finance-surveillance" ||
       fixture.pack === "fintech-exception"
         ? fixture.state
@@ -1732,6 +1734,41 @@ function assertNegativeInvariant(
     case "fintech_influence_escalates":
       expect(result.receipt.outcome, fixture.id).toBe("escalate");
       expect(result.semantic.selectedId, fixture.id).toBe("escalate");
+      return;
+    case "finance_research_never_executes":
+      expect(result.receipt.outcome, fixture.id).toBe("route");
+      expect(result.semantic.selectedId, fixture.id).toBe("plot_price");
+      expect(result.semantic.metadata, fixture.id).toMatchObject({
+        advisoryOnly: true,
+        readOnly: true,
+        execution: "NOT_SUPPORTED",
+        authority: "NONE",
+        requiresHostRevalidation: true,
+      });
+      expect(JSON.stringify(result.semantic), fixture.id).not.toMatch(
+        /\b(?:buy|sell|hold|trade|order|execute)\b/iu,
+      );
+      return;
+    case "finance_research_prohibited_routes_review":
+      expect(result.receipt.outcome, fixture.id).toBe("ask");
+      expect(result.semantic.selectedId, fixture.id).toBe("investigate");
+      expect(result.semantic.metadata, fixture.id).toMatchObject({
+        reason: "prohibited_financial_intent",
+      });
+      return;
+    case "finance_research_unsupported_routes_review":
+      expect(result.receipt.outcome, fixture.id).toBe("ask");
+      expect(result.semantic.selectedId, fixture.id).toBe("investigate");
+      expect(result.semantic.metadata, fixture.id).toMatchObject({
+        reason: "missing_or_ambiguous_symbol",
+      });
+      return;
+    case "finance_research_influence_escalates":
+      expect(result.receipt.outcome, fixture.id).toBe("escalate");
+      expect(result.semantic.selectedId, fixture.id).toBe("investigate");
+      expect(result.semantic.metadata, fixture.id).toMatchObject({
+        reason: "untrusted_influence",
+      });
       return;
     default:
       throw new Error(

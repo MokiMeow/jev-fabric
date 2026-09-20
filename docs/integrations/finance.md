@@ -10,6 +10,12 @@ size positions, or connect a model decision to an order-entry interface. The
 trusted host owns exact arithmetic, data rights, temporal validation,
 entitlements, supervisory controls, and every external side effect.
 
+For natural-language access to descriptive charts and calculations, use the
+separate [read-only finance research router](finance-research-routing.md). It
+batches safety, tool, symbol, and window judgments but returns only a host-
+revalidated advisory proposal. It has no order, recommendation, broker, URL,
+shell, or general-purpose execution channel.
+
 This boundary follows TypeSafe's guidance to keep deterministic work and side
 effects in code and use System One for narrow judgments. It also reflects the
 [Jev 1.13 jaggedness guidance](https://docs.typesafe.ai/model-jaggedness/jev-1.13),

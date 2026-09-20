@@ -7,6 +7,7 @@ export { progressPack } from "./progress/pack.js";
 export { completionPack } from "./completion/pack.js";
 
 import { completionPack } from "./completion/pack.js";
+import { financeResearchRouterPack } from "./finance-research-router/pack.js";
 import { financeSurveillancePack } from "./finance-surveillance/pack.js";
 import { fintechExceptionPack } from "./fintech-exception/pack.js";
 import { progressPack } from "./progress/pack.js";
@@ -25,10 +26,15 @@ export const builtinPacks = Object.freeze([
   riskPack,
   progressPack,
   completionPack,
+  financeResearchRouterPack,
   financeSurveillancePack,
   fintechExceptionPack,
 ]);
 
+export {
+  financeResearchRouterPack,
+  financeResearchRouterQuestionSetHash,
+} from "./finance-research-router/pack.js";
 export {
   financeSurveillancePack,
   financeSurveillanceQuestionSetHash,

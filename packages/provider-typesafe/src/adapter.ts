@@ -139,12 +139,18 @@ export class TypeSafeProvider implements DecisionProvider {
     request: DecisionRequest,
     options?: EvaluateOptions,
   ): Promise<TypeSafeMappedResult> {
+    if (
+      options?.deadlineMs !== undefined &&
+      (!Number.isFinite(options.deadlineMs) || options.deadlineMs <= 0)
+    )
+      throw new TypeSafeProviderError("configuration", false);
+    let compiled: ReturnType<typeof compileTypeSafeRequest>;
     try {
-      if (
-        options?.deadlineMs !== undefined &&
-        (!Number.isFinite(options.deadlineMs) || options.deadlineMs <= 0)
-      )
-        throw new TypeSafeProviderError("configuration", false);
+      compiled = compileTypeSafeRequest(request, this.#model);
+    } catch {
+      throw new TypeSafeProviderError("invalid_request", false);
+    }
+    try {
       const callOptions: RequestOptions = {
         ...(options?.signal === undefined ? {} : { signal: options.signal }),
         ...(options?.deadlineMs === undefined
@@ -153,10 +159,7 @@ export class TypeSafeProvider implements DecisionProvider {
         // Fabric owns retry/accounting; never let the SDK make hidden attempts.
         retry: { maxRetries: 0 },
       };
-      const result = await this.#client.systemOne(
-        compileTypeSafeRequest(request, this.#model),
-        callOptions,
-      );
+      const result = await this.#client.systemOne(compiled, callOptions);
       return mapTypeSafeResult(request, this.id, result as TypeSafeResult, {
         requestedModel: this.#model,
         approvedModels: this.#approvedModels,

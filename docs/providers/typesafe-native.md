@@ -46,6 +46,23 @@ validated, redacted in receipts, and advisory. It never executes an action or
 grants permission. A host must apply its normal authorization and approval
 controls after receiving a result.
 
+## Jev 1.13 fit boundary
+
+The pinned model is a semantic decision model, not a calculator, clock, parser,
+generator, or authorization engine. Follow TypeSafe's dated
+[Jev 1.13 jaggedness guidance](https://docs.typesafe.ai/model-jaggedness/jev-1.13)
+(reviewed 2026-09-17): compute counts, arithmetic, date ordering, durations,
+freshness, and structural identities in code; project only question-relevant
+state; avoid double negatives and hidden multi-hop reasoning; and test hostile
+state because the model does not inherently treat it as adversarial. Never
+transfer thresholds between Noul, Choice, and Score or assume probabilities
+from separately phrased questions obey arithmetic identities.
+
+Fabric enforces these boundaries in its built-in finance and fintech packs by
+validating timestamps, hashes, identities, counts, candidate coverage, and
+authorization deterministically. Custom packs remain responsible for the same
+decomposition and require held-out domain evidence before operational use.
+
 ## Offline integration proof
 
 The repository tests this composition with an injected native-shaped fake

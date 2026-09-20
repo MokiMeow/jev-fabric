@@ -89,6 +89,24 @@ describe("TypeSafeProvider", () => {
     ).rejects.toMatchObject({ category: "configuration", retryable: false });
   });
 
+  it("rejects malformed native entries before dispatch as an invalid request", async () => {
+    let calls = 0;
+    const provider = new TypeSafeProvider({
+      id: "typesafe",
+      model: "jev-1.13.0",
+      client: {
+        systemOne: async () => {
+          calls += 1;
+          return {};
+        },
+      },
+    });
+    await expect(
+      provider.evaluate({ ...request, state: true }),
+    ).rejects.toMatchObject({ category: "invalid_request", retryable: false });
+    expect(calls).toBe(0);
+  });
+
   it("pins Vercel Gateway identity, endpoint, model, authentication, and retry policy", async () => {
     expect(VERCEL_GATEWAY_TYPESAFE_BASE_URL).toBe(
       "https://ai-gateway.vercel.sh/typesafe",

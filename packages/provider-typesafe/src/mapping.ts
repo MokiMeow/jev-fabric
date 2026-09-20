@@ -12,6 +12,7 @@ import {
   type DecisionRequest,
   type DecisionResponse,
   type DecisionUsage,
+  type JsonValue,
 } from "@mokimeow/jev-fabric-protocol";
 
 export interface TypeSafeResult {
@@ -56,13 +57,25 @@ export function compileTypeSafeRequest(
           "choice criteria must match choice options exactly",
         );
       questions[question.id] = choice(
-        question.instructions as EntryType,
-        question.criteria as Record<string, EntryType>,
+        nativeEntry(question.instructions, `${question.id}.instructions`),
+        Object.fromEntries(
+          Object.entries(question.criteria).map(([key, value]) => [
+            key,
+            nativeEntry(value, `${question.id}.criteria.${key}`),
+          ]),
+        ),
       );
     } else if (question.type === "noul") {
       questions[question.id] = noul(
-        question.instructions as EntryType,
-        question.criteria as { true?: EntryType; false?: EntryType } | null,
+        nativeEntry(question.instructions, `${question.id}.instructions`),
+        question.criteria === null
+          ? null
+          : Object.fromEntries(
+              Object.entries(question.criteria).map(([key, value]) => [
+                key,
+                nativeEntry(value, `${question.id}.criteria.${key}`),
+              ]),
+            ),
       );
     } else {
       if (question.criteria.length < 2)
@@ -70,12 +83,40 @@ export function compileTypeSafeRequest(
       if (question.criteria.length > 10)
         throw new RangeError("TypeSafe Score accepts at most 10 criteria");
       questions[question.id] = score(
-        question.instructions as EntryType,
-        question.criteria as readonly [EntryType, EntryType, ...EntryType[]],
+        nativeEntry(question.instructions, `${question.id}.instructions`),
+        nativeScoreCriteria(question.criteria, `${question.id}.criteria`),
       );
     }
   }
-  return { state: request.state as EntryType, questions, model };
+  return { state: nativeEntry(request.state, "state"), questions, model };
+}
+
+/** Mirrors the SDK's EntryType instead of hiding unsupported scalars in casts. */
+function nativeEntry(value: JsonValue, path: string): EntryType {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    Array.isArray(value) ||
+    typeof value === "object"
+  )
+    return value as EntryType;
+  throw new TypeError(
+    `${path} must be text, a structured JSON object or array, or null`,
+  );
+}
+
+function nativeScoreCriteria(
+  values: readonly JsonValue[],
+  path: string,
+): readonly [EntryType, EntryType, ...EntryType[]] {
+  const [first, second, ...rest] = values;
+  if (first === undefined || second === undefined)
+    throw new RangeError("TypeSafe score requires at least two criteria");
+  return [
+    nativeEntry(first, `${path}.0`),
+    nativeEntry(second, `${path}.1`),
+    ...rest.map((value, index) => nativeEntry(value, `${path}.${index + 2}`)),
+  ];
 }
 
 /** Maps direct SDK output without renormalizing malformed native distributions. */

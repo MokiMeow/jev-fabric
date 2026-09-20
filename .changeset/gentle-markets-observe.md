@@ -131,3 +131,6 @@ regenerated, and old cache or evaluation evidence is intentionally invalid.
 The shared protocol rejects unknown Noul criteria keys, while the native
 adapter validates the complete request and enforces the documented limit of
 255 Choice options and 2–10 Score levels before provider dispatch.
+It also compiles state, instructions, and every criterion through the official
+SDK entry shape, rejecting unsupported top-level numeric and boolean values
+instead of allowing an unsafe cast to defer the failure to a live API call.

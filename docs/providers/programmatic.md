@@ -32,9 +32,13 @@ return { next: result.semantic.selectedId, receipt: result.receipt };
 ```
 
 The native adapter validates typed answers, pins the requested model, and sets
-SDK retries to zero. Its `native_calibrated` receipt label is provider-declared
-semantics, not individual correctness or permission; validate locally on held
-out data before operational thresholds.
+SDK retries to zero. Before transport it compiles every state, instruction, and
+criterion through the SDK's native entry contract: text, a structured JSON
+object or array, or `null`. Top-level numeric and boolean entries are rejected
+as a non-retryable `invalid_request` with zero provider calls instead of being
+hidden behind a TypeScript cast. Its `native_calibrated` receipt label is
+provider-declared semantics, not individual correctness or permission;
+validate locally on held-out data before operational thresholds.
 
 ## OpenAI-compatible provider
 

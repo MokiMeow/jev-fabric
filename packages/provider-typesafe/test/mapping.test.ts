@@ -4,7 +4,10 @@ import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
 
 const request: DecisionRequest = {
   id: "decision_1",
-  state: { ticket: { subject: "Refund request" } },
+  state: {
+    ticket: { subject: "Refund request", priority: 2 },
+    advisoryOnly: true,
+  },
   questions: [
     {
       id: "route",
@@ -119,6 +122,57 @@ describe("TypeSafe mapping", () => {
         "jev-1.13.0",
       ),
     ).toThrow(/at most 10/u);
+  });
+
+  it("rejects top-level scalar entries the native SDK cannot represent", () => {
+    const validNoul = {
+      id: "urgent",
+      type: "noul" as const,
+      instructions: "Is this urgent?",
+      criteria: { true: "Urgent", false: "Not urgent" },
+    };
+    const invalidRequests: readonly DecisionRequest[] = [
+      { id: "numeric-state", state: 1, questions: [validNoul] },
+      {
+        id: "boolean-instructions",
+        state: {},
+        questions: [{ ...validNoul, instructions: true }],
+      },
+      {
+        id: "numeric-noul-criterion",
+        state: {},
+        questions: [{ ...validNoul, criteria: { true: 1, false: "No" } }],
+      },
+      {
+        id: "boolean-choice-criterion",
+        state: {},
+        questions: [
+          {
+            id: "route",
+            type: "choice",
+            instructions: "Choose one.",
+            options: ["allow", "deny"],
+            criteria: { allow: true, deny: "Deny" },
+          },
+        ],
+      },
+      {
+        id: "numeric-score-criterion",
+        state: {},
+        questions: [
+          {
+            id: "severity",
+            type: "score",
+            instructions: "Rate severity.",
+            criteria: [0, "high"],
+          },
+        ],
+      },
+    ];
+    for (const invalid of invalidRequests)
+      expect(() => compileTypeSafeRequest(invalid, "jev-1.13.0")).toThrow(
+        /must be text, a structured JSON object or array, or null/u,
+      );
   });
 
   it("preserves distributions and keeps confidence separate from selected probability", () => {

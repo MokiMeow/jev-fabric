@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   builtinPacks,
   completionPack,
+  financeSurveillancePack,
   progressPack,
   rankPack,
   riskPack,
@@ -31,7 +32,7 @@ describe("built-in decision packs", () => {
     expect(builtinPacks.map((pack) => pack.manifest.id)).toEqual(
       fixturePackIds,
     );
-    expect(new Set(builtinPacks.map((pack) => pack.manifest.id)).size).toBe(7);
+    expect(new Set(builtinPacks.map((pack) => pack.manifest.id)).size).toBe(8);
   });
 
   it("rejects credential-bearing state in every built-in pack before provider egress", async () => {
@@ -129,6 +130,86 @@ describe("built-in decision packs", () => {
     expect(signals("low", "yes", "no").proposedOutcome).toBe("ask");
     expect(signals("low", "no", "yes").proposedOutcome).toBe("escalate");
     expect(signals("high", "no", "no").proposedOutcome).toBe("escalate");
+  });
+
+  it("keeps finance surveillance advisory and lets restrictive signals only upgrade review", () => {
+    const interpret = financeSurveillancePack.implementations?.interpret;
+    if (!interpret)
+      throw new Error("finance surveillance implementation missing");
+    const answer = (
+      questionId: string,
+      selected: string,
+      options: readonly string[],
+    ) => ({
+      questionId,
+      type: "choice" as const,
+      selected,
+      probabilities: Object.fromEntries(
+        options.map((option) => [option, option === selected ? 1 : 0]),
+      ),
+    });
+    const candidates = [
+      { id: "observe", description: "Record the advisory observation only" },
+      {
+        id: "investigate",
+        description: "Route to bounded analyst investigation",
+      },
+      {
+        id: "escalate",
+        description: "Escalate to an authorized human reviewer",
+      },
+    ];
+    const safe = interpret(
+      [
+        answer("finance-route", "observe", [
+          "observe",
+          "investigate",
+          "escalate",
+        ]),
+        answer("finance-anomaly", "routine", [
+          "routine",
+          "concerning",
+          "unclear",
+        ]),
+        answer("finance-evidence-quality", "sufficient", [
+          "sufficient",
+          "conflicted",
+          "insufficient",
+        ]),
+        answer("finance-untrusted-influence", "absent", ["absent", "present"]),
+      ],
+      candidates,
+    );
+    const influenced = interpret(
+      [
+        answer("finance-route", "observe", [
+          "observe",
+          "investigate",
+          "escalate",
+        ]),
+        answer("finance-anomaly", "routine", [
+          "routine",
+          "concerning",
+          "unclear",
+        ]),
+        answer("finance-evidence-quality", "sufficient", [
+          "sufficient",
+          "conflicted",
+          "insufficient",
+        ]),
+        answer("finance-untrusted-influence", "present", ["absent", "present"]),
+      ],
+      candidates,
+    );
+    expect(safe).toMatchObject({
+      selectedId: "observe",
+      proposedOutcome: "route",
+    });
+    expect(influenced).toMatchObject({
+      selectedId: "escalate",
+      proposedOutcome: "escalate",
+    });
+    expect(safe.proposedOutcome).not.toBe("allow");
   });
 
   it("interprets every fixed-option selection independently of candidate ids", async () => {
@@ -637,6 +718,17 @@ function assertNegativeInvariant(
     case "static_deny_has_no_provider_attempt":
       expect(providerCalls, fixture.id).toBe(0);
       expect(result.receipt.outcome, fixture.id).toBe("deny");
+      return;
+    case "finance_never_allows_or_trades":
+      expect(result.receipt.outcome, fixture.id).toBe("route");
+      expect(result.semantic.selectedId, fixture.id).toBe("observe");
+      expect(JSON.stringify(result.semantic), fixture.id).not.toMatch(
+        /\b(?:buy|sell|trade|order)\b/iu,
+      );
+      return;
+    case "finance_ambiguity_routes_to_review":
+      expect(result.receipt.outcome, fixture.id).toBe("ask");
+      expect(result.semantic.selectedId, fixture.id).toBe("investigate");
       return;
     default:
       throw new Error(

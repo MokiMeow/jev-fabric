@@ -37,6 +37,7 @@ Server applications can also use the pinned [Vercel AI Gateway route](docs/provi
 | Configure an agent host | [Adapters](docs/adapters/hosts.md) | Generated layouts for Codex, Claude Code, Gemini CLI, Qwen Code, and Kimi Code. |
 | Assist an instrumented website | [WebMCP recipe](docs/recipes/webmcp-browser.md) | Bind origin, frame, tool, schema, policy epoch, and page state; the host still executes. |
 | Route work in Blender, Unreal, Unity, Godot, or CAD | [Tool environments](docs/integrations/tool-environments.md) | Select only from adapter-declared native actions; revalidate and execute in the trusted plugin. |
+| Triage finance or market evidence | [Finance and fintech](docs/integrations/finance.md) | Route synthetic or licensed, time-bound evidence to observe, investigate, or escalate; no trading. |
 
 ## Decision boundary
 
@@ -68,12 +69,13 @@ This is an integration-shape comparison, not a speed, cost, or quality ranking. 
 | `risk` | surface risk, authorization need, and untrusted influence | escalate |
 | `progress` | classify bounded workflow state | abstain |
 | `completion` | assess observed completion evidence | abstain |
+| `finance-surveillance` | route bounded market evidence without execution | escalate |
 
 Read [pack selection](docs/packs/selection.md) before using a pack. Candidate coverage, freshness, and policy are application responsibilities.
 
 ## Evidence snapshot
 
-The only committed historical provider record is [historical-v0](benchmarks/historical/v0/manifest.json): evidence class `local_exploratory`, imported 2026-09-19, zero retained cases, redacted environment, and no held-out claim. Its old ECE calculation was invalid because it used TypeSafe confidence rather than maximum distribution probability; no corrected ECE is available. The [tool-environment benchmark contract](benchmarks/tool-environments/README.md) is explicitly `NOT_RUN` and prevents null fixtures from becoming performance claims. See [Evidence](docs/evidence/README.md).
+The only committed historical provider record is [historical-v0](benchmarks/historical/v0/manifest.json): evidence class `local_exploratory`, imported 2026-09-19, zero retained cases, redacted environment, and no held-out claim. Its old ECE calculation was invalid because it used TypeSafe confidence rather than maximum distribution probability; no corrected ECE is available. The [tool-environment](benchmarks/tool-environments/README.md) and [finance](benchmarks/finance/README.md) benchmark contracts are explicitly `NOT_RUN` and prevent null fixtures from becoming performance claims. See [Evidence](docs/evidence/README.md).
 
 ## When not to use Jev Fabric
 

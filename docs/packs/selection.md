@@ -10,6 +10,7 @@ Pick the narrowest pack that matches the question. Each pack is advisory and req
 | `risk` | signal risk and escalation needs | granting access | static deny remains deny |
 | `progress` | classify task state | certify completion | uncertain state abstains |
 | `completion` | assess observed checks | accept claimed-but-unobserved work | unobserved claim denies |
+| `finance-surveillance` | route bounded, time-checked market evidence | trading, investment advice, credit, suitability, or execution | uncertainty and failure escalate |
 
 Use one coherent question per stage. Batch independent questions only when they share the same bounded state; use a second stage only when new evidence or candidates are needed.
 
@@ -25,3 +26,7 @@ The four fixed-option packs turn a validated semantic label into a conservative 
 | `completion` | `complete` → allow; `incomplete` → deny |
 
 The [TypeSafe patterns index](https://docs.typesafe.ai/patterns) and [choice primitive](https://docs.typesafe.ai/primitives/choice) are official background sources accessed 2026-09-19. They describe provider patterns, not a guarantee of results in this repository.
+
+`finance-surveillance` is intentionally not an allow/deny pack. It returns only
+`observe`, `investigate`, or `escalate`, and it requires the
+[finance evidence boundary](../integrations/finance.md).

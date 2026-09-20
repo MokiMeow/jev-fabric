@@ -24,3 +24,18 @@ export {
   type UntrustedWebMcpPageMetadata,
   type WebMcpAdvisoryBinding,
 } from "./webmcp.js";
+export {
+  bindFinanceAdvisoryEvidence,
+  financeAdvisoryStateSchema,
+  FINANCE_ADVISORY_CONTRACT_VERSION,
+  marketAssetClassSchema,
+  marketSignalBucketSchema,
+  trustedFinanceProjectionSchema,
+  trustedMarketSignalSchema,
+  type FinanceAdvisoryState,
+  type MarketAssetClass,
+  type MarketSignalBucket,
+  type TrustedFinanceProjection,
+  type TrustedMarketSignal,
+  type UntrustedVisualFinanceEvidence,
+} from "./finance.js";

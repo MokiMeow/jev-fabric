@@ -19,7 +19,8 @@
     "verify/fixtures.jsonl",
     "risk/fixtures.jsonl",
     "progress/fixtures.jsonl",
-    "completion/fixtures.jsonl"
+    "completion/fixtures.jsonl",
+    "finance-surveillance/fixtures.jsonl"
   ],
   "engines": {
     "node": ">=22.14 <25"

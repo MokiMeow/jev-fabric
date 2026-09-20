@@ -6,8 +6,11 @@ Primary documents:
 - ARCHITECTURE.md — data flow and trust boundaries
 - COMPATIBILITY.md — exact integration status vocabulary
 - docs/quickstart/offline.md — offline installation and commands
-- docs/packs/selection.md — seven-pack decision map
+- docs/packs/selection.md — eight-pack decision map
 - docs/security/README.md — threats and remaining risks
+- docs/integrations/finance.md — finance, fintech, and visual-evidence boundary
+- docs/security/finance-threat-model.md — finance-specific threats and controls
+- docs/research/jev-finance-landscape-2026-09-20.md — dated community research
 - docs/evidence/README.md — evidence labels and limitations
 - docs/reference/api.md — public package concepts
 - docs/reference/cli.md — CLI contract

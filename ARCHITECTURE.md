@@ -16,6 +16,10 @@ Jev Fabric separates semantic judgment from authority. A provider returns typed 
 
 The architecture intentionally leaves a gap between “suggested” and “done.” Close it only with trusted application checks.
 
+Finance keeps that gap permanently open: its adapter and pack can route a
+redacted case to observation, investigation, or human escalation, but expose no
+order-entry capability. See the [finance integration](docs/integrations/finance.md).
+
 ## Invariants
 
 - A model answer never grants authority or weakens a static denial.

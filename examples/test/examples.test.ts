@@ -4,6 +4,7 @@ import { example as browser } from "../browser-action/index.js";
 import { example as completion } from "../completion-check/index.js";
 import { example as ci } from "../ci-triage/index.js";
 import { example as evaluate } from "../evaluate-pack/index.js";
+import { example as finance } from "../finance-surveillance/index.js";
 import { example as gate } from "../gate-tool-action/index.js";
 import { example as rank } from "../rerank-evidence/index.js";
 import { example as route } from "../route-skills/index.js";
@@ -25,6 +26,7 @@ describe("offline public examples", () => {
     ["completion", completion, "allow", "complete"],
     ["evaluate", evaluate, "allow", "in_progress"],
     ["tool-environment", toolEnvironment, "route", "ask-user"],
+    ["finance-surveillance", finance, "route", "observe"],
   ] as const) {
     it(`${name} validates a receipt and a fail-closed path`, async () => {
       const result = await run();

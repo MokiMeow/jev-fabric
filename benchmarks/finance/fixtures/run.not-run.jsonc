@@ -1,0 +1,232 @@
+{
+  "schemaVersion": "1",
+  "runId": "finance-scaffold-v1",
+  "executionState": "NOT_RUN",
+  "sampleCount": 0,
+  "traceCount": 0,
+  "traceSetHash": null,
+  "dataset": {
+    "status": "NOT_SELECTED",
+    "digest": null,
+    "license": null,
+    "splitMethod": "forward_chaining_time_split",
+    "trainEnd": null,
+    "testStart": null
+  },
+  "runtime": {
+    "providerId": null,
+    "modelId": null,
+    "modelVersion": null,
+    "questionSetHash": null,
+    "policyVersion": null,
+    "featureSetHash": null,
+    "hardware": null,
+    "region": null
+  },
+  "rows": [
+    {
+      "track": "market_surveillance",
+      "architecture": "deterministic_only",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "market_surveillance",
+      "architecture": "host_model_only",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "market_surveillance",
+      "architecture": "jev_advisory",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "market_surveillance",
+      "architecture": "host_plus_jev",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "visual_evidence",
+      "architecture": "deterministic_only",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "visual_evidence",
+      "architecture": "host_model_only",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "visual_evidence",
+      "architecture": "jev_advisory",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "visual_evidence",
+      "architecture": "host_plus_jev",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "financial_text_triage",
+      "architecture": "deterministic_only",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "financial_text_triage",
+      "architecture": "host_model_only",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "financial_text_triage",
+      "architecture": "jev_advisory",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    },
+    {
+      "track": "financial_text_triage",
+      "architecture": "host_plus_jev",
+      "metrics": {
+        "accuracy": null,
+        "macroF1": null,
+        "brier": null,
+        "ece": null,
+        "coverage": null,
+        "unsafeExecutionAttemptRate": null,
+        "lookaheadRejectionRate": null,
+        "p50Ms": null,
+        "p95Ms": null,
+        "inputTokens": null,
+        "estimatedCostUsd": null
+      }
+    }
+  ]
+}

@@ -22,6 +22,10 @@ const official = new Set([
   "https://docs.unity3d.com/",
   "https://docs.godotengine.org/",
   "https://freecad.github.io/",
+  "https://www.finra.org/",
+  "https://www.sec.gov/",
+  "https://www.nist.gov/",
+  "https://x.com/",
 ]);
 async function markdown(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });

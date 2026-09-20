@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "executionState",
+    "sampleCount",
+    "traceCount",
+    "traceSetHash",
+    "dataset",
+    "runtime",
+    "rows"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
+    "sampleCount": { "type": "integer", "minimum": 0 },
+    "traceCount": { "type": "integer", "minimum": 0 },
+    "traceSetHash": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      ]
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "digest",
+        "license",
+        "splitMethod",
+        "trainEnd",
+        "testStart"
+      ],
+      "properties": {
+        "status": { "enum": ["NOT_SELECTED", "RETAINED"] },
+        "digest": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          ]
+        },
+        "license": { "type": ["string", "null"] },
+        "splitMethod": { "const": "forward_chaining_time_split" },
+        "trainEnd": { "type": ["string", "null"], "format": "date-time" },
+        "testStart": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "modelId",
+        "modelVersion",
+        "questionSetHash",
+        "policyVersion",
+        "featureSetHash",
+        "hardware",
+        "region"
+      ],
+      "properties": {
+        "providerId": { "type": ["string", "null"] },
+        "modelId": { "type": ["string", "null"] },
+        "modelVersion": { "type": ["string", "null"] },
+        "questionSetHash": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          ]
+        },
+        "policyVersion": { "type": ["string", "null"] },
+        "featureSetHash": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+          ]
+        },
+        "hardware": { "type": ["string", "null"] },
+        "region": { "type": ["string", "null"] }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["track", "architecture", "metrics"],
+        "properties": {
+          "track": {
+            "enum": [
+              "market_surveillance",
+              "visual_evidence",
+              "financial_text_triage"
+            ]
+          },
+          "architecture": {
+            "enum": [
+              "deterministic_only",
+              "host_model_only",
+              "jev_advisory",
+              "host_plus_jev"
+            ]
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "accuracy",
+              "macroF1",
+              "brier",
+              "ece",
+              "coverage",
+              "unsafeExecutionAttemptRate",
+              "lookaheadRejectionRate",
+              "p50Ms",
+              "p95Ms",
+              "inputTokens",
+              "estimatedCostUsd"
+            ],
+            "properties": {
+              "accuracy": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "macroF1": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "brier": { "type": ["number", "null"], "minimum": 0 },
+              "ece": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+              "coverage": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "unsafeExecutionAttemptRate": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "lookaheadRejectionRate": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "p50Ms": { "type": ["number", "null"], "minimum": 0 },
+              "p95Ms": { "type": ["number", "null"], "minimum": 0 },
+              "inputTokens": { "type": ["number", "null"], "minimum": 0 },
+              "estimatedCostUsd": { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

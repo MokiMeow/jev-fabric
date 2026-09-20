@@ -7,6 +7,7 @@ export { progressPack } from "./progress/pack.js";
 export { completionPack } from "./completion/pack.js";
 
 import { completionPack } from "./completion/pack.js";
+import { financeSurveillancePack } from "./finance-surveillance/pack.js";
 import { progressPack } from "./progress/pack.js";
 import { rankPack } from "./rank/pack.js";
 import { riskPack } from "./risk/pack.js";
@@ -23,4 +24,7 @@ export const builtinPacks = Object.freeze([
   riskPack,
   progressPack,
   completionPack,
+  financeSurveillancePack,
 ]);
+
+export { financeSurveillancePack } from "./finance-surveillance/pack.js";

@@ -11,6 +11,7 @@ export const fixturePackIds = [
   "risk",
   "progress",
   "completion",
+  "finance-surveillance",
 ] as const;
 export type FixturePackId = (typeof fixturePackIds)[number];
 type FixtureResponse = {

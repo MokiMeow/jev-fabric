@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "1",
-  "manifestId": "tool-environments-v1-not-run",
+  "schemaVersion": "2",
+  "manifestId": "tool-environments-v2-not-run",
   "executionState": "NOT_RUN",
   "sampleCount": 0,
   "rows": [

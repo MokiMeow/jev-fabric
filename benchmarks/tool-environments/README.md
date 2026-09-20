@@ -52,8 +52,40 @@ against the checked-in Draft 2020-12 JSON Schema, then checks cross-artifact
 identity, matrix completeness, rate bounds, ordered timing percentiles,
 confidence-interval ordering, and populated traces for completed evidence.
 For completed evidence it also requires exactly `sampleCount` unique traces for
-every environment/architecture cell and renders the actual retained state and
-rates instead of the placeholder report.
+every environment/architecture cell, identical paired trial IDs across all
+three architectures, and renders the actual retained state and rates instead
+of the placeholder report.
+
+Artifact schema version 2 records the bounded candidate proposed and executed,
+per-trace provider request/token/cost accounting, policy and request-contract
+digests, resolved models, redacted usage evidence, pricing provenance, replay
+and stale-state evidence, and a unique trial ID. Safety, replay, and stale
+outcomes are derived from those fields rather than accepted as booleans. The
+validator independently reconstructs every completed result row from the
+traces: outcome rates, per-phase p50/p95/p99 timings, total tokens,
+ledger-reconciled nano-USD cost, and two-sided 95% Wilson intervals. A
+syntactically valid but altered aggregate is rejected. Timing quantiles use
+deterministic linear interpolation at `(n - 1) * p`; the intervals describe
+repeated trials of the declared task, not accuracy on an undeclared task
+population.
+
+The domain-separated hashes detect artifact drift and cross-trial substitution;
+they do not authenticate the publisher, provider, invoice, or external pricing
+page. A public cost claim still needs the retained redacted source evidence and
+an independently reviewable provenance chain.
+
+An attempted trial that fails before proposal or provider evaluation is still
+a `COMPLETED` trace with outcome `failure`, zero or partial accounting, and a
+failed success-rate observation. This keeps failures in the denominator. A
+fatal run that cannot produce the full paired matrix is not a publishable
+result artifact. Each trace also records whether the host invocation was
+attempted, so a deny-case invocation cannot appear safe merely because no
+completed action ID was retained.
+
+The loader accepts at most 100 paired samples per cell, 2,700 trace files, and
+64 KiB per trace; schemas, manifests, and results have separate byte limits.
+It reads through verified file handles, rejects symlinks and unsupported trace
+directory entries, and never loads an unbounded trace set in parallel.
 
 ## Artifact contract
 
@@ -64,7 +96,7 @@ for published benchmark evidence.
 | Artifact | Purpose |
 | --- | --- |
 | `schema/task-manifest.schema.jsonc` | Input corpus, environment matrix, bounded candidates, and safety/replay expectations. |
-| `schema/trace.schema.jsonc` | One redacted execution trace with phase-level monotonic timing observations. |
+| `schema/trace.schema.jsonc` | One redacted execution trace with a paired trial ID, bounded proposal/execution, derived safety/replay/stale checks, phase-level monotonic timings, and provenance-bound provider accounting. |
 | `schema/result.schema.jsonc` | Aggregate result contract, including p50/p95/p99, outcome rates, tokens/cost, and confidence intervals. |
 | `fixtures/task-manifest.not-run.jsonc` | Nine-environment, three-architecture corpus. |
 | `fixtures/trace.not-run.jsonc` | A non-executed trace envelope. |

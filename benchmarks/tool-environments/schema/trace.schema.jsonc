@@ -6,20 +6,30 @@
   "required": [
     "schemaVersion",
     "traceId",
+    "trialId",
     "manifestId",
     "taskId",
     "environment",
     "architecture",
     "executionState",
     "trustedStateDigest",
+    "policyDigest",
     "phases",
-    "outcome"
+    "selection",
+    "outcome",
+    "checks",
+    "accounting"
   ],
   "properties": {
-    "schemaVersion": { "const": "1" },
-    "traceId": { "type": "string", "minLength": 1 },
-    "manifestId": { "type": "string", "minLength": 1 },
-    "taskId": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": "2" },
+    "traceId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "trialId": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "manifestId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 160 },
     "environment": { "type": "string", "minLength": 1 },
     "architecture": {
       "enum": [
@@ -28,10 +38,12 @@
         "host_planner_jev_gate"
       ]
     },
-    "executionState": { "enum": ["NOT_RUN", "COMPLETED", "FAILED"] },
+    "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
     "trustedStateDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "policyDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "phases": {
       "type": "array",
+      "maxItems": 8,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -40,6 +52,7 @@
           "name": {
             "enum": [
               "host_discovery",
+              "visual_extraction",
               "host_planning",
               "jev_evaluation",
               "policy_gate",
@@ -52,15 +65,220 @@
         }
       }
     },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposedCandidateId",
+        "executedCandidateId",
+        "invocationCount"
+      ],
+      "properties": {
+        "proposedCandidateId": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "executedCandidateId": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "invocationCount": { "type": "integer", "minimum": 0, "maximum": 1 }
+      }
+    },
     "outcome": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "safe", "replayMatched", "staleRejected"],
+      "required": ["status"],
       "properties": {
-        "status": { "enum": ["NOT_RUN", "success", "failure", "rejected"] },
-        "safe": { "type": ["boolean", "null"] },
-        "replayMatched": { "type": ["boolean", "null"] },
-        "staleRejected": { "type": ["boolean", "null"] }
+        "status": { "enum": ["NOT_RUN", "success", "failure", "rejected"] }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replay", "stale"],
+      "properties": {
+        "replay": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "originalDecisionDigest",
+            "replayedDecisionDigest",
+            "evidenceDigest"
+          ],
+          "properties": {
+            "originalDecisionDigest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "replayedDecisionDigest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "evidenceDigest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "stale": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "trustedStateDigest",
+            "proposedCandidateId",
+            "executedCandidateId",
+            "decision",
+            "invocationCount",
+            "evidenceDigest"
+          ],
+          "properties": {
+            "trustedStateDigest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "proposedCandidateId": {
+              "type": ["string", "null"],
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "executedCandidateId": {
+              "type": ["string", "null"],
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "decision": { "enum": ["rejected", "not_rejected"] },
+            "invocationCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "evidenceDigest": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestCount",
+        "inputTokens",
+        "outputTokens",
+        "costNanoUsd",
+        "providerIds",
+        "calls"
+      ],
+      "properties": {
+        "requestCount": { "type": "integer", "minimum": 0 },
+        "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "costNanoUsd": {
+          "type": ["string", "null"],
+          "pattern": "^(?:0|[1-9][0-9]*)$",
+          "maxLength": 16
+        },
+        "providerIds": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+        },
+        "calls": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sequence",
+              "purpose",
+              "providerId",
+              "modelId",
+              "inputTokens",
+              "outputTokens",
+              "costNanoUsd",
+              "requestContractDigest",
+              "usageEvidenceDigest",
+              "pricingEvidence",
+              "bindingDigest"
+            ],
+            "properties": {
+              "sequence": { "type": "integer", "minimum": 0 },
+              "purpose": {
+                "enum": ["host_planning", "jev_evaluation", "visual_extraction"]
+              },
+              "providerId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "modelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "inputTokens": { "type": "integer", "minimum": 0 },
+              "outputTokens": { "type": "integer", "minimum": 0 },
+              "costNanoUsd": {
+                "type": "string",
+                "pattern": "^(?:0|[1-9][0-9]*)$",
+                "maxLength": 16
+              },
+              "requestContractDigest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "usageEvidenceDigest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "pricingEvidence": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "basis",
+                  "sourceUrl",
+                  "observedAt",
+                  "sourceDigest"
+                ],
+                "properties": {
+                  "basis": {
+                    "enum": [
+                      "provider_reported",
+                      "invoice_allocated",
+                      "reviewed_rate_estimate",
+                      "promotion_zero"
+                    ]
+                  },
+                  "sourceUrl": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  },
+                  "observedAt": {
+                    "type": "string",
+                    "minLength": 24,
+                    "maxLength": 24
+                  },
+                  "sourceDigest": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              },
+              "bindingDigest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
       }
     }
   }

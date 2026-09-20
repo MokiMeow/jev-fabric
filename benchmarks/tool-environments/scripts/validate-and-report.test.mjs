@@ -6,6 +6,13 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  providerCallBindingDigest,
+  readBoundedUtf8,
+  recomputeToolEnvironmentRows,
+  replayCheckEvidenceDigest,
+  staleCheckEvidenceDigest,
+  traceDecisionDigest,
+  validateArtifactSet,
   validateAgainstSchema,
   validateResults,
   validateTrace,
@@ -15,6 +22,132 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = async (relative) =>
   JSON.parse(await readFile(join(root, relative), "utf8"));
 const clone = (value) => structuredClone(value);
+
+function attachPassingChecks(trace) {
+  for (const call of trace.accounting.calls)
+    call.bindingDigest = providerCallBindingDigest(trace, call);
+  const originalDecisionDigest = traceDecisionDigest(trace);
+  const replay = {
+    originalDecisionDigest,
+    replayedDecisionDigest: originalDecisionDigest,
+    evidenceDigest: "",
+  };
+  replay.evidenceDigest = replayCheckEvidenceDigest(trace, replay);
+  const stale = {
+    trustedStateDigest: "1".repeat(64),
+    proposedCandidateId: trace.selection.proposedCandidateId,
+    executedCandidateId: null,
+    decision: "rejected",
+    invocationCount: 0,
+    evidenceDigest: "",
+  };
+  stale.evidenceDigest = staleCheckEvidenceDigest(trace, stale);
+  trace.checks = { replay, stale };
+}
+
+function completedTrace(manifest, task, architecture, sample = 0) {
+  const calls =
+    architecture === "direct_deterministic"
+      ? []
+      : [
+          {
+            sequence: 0,
+            purpose: "host_planning",
+            providerId: "host.fixture",
+            modelId: "host-model.fixture-v1",
+            inputTokens: 10,
+            outputTokens: 2,
+            costNanoUsd: "1000",
+            requestContractDigest: "3".repeat(64),
+            usageEvidenceDigest: "4".repeat(64),
+            pricingEvidence: {
+              basis: "reviewed_rate_estimate",
+              sourceUrl: "https://example.test/pricing/host",
+              observedAt: "2026-09-20T00:00:00.000Z",
+              sourceDigest: "5".repeat(64),
+            },
+            bindingDigest: "",
+          },
+          ...(architecture === "host_planner_jev_gate"
+            ? [
+                {
+                  sequence: 1,
+                  purpose: "jev_evaluation",
+                  providerId: "typesafe.fixture",
+                  modelId: "jev-1.13.0",
+                  inputTokens: 10,
+                  outputTokens: 2,
+                  costNanoUsd: "1000",
+                  requestContractDigest: "6".repeat(64),
+                  usageEvidenceDigest: "7".repeat(64),
+                  pricingEvidence: {
+                    basis: "reviewed_rate_estimate",
+                    sourceUrl: "https://docs.typesafe.ai/models",
+                    observedAt: "2026-09-20T00:00:00.000Z",
+                    sourceDigest: "8".repeat(64),
+                  },
+                  bindingDigest: "",
+                },
+              ]
+            : []),
+        ];
+  const requestCount = calls.length;
+  const trace = {
+    schemaVersion: "2",
+    traceId: `${task.id}-${architecture}-${sample}`,
+    trialId: `${task.id}-trial-${sample}`,
+    manifestId: manifest.manifestId,
+    taskId: task.id,
+    environment: task.environment,
+    architecture,
+    executionState: "COMPLETED",
+    trustedStateDigest: task.trustedStateDigest,
+    policyDigest: "2".repeat(64),
+    phases: [{ name: "verification", durationMs: sample + 1 }],
+    selection: {
+      proposedCandidateId: task.expectedCandidateId,
+      executedCandidateId: task.expectedCandidateId,
+      invocationCount: 1,
+    },
+    outcome: {
+      status: "success",
+    },
+    checks: { replay: null, stale: null },
+    accounting: {
+      requestCount,
+      inputTokens: requestCount * 10,
+      outputTokens: requestCount * 2,
+      costNanoUsd: String(requestCount * 1_000),
+      providerIds:
+        architecture === "direct_deterministic"
+          ? []
+          : architecture === "host_planner_only"
+            ? ["host.fixture"]
+            : ["host.fixture", "typesafe.fixture"],
+      calls,
+    },
+  };
+  attachPassingChecks(trace);
+  return trace;
+}
+
+function completedTraces(manifest, sampleCount = 1) {
+  return manifest.tasks.flatMap((task) =>
+    task.architectures.flatMap((architecture) =>
+      Array.from({ length: sampleCount }, (_, sample) =>
+        completedTrace(manifest, task, architecture, sample),
+      ),
+    ),
+  );
+}
+
+function recomputedResult(fixture, manifest, traces, sampleCount) {
+  const result = clone(fixture);
+  result.executionState = "COMPLETED";
+  result.sampleCount = sampleCount;
+  result.rows = recomputeToolEnvironmentRows(manifest, traces, sampleCount);
+  return result;
+}
 
 function completedResult(fixture, sampleCount) {
   const completed = clone(fixture);
@@ -63,6 +196,20 @@ test("the result schema rejects out-of-range rates", async () => {
   );
 });
 
+test("artifact reads fail closed at the byte limit", async () => {
+  const artifactDirectory = await mkdtemp(join(tmpdir(), "jev-bounded-read-"));
+  const oversized = join(artifactDirectory, "oversized.json");
+  try {
+    await writeFile(oversized, "x".repeat(65 * 1024));
+    await assert.rejects(
+      () => readBoundedUtf8(oversized, 64 * 1024, "test trace"),
+      /exceeds its byte limit/u,
+    );
+  } finally {
+    await rm(artifactDirectory, { recursive: true, force: true });
+  }
+});
+
 test("completed aggregates require ordered timings and containing intervals", async () => {
   const [manifest, fixture] = await Promise.all([
     readJson("fixtures/task-manifest.not-run.jsonc"),
@@ -86,25 +233,360 @@ test("completed aggregates require ordered timings and containing intervals", as
   );
 });
 
-test("completed traces require populated observations", async () => {
+test("completed traces require bound replay and stale observations", async () => {
   const [manifest, fixture] = await Promise.all([
     readJson("fixtures/task-manifest.not-run.jsonc"),
     readJson("fixtures/trace.not-run.jsonc"),
   ]);
   const completed = clone(fixture);
   completed.executionState = "COMPLETED";
+  completed.trialId = "webmcp-declarative-search-trial-0";
+  completed.policyDigest = "2".repeat(64);
   completed.phases = [{ name: "verification", durationMs: 1.5 }];
+  completed.selection = {
+    proposedCandidateId: "search-catalog",
+    executedCandidateId: "search-catalog",
+    invocationCount: 1,
+  };
   completed.outcome = {
     status: "success",
-    safe: true,
-    replayMatched: true,
-    staleRejected: true,
   };
+  completed.accounting = {
+    requestCount: 2,
+    inputTokens: 10,
+    outputTokens: 2,
+    costNanoUsd: "1000",
+    providerIds: ["host.fixture", "typesafe.fixture"],
+    calls: [
+      {
+        sequence: 0,
+        purpose: "host_planning",
+        providerId: "host.fixture",
+        modelId: "host-model.fixture-v1",
+        inputTokens: 5,
+        outputTokens: 1,
+        costNanoUsd: "500",
+        requestContractDigest: "3".repeat(64),
+        usageEvidenceDigest: "4".repeat(64),
+        pricingEvidence: {
+          basis: "reviewed_rate_estimate",
+          sourceUrl: "https://example.test/pricing/host",
+          observedAt: "2026-09-20T00:00:00.000Z",
+          sourceDigest: "5".repeat(64),
+        },
+        bindingDigest: "",
+      },
+      {
+        sequence: 1,
+        purpose: "jev_evaluation",
+        providerId: "typesafe.fixture",
+        modelId: "jev-1.13.0",
+        inputTokens: 5,
+        outputTokens: 1,
+        costNanoUsd: "500",
+        requestContractDigest: "6".repeat(64),
+        usageEvidenceDigest: "7".repeat(64),
+        pricingEvidence: {
+          basis: "reviewed_rate_estimate",
+          sourceUrl: "https://docs.typesafe.ai/models",
+          observedAt: "2026-09-20T00:00:00.000Z",
+          sourceDigest: "8".repeat(64),
+        },
+        bindingDigest: "",
+      },
+    ],
+  };
+  attachPassingChecks(completed);
   assert.doesNotThrow(() => validateTrace(completed, manifest));
-  completed.outcome.replayMatched = null;
+  completed.checks.replay.evidenceDigest = "0".repeat(64);
   assert.throws(
     () => validateTrace(completed, manifest),
-    /no replayMatched observation/u,
+    /replay evidence digest drifted/u,
+  );
+});
+
+test("completed traces bind planned/executed candidates and exact accounting", async () => {
+  const manifest = await readJson("fixtures/task-manifest.not-run.jsonc");
+  const task = manifest.tasks[0];
+  assert.ok(task);
+  const trace = completedTrace(manifest, task, "host_planner_jev_gate");
+  assert.doesNotThrow(() => validateTrace(trace, manifest));
+
+  const unbounded = clone(trace);
+  unbounded.selection.executedCandidateId = "outside-candidate-set";
+  assert.throws(
+    () => validateTrace(unbounded, manifest),
+    /outside the bounded action space/u,
+  );
+
+  const fabricated = clone(trace);
+  fabricated.accounting.requestCount = 0;
+  assert.throws(
+    () => validateTrace(fabricated, manifest),
+    /accounting is inconsistent|does not match request count/u,
+  );
+
+  const missingJevCall = clone(trace);
+  missingJevCall.accounting.calls[1].purpose = "host_planning";
+  attachPassingChecks(missingJevCall);
+  assert.throws(
+    () => validateTrace(missingJevCall, manifest),
+    /omitted a required provider call/u,
+  );
+
+  const unboundUsage = clone(trace);
+  unboundUsage.accounting.calls[1].usageEvidenceDigest = "9".repeat(64);
+  assert.throws(
+    () => validateTrace(unboundUsage, manifest),
+    /provider-call binding digest drifted/u,
+  );
+
+  const credentialedPricing = clone(trace);
+  credentialedPricing.accounting.calls[1].pricingEvidence.sourceUrl =
+    "https://user:synthetic-secret@example.test/pricing";
+  attachPassingChecks(credentialedPricing);
+  assert.throws(
+    () => validateTrace(credentialedPricing, manifest),
+    /credential-free HTTPS/u,
+  );
+
+  const queryPricing = clone(trace);
+  queryPricing.accounting.calls[1].pricingEvidence.sourceUrl =
+    "https://example.test/pricing?session=synthetic-secret";
+  attachPassingChecks(queryPricing);
+  assert.throws(
+    () => validateTrace(queryPricing, manifest),
+    /credential-free HTTPS/u,
+  );
+
+  const modelAlias = clone(trace);
+  modelAlias.accounting.calls[1].modelId = "jev-latest";
+  attachPassingChecks(modelAlias);
+  assert.throws(
+    () => validateTrace(modelAlias, manifest),
+    /resolved model id/u,
+  );
+
+  const earlyFailure = clone(trace);
+  earlyFailure.selection = {
+    proposedCandidateId: null,
+    executedCandidateId: null,
+    invocationCount: 0,
+  };
+  earlyFailure.outcome.status = "failure";
+  earlyFailure.accounting = {
+    requestCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costNanoUsd: "0",
+    providerIds: [],
+    calls: [],
+  };
+  attachPassingChecks(earlyFailure);
+  assert.doesNotThrow(() => validateTrace(earlyFailure, manifest));
+
+  const executedWithoutProposal = clone(earlyFailure);
+  executedWithoutProposal.selection.executedCandidateId =
+    task.expectedCandidateId;
+  attachPassingChecks(executedWithoutProposal);
+  assert.throws(
+    () => validateTrace(executedWithoutProposal, manifest),
+    /was not proposed/u,
+  );
+
+  const unsafeTaskManifest = clone(manifest);
+  unsafeTaskManifest.tasks[0].safetyExpectation = "reject_unsafe_action";
+  const expectedRejection = completedTrace(
+    unsafeTaskManifest,
+    unsafeTaskManifest.tasks[0],
+    "host_planner_jev_gate",
+  );
+  expectedRejection.selection.executedCandidateId = null;
+  expectedRejection.selection.invocationCount = 0;
+  attachPassingChecks(expectedRejection);
+  assert.doesNotThrow(() =>
+    validateTrace(expectedRejection, unsafeTaskManifest),
+  );
+});
+
+test("completed aggregates are independently recomputed from retained traces", async () => {
+  const [
+    taskSchema,
+    traceSchema,
+    resultSchema,
+    manifestFixture,
+    resultFixture,
+  ] = await Promise.all([
+    readJson("schema/task-manifest.schema.jsonc"),
+    readJson("schema/trace.schema.jsonc"),
+    readJson("schema/result.schema.jsonc"),
+    readJson("fixtures/task-manifest.not-run.jsonc"),
+    readJson("fixtures/result.not-run.jsonc"),
+  ]);
+  const manifest = clone(manifestFixture);
+  manifest.evidenceState = "RETAINED";
+  const traces = completedTraces(manifest, 2);
+  const earlyFailure = traces.find(
+    (trace) =>
+      trace.environment === "webmcp_declarative" &&
+      trace.architecture === "host_planner_jev_gate" &&
+      trace.trialId.endsWith("-0"),
+  );
+  assert.ok(earlyFailure);
+  earlyFailure.selection = {
+    proposedCandidateId: null,
+    executedCandidateId: null,
+    invocationCount: 0,
+  };
+  earlyFailure.outcome.status = "failure";
+  earlyFailure.accounting = {
+    requestCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costNanoUsd: "0",
+    providerIds: [],
+    calls: [],
+  };
+  attachPassingChecks(earlyFailure);
+  const failedChecks = traces.find(
+    (trace) =>
+      trace.environment === "webmcp_declarative" &&
+      trace.architecture === "host_planner_jev_gate" &&
+      trace.trialId.endsWith("-1"),
+  );
+  assert.ok(failedChecks);
+  failedChecks.checks.replay.replayedDecisionDigest = "9".repeat(64);
+  failedChecks.checks.replay.evidenceDigest = replayCheckEvidenceDigest(
+    failedChecks,
+    failedChecks.checks.replay,
+  );
+  failedChecks.checks.stale.decision = "not_rejected";
+  failedChecks.checks.stale.evidenceDigest = staleCheckEvidenceDigest(
+    failedChecks,
+    failedChecks.checks.stale,
+  );
+  const unsafeAttempt = traces.find(
+    (trace) =>
+      trace.environment === "webmcp_imperative" &&
+      trace.architecture === "host_planner_jev_gate" &&
+      trace.trialId.endsWith("-0"),
+  );
+  const unsafeTask = manifest.tasks.find(
+    (task) => task.id === unsafeAttempt?.taskId,
+  );
+  assert.ok(unsafeAttempt);
+  assert.ok(unsafeTask);
+  unsafeAttempt.selection = {
+    proposedCandidateId: unsafeTask.candidateIds[1],
+    executedCandidateId: null,
+    invocationCount: 1,
+  };
+  unsafeAttempt.outcome.status = "failure";
+  attachPassingChecks(unsafeAttempt);
+  const result = recomputedResult(resultFixture, manifest, traces, 2);
+  const failedCell = result.rows.find(
+    (row) =>
+      row.environment === "webmcp_declarative" &&
+      row.architecture === "host_planner_jev_gate",
+  );
+  assert.equal(failedCell?.successRate, 0.5);
+  assert.equal(failedCell?.safeOutcomeRate, 1);
+  assert.equal(failedCell?.replayPassRate, 0.5);
+  assert.equal(failedCell?.staleRejectionRate, 0.5);
+  const unsafeCell = result.rows.find(
+    (row) =>
+      row.environment === "webmcp_imperative" &&
+      row.architecture === "host_planner_jev_gate",
+  );
+  assert.equal(unsafeCell?.successRate, 0.5);
+  assert.equal(unsafeCell?.safeOutcomeRate, 0.5);
+  assert.doesNotThrow(() =>
+    validateArtifactSet({
+      taskSchema,
+      traceSchema,
+      resultSchema,
+      manifest,
+      traces,
+      result,
+    }),
+  );
+  result.rows[0].totalTokens += 1;
+  assert.throws(
+    () =>
+      validateArtifactSet({
+        taskSchema,
+        traceSchema,
+        resultSchema,
+        manifest,
+        traces,
+        result,
+      }),
+    /do not match retained traces/u,
+  );
+});
+
+test("completed comparisons require paired unique trials", async () => {
+  const [
+    taskSchema,
+    traceSchema,
+    resultSchema,
+    manifestFixture,
+    resultFixture,
+  ] = await Promise.all([
+    readJson("schema/task-manifest.schema.jsonc"),
+    readJson("schema/trace.schema.jsonc"),
+    readJson("schema/result.schema.jsonc"),
+    readJson("fixtures/task-manifest.not-run.jsonc"),
+    readJson("fixtures/result.not-run.jsonc"),
+  ]);
+  const manifest = clone(manifestFixture);
+  manifest.evidenceState = "RETAINED";
+  const traces = completedTraces(manifest, 2);
+  const result = recomputedResult(resultFixture, manifest, traces, 2);
+
+  const unpaired = clone(traces);
+  const changed = unpaired.find(
+    (trace) =>
+      trace.environment === "browser_dom_cdp" &&
+      trace.architecture === "host_planner_jev_gate" &&
+      trace.trialId.endsWith("-1"),
+  );
+  assert.ok(changed);
+  changed.trialId = `${changed.taskId}-unpaired-trial`;
+  attachPassingChecks(changed);
+  assert.throws(
+    () =>
+      validateArtifactSet({
+        taskSchema,
+        traceSchema,
+        resultSchema,
+        manifest,
+        traces: unpaired,
+        result,
+      }),
+    /trial sets are not paired/u,
+  );
+
+  const duplicated = clone(traces);
+  const duplicateCell = duplicated.filter(
+    (trace) =>
+      trace.environment === "blender" &&
+      trace.architecture === "host_planner_only",
+  );
+  assert.equal(duplicateCell.length, 2);
+  duplicateCell[1].trialId = duplicateCell[0].trialId;
+  attachPassingChecks(duplicateCell[1]);
+  assert.throws(
+    () =>
+      validateArtifactSet({
+        taskSchema,
+        traceSchema,
+        resultSchema,
+        manifest,
+        traces: duplicated,
+        result,
+      }),
+    /duplicate trial id/u,
   );
 });
 
@@ -117,7 +599,8 @@ test("the CLI validates and reports a completed retained artifact directory", as
   try {
     const manifest = clone(manifestFixture);
     manifest.evidenceState = "RETAINED";
-    const result = completedResult(resultFixture, 1);
+    const traces = completedTraces(manifest);
+    const result = recomputedResult(resultFixture, manifest, traces, 1);
     const traceDirectory = join(artifactDirectory, "traces");
     await mkdir(traceDirectory);
     await Promise.all([
@@ -126,30 +609,11 @@ test("the CLI validates and reports a completed retained artifact directory", as
         JSON.stringify(manifest),
       ),
       writeFile(join(artifactDirectory, "result.json"), JSON.stringify(result)),
-      ...manifest.tasks.flatMap((task) =>
-        task.architectures.map((architecture) => {
-          const traceId = `${task.id}-${architecture}`;
-          return writeFile(
-            join(traceDirectory, `${traceId}.json`),
-            JSON.stringify({
-              schemaVersion: "1",
-              traceId,
-              manifestId: manifest.manifestId,
-              taskId: task.id,
-              environment: task.environment,
-              architecture,
-              executionState: "COMPLETED",
-              trustedStateDigest: task.trustedStateDigest,
-              phases: [{ name: "verification", durationMs: 1 }],
-              outcome: {
-                status: "success",
-                safe: true,
-                replayMatched: true,
-                staleRejected: true,
-              },
-            }),
-          );
-        }),
+      ...traces.map((trace) =>
+        writeFile(
+          join(traceDirectory, `${trace.traceId}.json`),
+          JSON.stringify(trace),
+        ),
       ),
     ]);
     const script = fileURLToPath(

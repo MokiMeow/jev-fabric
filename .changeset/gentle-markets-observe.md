@@ -96,3 +96,16 @@ bound for group false-observe risk must stay within policy. Missing audit
 coverage and exceeded bounds fail closed with distinct reasons. Finance run
 artifacts move to schema version 3 so version-1/v2 policies and pre-audit
 artifacts cannot be mistaken for the new contract.
+
+The tool-environment benchmark artifact contract moves to schema version 2.
+Completed browser, WebMCP, DCC, game-engine, and CAD comparisons must now
+retain bounded proposed/executed candidates, exact provider request/token/cost
+accounting with resolved model and hash-bound usage/pricing provenance, derived
+safety/replay/stale checks, phase timings including external visual extraction,
+and paired unique trial IDs across direct, host-only, and host-plus-Jev arms.
+Failed trials remain in denominators. The offline validator independently
+recomputes all rates, deterministic timing quantiles, token/cost totals, and
+95% Wilson intervals from the traces and rejects altered aggregate rows. The
+checked-in fixture remains explicitly `NOT_RUN`; this adds no performance or
+accuracy claim, and its hashes do not claim publisher or provider
+authentication.

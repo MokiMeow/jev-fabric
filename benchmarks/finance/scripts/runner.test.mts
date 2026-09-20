@@ -618,7 +618,7 @@ const runtime: FinanceRuntimeProvenance = {
   },
 };
 
-test("NOT_RUN schema and runtime reject uncertainty claims", async () => {
+test("NOT_RUN schema and runtime reject legacy or fabricated evidence", async () => {
   const [schema, fixture] = await Promise.all([
     readFile(
       join(
@@ -641,6 +641,13 @@ test("NOT_RUN schema and runtime reject uncertainty claims", async () => {
       "utf8",
     ).then(JSON.parse),
   ]);
+  const legacy = structuredClone(fixture) as { schemaVersion: string };
+  legacy.schemaVersion = "1";
+  assert.throws(
+    () => validateAgainstSchema(schema, legacy, "legacy finance run"),
+    /does not match its schema/u,
+  );
+  assert.throws(() => validateFinanceRun(legacy), /schemaVersion is invalid/u);
   const forged = structuredClone(fixture) as {
     rows: Array<Record<string, unknown>>;
   };
@@ -786,11 +793,28 @@ test("runs, retains, and independently validates the complete finance matrix", a
         ),
     );
     const gate = artifacts.run.observeGate as {
-      policies: readonly unknown[];
+      policies: readonly {
+        policy: {
+          schemaVersion: string;
+          status: string;
+          minimumCalibrationGroups: number;
+          acceptedObserveGroupCount: number;
+        };
+      }[];
       riskSemantics: string;
     };
     assert.equal(gate.riskSemantics, "empirical_calibration_only");
     assert.equal(gate.policies.length, 12);
+    assert.ok(
+      gate.policies.every(
+        ({ policy }) =>
+          policy.schemaVersion === "2" &&
+          (policy.status === "UNAVAILABLE"
+            ? policy.acceptedObserveGroupCount === 0
+            : policy.acceptedObserveGroupCount >=
+              policy.minimumCalibrationGroups),
+      ),
+    );
     assert.equal(
       (artifacts.run.rows as Array<{ sampleCount: number }>).length,
       12,

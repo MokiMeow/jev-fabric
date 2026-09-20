@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "1",
-  "runId": "finance-scaffold-v1",
+  "schemaVersion": "2",
+  "runId": "finance-scaffold-v2",
   "executionState": "NOT_RUN",
   "sampleCount": 0,
   "calibrationSampleCount": 0,
@@ -124,8 +124,8 @@
   },
   "observeGate": {
     "status": "NOT_RUN",
-    "policyId": "finance.observe-gate.v1",
-    "formulaId": "minimum-required-observe-support.v1",
+    "policyId": "finance.observe-gate.v2",
+    "formulaId": "minimum-required-observe-support.group-coverage.v2",
     "riskSemantics": "empirical_calibration_only",
     "maxObservedFalseObserveRisk": null,
     "minimumCalibrationGroups": null,

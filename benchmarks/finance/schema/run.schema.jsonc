@@ -72,7 +72,7 @@
     "rows"
   ],
   "properties": {
-    "schemaVersion": { "const": "1" },
+    "schemaVersion": { "const": "2" },
     "runId": { "type": "string", "minLength": 1, "maxLength": 160 },
     "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
     "sampleCount": { "type": "integer", "minimum": 0 },
@@ -679,8 +679,10 @@
       ],
       "properties": {
         "status": { "const": "NOT_RUN" },
-        "policyId": { "const": "finance.observe-gate.v1" },
-        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "policyId": { "const": "finance.observe-gate.v2" },
+        "formulaId": {
+          "const": "minimum-required-observe-support.group-coverage.v2"
+        },
         "riskSemantics": { "const": "empirical_calibration_only" },
         "maxObservedFalseObserveRisk": { "type": "null" },
         "minimumCalibrationGroups": { "type": "null" },
@@ -709,8 +711,10 @@
       ],
       "properties": {
         "status": { "const": "COMPLETED" },
-        "policyId": { "const": "finance.observe-gate.v1" },
-        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "policyId": { "const": "finance.observe-gate.v2" },
+        "formulaId": {
+          "const": "minimum-required-observe-support.group-coverage.v2"
+        },
         "riskSemantics": { "const": "empirical_calibration_only" },
         "maxObservedFalseObserveRisk": {
           "type": "number",
@@ -764,13 +768,16 @@
         "calibrationGroupCount",
         "eligibleObserveCount",
         "acceptedObserveCount",
+        "acceptedObserveGroupCount",
         "falseObserveCount",
         "observedFalseObserveRisk"
       ],
       "properties": {
-        "schemaVersion": { "const": "1" },
-        "policyId": { "const": "finance.observe-gate.v1" },
-        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "schemaVersion": { "const": "2" },
+        "policyId": { "const": "finance.observe-gate.v2" },
+        "formulaId": {
+          "const": "minimum-required-observe-support.group-coverage.v2"
+        },
         "track": { "$ref": "#/$defs/track" },
         "architecture": { "$ref": "#/$defs/architecture" },
         "riskSemantics": { "const": "empirical_calibration_only" },
@@ -782,6 +789,7 @@
         "calibrationGroupCount": { "type": "integer", "minimum": 0 },
         "eligibleObserveCount": { "type": "integer", "minimum": 1 },
         "acceptedObserveCount": { "type": "integer", "minimum": 1 },
+        "acceptedObserveGroupCount": { "type": "integer", "minimum": 1 },
         "falseObserveCount": { "type": "integer", "minimum": 0 },
         "observedFalseObserveRisk": { "$ref": "#/$defs/unit" }
       }
@@ -805,13 +813,16 @@
         "calibrationGroupCount",
         "eligibleObserveCount",
         "acceptedObserveCount",
+        "acceptedObserveGroupCount",
         "falseObserveCount",
         "observedFalseObserveRisk"
       ],
       "properties": {
-        "schemaVersion": { "const": "1" },
-        "policyId": { "const": "finance.observe-gate.v1" },
-        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "schemaVersion": { "const": "2" },
+        "policyId": { "const": "finance.observe-gate.v2" },
+        "formulaId": {
+          "const": "minimum-required-observe-support.group-coverage.v2"
+        },
         "track": { "$ref": "#/$defs/track" },
         "architecture": { "$ref": "#/$defs/architecture" },
         "riskSemantics": { "const": "empirical_calibration_only" },
@@ -822,6 +833,7 @@
           "enum": [
             "deterministic_only",
             "insufficient_calibration_groups",
+            "insufficient_accepted_calibration_groups",
             "no_eligible_observe_cases",
             "no_threshold_meets_risk_bound"
           ]
@@ -831,6 +843,7 @@
         "calibrationGroupCount": { "type": "integer", "minimum": 0 },
         "eligibleObserveCount": { "type": "integer", "minimum": 0 },
         "acceptedObserveCount": { "const": 0 },
+        "acceptedObserveGroupCount": { "const": 0 },
         "falseObserveCount": { "const": 0 },
         "observedFalseObserveRisk": { "type": "null" }
       }

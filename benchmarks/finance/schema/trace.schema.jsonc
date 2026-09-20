@@ -194,6 +194,7 @@
               "enum": [
                 "deterministic_only",
                 "insufficient_calibration_groups",
+                "insufficient_accepted_calibration_groups",
                 "no_eligible_observe_cases",
                 "no_threshold_meets_risk_bound"
               ]
@@ -264,6 +265,7 @@
           "enum": [
             "deterministic_only",
             "insufficient_calibration_groups",
+            "insufficient_accepted_calibration_groups",
             "no_eligible_observe_cases",
             "no_threshold_meets_risk_bound"
           ]

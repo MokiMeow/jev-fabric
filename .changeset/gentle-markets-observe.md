@@ -1,7 +1,7 @@
 ---
 "@mokimeow/jev-fabric-adapters": patch
 "@mokimeow/jev-fabric-core": patch
-"@mokimeow/jev-fabric-evals": patch
+"@mokimeow/jev-fabric-evals": minor
 "@mokimeow/jev-fabric-packs": patch
 "@mokimeow/jev-fabric-provider-openai-compatible": patch
 ---
@@ -87,3 +87,11 @@ intervals for selective accuracy and coverage. Sparse or zero coverage cannot
 be converted into a zero-valued accuracy replicate; the artifact instead
 retains an explicit unavailable reason, and the offline validator independently
 recomputes every interval.
+
+The finance observe gate is versioned to `finance.observe-gate.v2`. A selected
+threshold must now cover the configured minimum number of independent
+calibration groups, not merely draw from a cell whose rejected cases make the
+overall group count look sufficient. Policies retain and independently verify
+their accepted-group count; narrow thresholds fail closed with an explicit
+reason. Finance run artifacts move to schema version 2 so version-1 policy and
+pre-interval artifacts cannot be mistaken for the new contract.

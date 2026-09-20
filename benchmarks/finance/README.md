@@ -5,16 +5,26 @@ three tracks by four architectures. It establishes neither performance nor
 trading results. Synthetic tests prove the runner and validator behave as
 specified; they are not model benchmarks.
 
-The runner implements the experimental `finance.observe-gate.v1`. It retains
+The runner implements the experimental `finance.observe-gate.v2`. It retains
 the complete atomic Choice ledgers, composes every mandatory observe factor
 with a non-compensating minimum, fits a threshold only on the calibration
 split, and upgrades a rejected `observe` to `investigate`. It never turns a
 more restrictive route into `observe`. The fitted threshold enforces only the
 caller-declared **maximum observed** false-observe risk on retained calibration
-rows. It is empirical evidence, not a confidence bound, statistical guarantee,
-authorization, or permission to trade. The committed fixture remains strictly
-`NOT_RUN`: its policy set, threshold inputs, atomic metrics, and performance
-metrics are null or empty and make no observe-gate claim.
+rows. Version 2 also requires the decisions accepted by the selected threshold
+to span at least `minimumCalibrationGroups` distinct groups; merely having that
+many groups elsewhere in the calibration split is insufficient. A risk-eligible
+threshold with narrower group support becomes explicitly unavailable with
+`insufficient_accepted_calibration_groups`. The retained policy includes its
+accepted-group count, and the offline validator recomputes it from calibration
+traces. Version 1 policy ids, formula ids, schema versions, and digests are not
+reusable. Finance `run.json` schema version 2 makes that incompatibility
+explicit and also covers the required uncertainty configuration introduced with
+the completed-row intervals. This remains empirical evidence, not a confidence
+bound, statistical guarantee, authorization, or permission to trade. The
+committed fixture remains strictly `NOT_RUN`: its policy set, threshold inputs,
+atomic metrics, and performance metrics are null or empty and make no
+observe-gate claim.
 
 Finance pack `0.2.0` adds `unclear` as an explicit financial-text claim label.
 It is non-observe evidence and composes to `investigate`; it is not another

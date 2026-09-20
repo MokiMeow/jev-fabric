@@ -81,6 +81,7 @@ interface FinanceMetricInterval {
 }
 
 interface FinanceRunDocument {
+  readonly schemaVersion: "2";
   readonly runId: string;
   readonly executionState: "NOT_RUN" | "COMPLETED";
   readonly sampleCount: number;
@@ -112,8 +113,8 @@ interface FinanceRunDocument {
   readonly uncertaintyConfiguration: typeof financeUncertaintyConfiguration;
   readonly observeGate: Readonly<{
     status: "NOT_RUN" | "COMPLETED";
-    policyId: "finance.observe-gate.v1";
-    formulaId: "minimum-required-observe-support.v1";
+    policyId: "finance.observe-gate.v2";
+    formulaId: "minimum-required-observe-support.group-coverage.v2";
     riskSemantics: "empirical_calibration_only";
     maxObservedFalseObserveRisk: number | null;
     minimumCalibrationGroups: number | null;
@@ -129,6 +130,7 @@ interface FinanceRunDocument {
 
 export function validateFinanceRun(value: unknown): void {
   const run = value as FinanceRunDocument;
+  invariant(run.schemaVersion === "2", "finance run schemaVersion is invalid");
   invariant(
     run.executionState === "NOT_RUN" || run.executionState === "COMPLETED",
     "finance executionState is invalid",
@@ -385,8 +387,9 @@ export function validateFinanceRun(value: unknown): void {
   );
   invariant(
     run.observeGate.status === "COMPLETED" &&
-      run.observeGate.policyId === "finance.observe-gate.v1" &&
-      run.observeGate.formulaId === "minimum-required-observe-support.v1" &&
+      run.observeGate.policyId === "finance.observe-gate.v2" &&
+      run.observeGate.formulaId ===
+        "minimum-required-observe-support.group-coverage.v2" &&
       run.observeGate.riskSemantics === "empirical_calibration_only" &&
       finite(run.observeGate.maxObservedFalseObserveRisk) &&
       Number.isSafeInteger(run.observeGate.minimumCalibrationGroups) &&

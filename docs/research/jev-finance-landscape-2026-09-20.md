@@ -278,6 +278,26 @@ explicit unavailable reason. This guards the common failure mode where
 abstention makes a small apparent accuracy gain look more precise than the
 evidence permits.
 
+The same independent-group principle now applies when fitting the automatic
+observe threshold. `finance.observe-gate.v2` requires the cases accepted by the
+selected threshold—not merely the surrounding calibration split—to span the
+configured minimum number of groups. This closes a small-sample loophole where
+a threshold could satisfy an empirical error budget on one accepted group while
+unrelated rejected groups made the calibration set look broad. The retained
+accepted-group count is recomputed from traces. This is an evidence-breadth
+guard, not a binomial or distribution-free upper confidence bound.
+
+On 2026-09-20 the community
+[TypeSafe playground native-browser change](https://github.com/TypeSafeAI/typesafe-playground/commit/9d3d990604c4680a397db813a9058bd40597cc67)
+merged a loop using a compressed baseline, later state deltas, closed
+operation/target/value choices, and batched field actions. Its own change record
+says the attempted live token measurement stopped at HTTP 402 before an action,
+so Fabric treats the token and speed benefit as unverified. The useful design
+lead is narrower: a future Fabric browser benchmark can compare full snapshots
+with digest-chained deltas while keeping execution in trusted code, revalidating
+document, target, form, occlusion, and completion state after every proposed
+batch.
+
 The official model page also fixes a 32k budget for `state` plus the longest
 question and the jaggedness guide warns that irrelevant state reduces accuracy.
 The provider-facing visual bridge therefore caps its complete annotation JSON

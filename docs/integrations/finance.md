@@ -201,6 +201,14 @@ pixels and not Jev.
 8. Version the dataset digest, feature definitions, model, provider, policy,
    and question set. Re-run after any change or detected drift.
 
+The experimental `finance.observe-gate.v2` also requires every selected
+automatic-observe threshold to retain support from the configured minimum
+number of independent calibration groups. A large calibration table does not
+make a narrow one-group threshold representative. This guard improves evidence
+breadth but is still not a statistical risk guarantee; report the empirical
+false-observe rate and group count, and use a separately reviewed uncertainty
+method before making a population-risk claim.
+
 TypeSafe confidence is distribution concentration, not correctness
 probability. Calibrate thresholds against your own labels and never reuse a
 threshold across different probability semantics. The executable

@@ -84,7 +84,7 @@ function ledger(
   };
 }
 
-describe("finance.observe-gate.v1", () => {
+describe("finance.observe-gate.v2", () => {
   it("uses the non-compensating minimum across base, claim, and citation evidence", () => {
     expect(financeObserveSupport(ledger("jev"))).toEqual({
       score: 0.8,
@@ -199,10 +199,47 @@ describe("finance.observe-gate.v1", () => {
       status: "CALIBRATED",
       threshold: 0.7,
       acceptedObserveCount: 3,
+      acceptedObserveGroupCount: 3,
       falseObserveCount: 1,
       observedFalseObserveRisk: 1 / 3,
       calibrationCaseCount: 4,
       calibrationGroupCount: 4,
+    });
+    const forged = structuredClone(policy) as unknown as {
+      acceptedObserveGroupCount: number;
+    };
+    forged.acceptedObserveGroupCount = 1;
+    expect(() =>
+      applyFinanceObserveGate(
+        "observe",
+        0.9,
+        forged as unknown as typeof policy,
+      ),
+    ).toThrow(/counts are inconsistent/u);
+  });
+
+  it("requires the selected threshold to cover enough independent groups", () => {
+    const rows: FinanceObserveCalibrationCase[] = [
+      { ...calibration("a", 0.9, "observe"), groupId: "accepted" },
+      { ...calibration("b", 0.85, "observe"), groupId: "accepted" },
+      { ...calibration("c", 0.8, "investigate"), groupId: "rejected-a" },
+      { ...calibration("d", 0.7, "investigate"), groupId: "rejected-b" },
+    ];
+    expect(
+      fitFinanceObserveGate(
+        rows,
+        "financial_text_triage",
+        "jev_advisory",
+        0,
+        2,
+      ),
+    ).toMatchObject({
+      status: "UNAVAILABLE",
+      reason: "insufficient_accepted_calibration_groups",
+      calibrationGroupCount: 3,
+      eligibleObserveCount: 4,
+      acceptedObserveCount: 0,
+      acceptedObserveGroupCount: 0,
     });
   });
 

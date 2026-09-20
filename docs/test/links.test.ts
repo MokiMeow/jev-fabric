@@ -26,6 +26,7 @@ const official = new Set([
   "https://www.sec.gov/",
   "https://catalog.data.gov/",
   "https://www.nist.gov/",
+  "https://itl.nist.gov/",
   "https://x.com/",
   "https://madewithjev.com/",
   "https://jevlist.ai/",

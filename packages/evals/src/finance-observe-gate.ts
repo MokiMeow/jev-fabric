@@ -13,9 +13,9 @@ import type {
 import { categoricalBrier, topLabelEce } from "./metrics.js";
 import { stableJson } from "./manifest.js";
 
-export const financeObserveGatePolicyId = "finance.observe-gate.v1" as const;
+export const financeObserveGatePolicyId = "finance.observe-gate.v2" as const;
 export const financeObserveGateFormulaId =
-  "minimum-required-observe-support.v1" as const;
+  "minimum-required-observe-support.group-coverage.v2" as const;
 
 export const financeAtomicBaseQuestions = {
   "finance-route": "observe",
@@ -92,12 +92,13 @@ export interface FinanceObserveCalibrationCase {
 export type FinanceObserveGateUnavailableReason =
   | "deterministic_only"
   | "insufficient_calibration_groups"
+  | "insufficient_accepted_calibration_groups"
   | "no_eligible_observe_cases"
   | "no_threshold_meets_risk_bound";
 
 export type FinanceObserveGatePolicy =
   | {
-      readonly schemaVersion: "1";
+      readonly schemaVersion: "2";
       readonly policyId: typeof financeObserveGatePolicyId;
       readonly formulaId: typeof financeObserveGateFormulaId;
       readonly track: FinanceTrack;
@@ -111,11 +112,12 @@ export type FinanceObserveGatePolicy =
       readonly calibrationGroupCount: number;
       readonly eligibleObserveCount: number;
       readonly acceptedObserveCount: number;
+      readonly acceptedObserveGroupCount: number;
       readonly falseObserveCount: number;
       readonly observedFalseObserveRisk: number;
     }
   | {
-      readonly schemaVersion: "1";
+      readonly schemaVersion: "2";
       readonly policyId: typeof financeObserveGatePolicyId;
       readonly formulaId: typeof financeObserveGateFormulaId;
       readonly track: FinanceTrack;
@@ -130,6 +132,7 @@ export type FinanceObserveGatePolicy =
       readonly calibrationGroupCount: number;
       readonly eligibleObserveCount: number;
       readonly acceptedObserveCount: 0;
+      readonly acceptedObserveGroupCount: 0;
       readonly falseObserveCount: 0;
       readonly observedFalseObserveRisk: null;
     };
@@ -347,7 +350,7 @@ export function fitFinanceObserveGate(
     return true;
   });
   const base = {
-    schemaVersion: "1" as const,
+    schemaVersion: "2" as const,
     policyId: financeObserveGatePolicyId,
     formulaId: financeObserveGateFormulaId,
     track,
@@ -371,7 +374,7 @@ export function fitFinanceObserveGate(
   const thresholds = [
     ...new Set(eligible.map((row) => row.observeSupportScore as number)),
   ].sort((left, right) => left - right);
-  const candidates = thresholds
+  const riskEligibleCandidates = thresholds
     .map((threshold) => {
       const accepted = eligible.filter(
         (row) => (row.observeSupportScore as number) >= threshold,
@@ -382,6 +385,9 @@ export function fitFinanceObserveGate(
       return {
         threshold,
         acceptedObserveCount: accepted.length,
+        acceptedObserveGroupCount: new Set(
+          accepted.map(({ groupId }) => groupId),
+        ).size,
         falseObserveCount,
         observedFalseObserveRisk: falseObserveCount / accepted.length,
       };
@@ -389,6 +395,11 @@ export function fitFinanceObserveGate(
     .filter(
       ({ observedFalseObserveRisk }) =>
         observedFalseObserveRisk <= maxObservedFalseObserveRisk,
+    );
+  const candidates = riskEligibleCandidates
+    .filter(
+      ({ acceptedObserveGroupCount }) =>
+        acceptedObserveGroupCount >= minimumCalibrationGroups,
     )
     .sort(
       (left, right) =>
@@ -399,7 +410,9 @@ export function fitFinanceObserveGate(
   if (selected === undefined)
     return unavailablePolicy(
       base,
-      "no_threshold_meets_risk_bound",
+      riskEligibleCandidates.length > 0
+        ? "insufficient_accepted_calibration_groups"
+        : "no_threshold_meets_risk_bound",
       eligible.length,
     );
   return Object.freeze({
@@ -408,6 +421,7 @@ export function fitFinanceObserveGate(
     threshold: selected.threshold,
     eligibleObserveCount: eligible.length,
     acceptedObserveCount: selected.acceptedObserveCount,
+    acceptedObserveGroupCount: selected.acceptedObserveGroupCount,
     falseObserveCount: selected.falseObserveCount,
     observedFalseObserveRisk: selected.observedFalseObserveRisk,
   });
@@ -658,6 +672,7 @@ function unavailablePolicy(
     | "threshold"
     | "eligibleObserveCount"
     | "acceptedObserveCount"
+    | "acceptedObserveGroupCount"
     | "falseObserveCount"
     | "observedFalseObserveRisk"
   >,
@@ -671,6 +686,7 @@ function unavailablePolicy(
     threshold: null,
     eligibleObserveCount,
     acceptedObserveCount: 0,
+    acceptedObserveGroupCount: 0,
     falseObserveCount: 0,
     observedFalseObserveRisk: null,
   });
@@ -1105,6 +1121,7 @@ function validatePolicy(policy: FinanceObserveGatePolicy): void {
     "calibrationGroupCount",
     "eligibleObserveCount",
     "acceptedObserveCount",
+    "acceptedObserveGroupCount",
     "falseObserveCount",
     "observedFalseObserveRisk",
   ];
@@ -1116,7 +1133,7 @@ function validatePolicy(policy: FinanceObserveGatePolicy): void {
   if (
     !policy ||
     typeof policy !== "object" ||
-    policy.schemaVersion !== "1" ||
+    policy.schemaVersion !== "2" ||
     policy.policyId !== financeObserveGatePolicyId ||
     policy.formulaId !== financeObserveGateFormulaId
   )
@@ -1132,6 +1149,7 @@ function validatePolicy(policy: FinanceObserveGatePolicy): void {
     ["calibrationGroupCount", policy.calibrationGroupCount],
     ["eligibleObserveCount", policy.eligibleObserveCount],
     ["acceptedObserveCount", policy.acceptedObserveCount],
+    ["acceptedObserveGroupCount", policy.acceptedObserveGroupCount],
     ["falseObserveCount", policy.falseObserveCount],
   ] as const)
     if (!Number.isSafeInteger(value) || value < 0)
@@ -1143,6 +1161,8 @@ function validatePolicy(policy: FinanceObserveGatePolicy): void {
     finiteUnit(policy.observedFalseObserveRisk, "observedFalseObserveRisk");
     if (
       policy.acceptedObserveCount < 1 ||
+      policy.acceptedObserveGroupCount < policy.minimumCalibrationGroups ||
+      policy.acceptedObserveGroupCount > policy.acceptedObserveCount ||
       policy.falseObserveCount > policy.acceptedObserveCount ||
       policy.observedFalseObserveRisk !==
         policy.falseObserveCount / policy.acceptedObserveCount
@@ -1153,6 +1173,7 @@ function validatePolicy(policy: FinanceObserveGatePolicy): void {
       ![
         "deterministic_only",
         "insufficient_calibration_groups",
+        "insufficient_accepted_calibration_groups",
         "no_eligible_observe_cases",
         "no_threshold_meets_risk_bound",
       ].includes(policy.reason)
@@ -1161,6 +1182,7 @@ function validatePolicy(policy: FinanceObserveGatePolicy): void {
     if (
       policy.threshold !== null ||
       policy.acceptedObserveCount !== 0 ||
+      policy.acceptedObserveGroupCount !== 0 ||
       policy.falseObserveCount !== 0 ||
       policy.observedFalseObserveRisk !== null
     )
@@ -1172,6 +1194,7 @@ function validatePolicy(policy: FinanceObserveGatePolicy): void {
   }
   if (
     policy.calibrationGroupCount > policy.calibrationCaseCount ||
+    policy.acceptedObserveGroupCount > policy.calibrationGroupCount ||
     policy.eligibleObserveCount > policy.calibrationCaseCount ||
     policy.acceptedObserveCount > policy.eligibleObserveCount
   )

@@ -496,7 +496,7 @@ export async function runFinanceBenchmark(options: {
   const rows = recomputed.rows;
   const tracesJsonl = `${ordered.map(canonicalCompactJson).join("\n")}\n`;
   const run = {
-    schemaVersion: "1",
+    schemaVersion: "2",
     runId: options.runId,
     executionState: "COMPLETED",
     sampleCount: testCases.length,

@@ -1,22 +1,23 @@
-import { describe, expect, it } from "vitest";
 import { decisionReceiptSchema } from "@mokimeow/jev-fabric-protocol";
+import { describe, expect, it } from "vitest";
 import { example as browser } from "../browser-action/index.js";
-import { example as completion } from "../completion-check/index.js";
 import { example as ci } from "../ci-triage/index.js";
+import { example as completion } from "../completion-check/index.js";
 import { example as evaluate } from "../evaluate-pack/index.js";
 import { example as finance } from "../finance-surveillance/index.js";
 import { example as fintech } from "../fintech-exception/index.js";
 import { example as gate } from "../gate-tool-action/index.js";
+import { example as hierarchicalConfidence } from "../hierarchical-confidence/index.js";
+import { example as compatibleProvider } from "../provider-compatible-fake/index.js";
+import { example as gatewayProvider } from "../provider-gateway-typesafe-fake/index.js";
+import { example as nativeProvider } from "../provider-native-fake/index.js";
 import { example as rank } from "../rerank-evidence/index.js";
 import { example as route } from "../route-skills/index.js";
 import { example as support } from "../support-triage/index.js";
 import { example as toolEnvironment } from "../tool-environment-advice/index.js";
-import { example as webmcp } from "../webmcp-action/index.js";
-import { example as visualObservation } from "../visual-observation-advice/index.js";
 import { example as visualExtractorProfile } from "../visual-extractor-profile-advice/index.js";
-import { example as nativeProvider } from "../provider-native-fake/index.js";
-import { example as compatibleProvider } from "../provider-compatible-fake/index.js";
-import { example as gatewayProvider } from "../provider-gateway-typesafe-fake/index.js";
+import { example as visualObservation } from "../visual-observation-advice/index.js";
+import { example as webmcp } from "../webmcp-action/index.js";
 
 describe("offline public examples", () => {
   for (const [name, run, outcome, selected] of [
@@ -89,5 +90,35 @@ describe("offline WebMCP boundary example", () => {
     });
     expect(result.rejectedCrossOrigin).toBe(true);
     expect(JSON.stringify(result.binding)).not.toContain("tools.example.test");
+  });
+});
+
+describe("offline hierarchical-confidence example", () => {
+  it("admits an audited threshold and fails closed without audit support", () => {
+    const result = hierarchicalConfidence();
+    expect(result.calibrated.policy).toMatchObject({
+      status: "CALIBRATED",
+      fittedThreshold: 0.9,
+      effectiveThreshold: 0.9,
+      reason: null,
+    });
+    expect(result.calibrated.metrics).toMatchObject({
+      sampleCount: 4,
+      leafCount: 2,
+      parentFallbackCount: 2,
+      leafCoverage: 0.5,
+    });
+    expect(result.unavailable.policy).toMatchObject({
+      status: "UNAVAILABLE",
+      fittedThreshold: 0.9,
+      effectiveThreshold: null,
+      reason: "insufficient_audit_groups",
+    });
+    expect(result.unavailable.metrics).toMatchObject({
+      sampleCount: 4,
+      leafCount: 0,
+      parentFallbackCount: 4,
+      leafCoverage: 0,
+    });
   });
 });

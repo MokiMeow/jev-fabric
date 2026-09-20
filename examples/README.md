@@ -1,5 +1,9 @@
 # Offline examples
-Each example imports public packages, uses `ScriptedProvider`, validates a redacted receipt, and proves one fail-closed path without a network call. Run from a built checkout with `pnpm exec tsx examples/<name>/index.ts`.
+Each example imports public packages and runs without a network call. Decision
+examples use `ScriptedProvider`, validate a redacted receipt, and prove one
+fail-closed path. Evaluator, boundary, and provider-composition examples expose
+their own offline evidence. Run from a built checkout with
+`pnpm exec tsx examples/<name>/index.ts`.
 
 | Example | Pack | Success | Negative path |
 | --- | --- | --- | --- |
@@ -14,6 +18,7 @@ Each example imports public packages, uses `ScriptedProvider`, validates a redac
 | [tool-environment-advice](tool-environment-advice/README.md) | route | chooses a declared environment action | empty set abstains |
 | [finance-surveillance](finance-surveillance/README.md) | finance-surveillance | records an advisory observation | invalid execution boundary denies |
 | [fintech-exception](fintech-exception/README.md) | fintech-exception | routes a bounded exception to investigation | execution-capable boundary denies |
+| [hierarchical-confidence](hierarchical-confidence/README.md) | evals | admits an independently audited leaf threshold | insufficient audit support forces parent-only output |
 | [webmcp-action](webmcp-action/README.md) | boundary | binds trusted origin/tool/schema fingerprints | rejects cross-origin metadata |
 | [provider-gateway-typesafe-fake](provider-gateway-typesafe-fake/README.md) | provider | composes the pinned Vercel Gateway Jev route | injected I/O keeps the example offline |
 

@@ -40,6 +40,7 @@
     "@mokimeow/jev-fabric-cli": "workspace:*",
     "@mokimeow/jev-fabric-adapters": "workspace:*",
     "@mokimeow/jev-fabric-core": "workspace:*",
+    "@mokimeow/jev-fabric-evals": "workspace:*",
     "@mokimeow/jev-fabric-packs": "workspace:*",
     "@mokimeow/jev-fabric-protocol": "workspace:*",
     "@mokimeow/jev-fabric-provider-openai-compatible": "workspace:*",

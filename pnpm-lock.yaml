@@ -181,6 +181,9 @@ importers:
       '@mokimeow/jev-fabric-core':
         specifier: workspace:*
         version: link:packages/core
+      '@mokimeow/jev-fabric-evals':
+        specifier: workspace:*
+        version: link:packages/evals
       '@mokimeow/jev-fabric-packs':
         specifier: workspace:*
         version: link:packs

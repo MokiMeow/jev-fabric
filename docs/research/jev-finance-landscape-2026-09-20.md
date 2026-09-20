@@ -9,6 +9,27 @@ Evidence class: discovery only. Benchmark evidence remains
 model version discussed: `jev-1.13.0`; hardware and region: not applicable.
 The principal limitation is that no community result below was reproduced.
 
+## Next-day transport update — 2026-09-21
+
+Vercel's official
+[Evaluation documentation](https://vercel.com/docs/ai-gateway/modalities/evaluation)
+now documents both `POST /v1/evaluate` and the TypeSafe-compatible API for
+`typesafe-ai/jev`. A credential-free, minimal POST to the documented Evaluation
+URL on 21 September returned HTTP `401` with `authentication_error`. That narrow
+probe establishes that the route is deployed and authentication-gated; it does
+not establish successful inference, provider routing, privacy eligibility,
+latency, accuracy, token use, or cost. No credential or billable request was
+used.
+
+Fabric now exposes a separate pinned Evaluation provider rather than treating
+the two Gateway wire formats as interchangeable. The adapter also accounts for
+the official Score example, where the displayed score is `2.97` while the
+displayed rung probabilities have an expectation of `2.98`: it accepts only
+that bounded presentation-level difference and derives the protocol score from
+the validated distribution. Live provider measurements remain `NOT_RUN` until
+a rotated server-side Gateway credential is configured and the retained
+benchmark contract is executed.
+
 ## What is appearing
 
 The community [Awesome Jev list](https://github.com/valentynkit/awesome-jev-typesafe)

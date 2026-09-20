@@ -173,6 +173,18 @@ const gatewayResult = await gatewayProvider.evaluate({
 });
 if (gatewayResult.model !== "typesafe-ai/jev")
   throw new Error("installed Gateway mapping did not preserve model identity");
+const evaluationProvider =
+  typeSafeProvider.createVercelGatewayEvaluationJevProvider({
+    apiKey: "installed-package-construction-only",
+  });
+if (
+  evaluationProvider.id !== "typesafe-vercel-gateway-evaluate" ||
+  typeSafeProvider.VERCEL_GATEWAY_EVALUATION_URL !==
+    "https://ai-gateway.vercel.sh/v1/evaluate"
+)
+  throw new Error("installed Gateway Evaluation export drifted");
+if ("createPinnedVercelGatewayEvaluationJevProvider" in typeSafeProvider)
+  throw new Error("installed package exposed the private endpoint test seam");
 
 function run(args) {
   const result = spawnSync(process.execPath, [cli, ...args], {

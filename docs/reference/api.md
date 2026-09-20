@@ -6,14 +6,14 @@ Public packages:
 | `@mokimeow/jev-fabric-protocol` | strict question, answer, response, receipt, provider, and tool-environment contracts |
 | `@mokimeow/jev-fabric-core` | runtime, cache, scheduler, policy, redaction, receipts, tickets, scripted provider |
 | `@mokimeow/jev-fabric-packs` | nine trusted built-in packs and fixtures |
-| `@mokimeow/jev-fabric-provider-typesafe` | native TypeSafe and fixed Vercel Gateway TypeSafe-compatible adapters |
+| `@mokimeow/jev-fabric-provider-typesafe` | native TypeSafe plus fixed Vercel Gateway TypeSafe-compatible and Evaluation adapters |
 | `@mokimeow/jev-fabric-provider-openai-compatible` | administrator-configured compatible adapter |
 | `@mokimeow/jev-fabric-evals` | offline evaluation, manifests, replay, and reports |
 | `@mokimeow/jev-fabric-mcp` | advisory MCP server and bounded loopback handler |
 | `@mokimeow/jev-fabric-cli` | terminal commands and adapter contract |
 | `@mokimeow/jev-fabric-adapters` | canonical host layouts, validators, experimental WebMCP binding, and finance evidence boundary |
 
-The core entry point is `new FabricRuntime(options).evaluate(input)`. Inputs require a trusted `pack`, `tenantId`, `action`, `knownActions`, state, and optionally trusted authorization/risk/policy/signal/deadline. Outputs include semantic data, a redacted receipt, and accounting. `createNativeJevProvider` exports the pinned native model factory and permits an injected test client. `createVercelGatewayJevProvider` requires an explicit server-side key and fixes the official TypeSafe-compatible Gateway URL and `typesafe-ai/jev` identity without a client or endpoint override. Neither factory reads ambient credentials. The compatible adapter remains a trusted-host programmatic integration, not a CLI live option. `bindWebMcpAdvisory` and `bindMcpHandlerWebMcpAdvisory` emit fingerprints only and cannot invoke a browser or MCP tool. Read the TypeScript declarations as the exact alpha API; semver pre-1.0 changes may occur.
+The core entry point is `new FabricRuntime(options).evaluate(input)`. Inputs require a trusted `pack`, `tenantId`, `action`, `knownActions`, state, and optionally trusted authorization/risk/policy/signal/deadline. Outputs include semantic data, a redacted receipt, and accounting. `createNativeJevProvider` exports the pinned native model factory and permits an injected test client. `createVercelGatewayJevProvider` fixes the TypeSafe-compatible Gateway URL. `createVercelGatewayEvaluationJevProvider` fixes `POST /v1/evaluate`, requests ZDR, no prompt training, and `only: ["typesafe-ai"]`, and validates the response-reported canonical model and provider route. Both Gateway factories require an explicit server-side key, fix `typesafe-ai/jev`, expose no public client or endpoint override, and read no ambient credentials. They remain trusted-host programmatic integrations, not CLI live modes. `bindWebMcpAdvisory` and `bindMcpHandlerWebMcpAdvisory` emit fingerprints only and cannot invoke a browser or MCP tool. Read the TypeScript declarations as the exact alpha API; semver pre-1.0 changes may occur.
 
 A pack's `interpret` callback receives an optional third
 `PackInterpretContext` argument containing the validated response's actual

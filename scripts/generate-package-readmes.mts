@@ -47,7 +47,7 @@ const packages = [
   [
     "packages/provider-typesafe",
     "TypeSafe AI and fixed Vercel AI Gateway advisory provider adapter",
-    "Import `createNativeJevProvider` for the direct route or `createVercelGatewayJevProvider` for the fixed TypeSafe-compatible Gateway route, and pass credentials only through your host secret manager.",
+    "Import `createNativeJevProvider` for the direct route, `createVercelGatewayJevProvider` for the fixed TypeSafe-compatible Gateway route, or `createVercelGatewayEvaluationJevProvider` for the fixed privacy-requesting Evaluation route. Pass credentials only through your host secret manager.",
     "Live calls require the runtime/CLI explicit `--live` controls; never commit or log API keys.",
   ],
   [

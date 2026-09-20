@@ -17,7 +17,7 @@ Begin with the [offline quickstart](../quickstart/offline.md), then select a [pa
 | [Troubleshooting](../reference/troubleshooting.md) | common bounded-installation failures |
 | [Native live operation](../providers/typesafe-native.md) | operator-only TypeSafe stdio overlay |
 | [Programmatic providers](../providers/programmatic.md) | server-side native and compatible composition |
-| [Vercel AI Gateway](../providers/vercel-ai-gateway.md) | fixed TypeSafe-compatible Jev route and temporary promotion limits |
+| [Vercel AI Gateway](../providers/vercel-ai-gateway.md) | fixed TypeSafe-compatible and Evaluation Jev routes, privacy requests, and temporary promotion limits |
 | [Experimental WebMCP](../recipes/webmcp-browser.md) | origin/tool/schema-bound browser advice without execution |
 | [Tool environments](../integrations/tool-environments.md) | advisory contracts for browsers, DCC tools, engines, and CAD |
 | [Fintech exception triage](../integrations/fintech.md) | six batched Noul checks with routing-only, no-execution controls |

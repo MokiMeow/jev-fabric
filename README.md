@@ -25,7 +25,7 @@ must directly supply `--live`, the pinned native provider/model, a credential
 environment name, fixed tenant/action, call/token/dollar/deadline bounds, and a
 conservative input-price ceiling. See [the live operator guide](docs/providers/typesafe-native.md). Never place a key in source, a config file, a receipt, generated host artifact, or client-side code.
 
-Server applications can also use the pinned [Vercel AI Gateway route](docs/providers/vercel-ai-gateway.md) through the same strict TypeSafe response mapping. The current free promotion ends September 25, 2026; pricing is external, mutable state and is never embedded in Fabric policy. The Gateway factory accepts an explicit server-side credential and fixes the endpoint, provider ID, and `typesafe-ai/jev` model. It is not exposed as a browser or general CLI escape hatch.
+Server applications can also use either pinned [Vercel AI Gateway route](docs/providers/vercel-ai-gateway.md): the TypeSafe-compatible endpoint or the native Evaluation endpoint. The Evaluation factory additionally requests ZDR, no prompt training, and a TypeSafe-only provider allowlist, then validates response-reported routing before returning advisory output. The current free promotion ends September 25, 2026; pricing and account eligibility are external, mutable state and are never embedded in Fabric policy. Both factories require an explicit server-side credential and expose no endpoint or model override. Neither is a browser or general CLI escape hatch.
 
 ## Choose a path
 

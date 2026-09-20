@@ -14,14 +14,16 @@ remains external mutable evidence.
 
 Vercel AI Gateway exposes Jev through an official
 [TypeSafe-compatible API](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe).
-Jev Fabric reuses its strict TypeSafe request and response mapping and fixes all
-transport identity values:
+It also exposes a native
+[Evaluation HTTP API](https://vercel.com/docs/ai-gateway/modalities/evaluation).
+Jev Fabric fixes both transport contracts:
 
-| Field | Fixed value |
-| --- | --- |
-| Base URL | `https://ai-gateway.vercel.sh/typesafe` |
-| Model | `typesafe-ai/jev` |
-| Fabric provider ID | `typesafe-vercel-gateway` |
+| Route | Fixed URL | Fabric provider ID |
+| --- | --- | --- |
+| TypeSafe-compatible | `https://ai-gateway.vercel.sh/typesafe/v1/systemone` | `typesafe-vercel-gateway` |
+| Evaluation | `https://ai-gateway.vercel.sh/v1/evaluate` | `typesafe-vercel-gateway-evaluate` |
+
+Both routes fix the model to `typesafe-ai/jev`.
 
 The installed TypeSafe SDK appends `/v1/systemone`, so the resulting request is
 `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone`. An offline loopback
@@ -40,6 +42,38 @@ const provider = createVercelGatewayJevProvider({
   "apiKey": gatewayCredential,
 });
 ```
+
+For the native Evaluation route, use the separate factory:
+
+```ts
+import { createVercelGatewayEvaluationJevProvider } from "@mokimeow/jev-fabric-provider-typesafe";
+
+const gatewayCredential = trustedSecretManager.require("AI_GATEWAY_API_KEY");
+const provider = createVercelGatewayEvaluationJevProvider({
+  "apiKey": gatewayCredential,
+});
+```
+
+Every Evaluation request fixes these Gateway options:
+
+```json
+{
+  "zeroDataRetention": true,
+  "disallowPromptTraining": true,
+  "only": ["typesafe-ai"]
+}
+```
+
+The adapter converts Fabric `noul` questions to Gateway `boolean` questions,
+validates exact answer coverage, distributions, confidence metadata when present,
+model and provider routing, and hashes the bounded Gateway generation ID. It
+discards the raw generation ID and provider-reported cost strings. Gateway's
+documented Score example rounds its displayed score separately from its rung
+probabilities, so the adapter accepts at most a documented hundredth-point
+presentation difference and derives Fabric's canonical normalized score from the
+validated distribution. Requested privacy controls are not proof of account
+eligibility or provider compliance: a rejected request fails normally, and the
+host must keep its own contractual and audit evidence.
 
 Use the offline
 [Gateway response-mapping simulation](../../examples/provider-gateway-typesafe-fake/index.ts)
@@ -69,6 +103,9 @@ limits. Neither entitlement is assumed by code or benchmark accounting.
   and accounting.
 - Returned model identity must still be exactly `typesafe-ai/jev`; aliases or
   downgrade strings fail closed.
+- The Evaluation adapter additionally requires response-reported
+  `originalModelId` and `canonicalSlug` to remain `typesafe-ai/jev`, and both
+  provider fields to remain `typesafe-ai`.
 - Gateway metadata, cost fields, raw state, and keys do not enter the decision
   receipt.
 - Provider probabilities remain advisory `native_calibrated` semantics. They do
@@ -98,8 +135,9 @@ This matters even when a replacement exposes the same response shape: a
 different model has a different calibration population, so its probabilities
 cannot inherit Jev's semantics or a locally fitted threshold.
 
-Vercel also documents an AI SDK 7
-[evaluation API](https://vercel.com/docs/ai-gateway/getting-started/evaluation)
-for greenfield applications. Fabric uses the compatible TypeSafe endpoint
-because it preserves the adapter's already-tested `systemOne` shapes and avoids
-duplicating an experimental mapping layer.
+Vercel also documents AI SDK 7 and HTTP
+[Evaluation APIs](https://vercel.com/docs/ai-gateway/modalities/evaluation).
+Fabric supports both Gateway surfaces deliberately: use the compatible TypeSafe
+endpoint for existing `systemOne` integrations, or the separate pinned Evaluation
+factory when an application uses `/v1/evaluate`. They have distinct provider IDs
+and response mappers so benchmark provenance never conflates the two routes.

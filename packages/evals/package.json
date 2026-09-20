@@ -27,7 +27,7 @@
   "dependencies": {
     "@mokimeow/jev-fabric-core": "workspace:*",
     "@mokimeow/jev-fabric-protocol": "workspace:*",
-    "zod": "4.2.0"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "ajv": "8.20.0",

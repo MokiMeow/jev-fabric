@@ -33,6 +33,7 @@ export interface FinanceComponentAccounting {
   readonly inputTokens: number | null;
   readonly outputTokens: number | null;
   readonly costNanoUsd: string | null;
+  readonly providerRequestIdHash: string | null;
 }
 
 interface FinanceBenchmarkTraceBase {
@@ -253,7 +254,13 @@ function validateComponentAccounting(trace: FinanceBenchmarkTrace): void {
   for (const [index, rawComponent] of trace.componentAccounting.entries()) {
     assertDataObject(
       rawComponent,
-      ["role", "inputTokens", "outputTokens", "costNanoUsd"],
+      [
+        "role",
+        "inputTokens",
+        "outputTokens",
+        "costNanoUsd",
+        "providerRequestIdHash",
+      ],
       "finance component accounting",
       true,
     );
@@ -266,6 +273,13 @@ function validateComponentAccounting(trace: FinanceBenchmarkTrace): void {
       !/^(0|[1-9]\d*)$/.test(component.costNanoUsd)
     )
       throw new TypeError("finance component cost is invalid");
+    if (
+      component.providerRequestIdHash !== null &&
+      !/^sha256:[a-f0-9]{64}$/u.test(component.providerRequestIdHash)
+    )
+      throw new TypeError(
+        "finance component provider request ID hash is invalid",
+      );
   }
   if (trace.componentAccounting.length === 0) {
     if (

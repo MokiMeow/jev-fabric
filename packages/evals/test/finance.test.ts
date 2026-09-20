@@ -46,6 +46,7 @@ function predictedTrace(
     inputTokens: trace.inputTokens,
     outputTokens: trace.outputTokens,
     costNanoUsd: trace.costNanoUsd,
+    providerRequestIdHash: null,
   };
   return {
     ...trace,
@@ -62,6 +63,7 @@ function predictedTrace(
                   inputTokens: trace.inputTokens === null ? null : 0,
                   outputTokens: trace.outputTokens === null ? null : 0,
                   costNanoUsd: trace.costNanoUsd === null ? null : "0",
+                  providerRequestIdHash: null,
                 },
                 { role: "jev", ...accounting },
               ],
@@ -433,6 +435,27 @@ describe("aggregateFinanceBenchmarkTraces", () => {
         ]),
       ),
     ).toThrow(/finite in \[0, 1\]/);
+  });
+
+  it("rejects raw or malformed provider request identifiers", () => {
+    expect(() =>
+      aggregateFinanceBenchmarkTraces(
+        completeMatrix([
+          predictedTrace({
+            componentAccounting: [
+              {
+                role: "jev",
+                inputTokens: 100,
+                outputTokens: 20,
+                costNanoUsd: "10000000",
+                providerRequestIdHash: "raw-provider-request-id",
+              },
+            ],
+          }),
+          rejectedTrace(),
+        ]),
+      ),
+    ).toThrow(/provider request ID hash is invalid/u);
   });
 
   it("requires regular and lookahead cases in every cell", () => {

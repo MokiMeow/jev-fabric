@@ -240,6 +240,15 @@ the live runner and independent artifact validator recompute every component
 against its retained price record and require the aggregate to equal the exact
 sum, including the parallel host-plus-Jev arm.
 
+Run schema version `4` and trace schema version `2` also retain one explicit
+`providerRequestIdHash` slot per provider-backed component. The value is either
+`null` when the provider exposes no request identity or a lowercase
+`sha256:<64 hex>` digest produced by the trusted adapter. Raw upstream request
+IDs are rejected. The digest is correlation evidence for retries and incidents;
+it is neither provider authentication nor permission to execute a financial
+action. Deterministic and rejected-lookahead traces retain no provider
+components.
+
 The bundle exposes derived `architectures` and `budgetSnapshots()`. Use the
 derived architecture provenance in the run metadata; do not hand-copy model
 identities. Budget tokens are conservative admission reservations, not billed

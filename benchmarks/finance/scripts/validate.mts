@@ -85,7 +85,7 @@ interface FinanceMetricInterval {
 }
 
 interface FinanceRunDocument {
-  readonly schemaVersion: "3";
+  readonly schemaVersion: "4";
   readonly runId: string;
   readonly executionState: "NOT_RUN" | "COMPLETED";
   readonly sampleCount: number;
@@ -136,7 +136,7 @@ interface FinanceRunDocument {
 
 export function validateFinanceRun(value: unknown): void {
   const run = value as FinanceRunDocument;
-  invariant(run.schemaVersion === "3", "finance run schemaVersion is invalid");
+  invariant(run.schemaVersion === "4", "finance run schemaVersion is invalid");
   invariant(
     run.executionState === "NOT_RUN" || run.executionState === "COMPLETED",
     "finance executionState is invalid",

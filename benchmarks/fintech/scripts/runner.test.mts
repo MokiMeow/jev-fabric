@@ -143,6 +143,7 @@ class FixtureEvaluator implements FintechMeasuredEvaluator {
   async evaluate(request: DecisionRequest): Promise<{
     response: DecisionResponse;
     usage: { inputTokens: number; outputTokens: number };
+    providerRequestIdHash: string;
   }> {
     this.calls += 1;
     const caseRef = (request.state as { caseRef?: unknown }).caseRef;
@@ -164,6 +165,7 @@ class FixtureEvaluator implements FintechMeasuredEvaluator {
       };
       return {
         response: this.mutate?.(response, request) ?? response,
+        providerRequestIdHash: sha256(request.id),
         usage: {
           inputTokens: request.questions.length * 10,
           outputTokens: request.questions.length,
@@ -224,6 +226,16 @@ test("runs one batched and six serial calls per case without retaining raw state
   assert.equal(evidence.metrics?.byArm.no_jev.providerInvocationCount, 0);
   assert.equal(evidence.metrics?.byArm.jev_batched.testRouteAccuracy, 1);
   assert.equal(evidence.metrics?.byArm.jev_serial.testRouteAccuracy, 1);
+  assert.ok(
+    evidence.traces.every(
+      (trace) =>
+        trace.runtime.providerRequestIdHashes.length ===
+          trace.runtime.providerInvocationCount &&
+        trace.runtime.providerRequestIdHashes.every(
+          (value) => value === null || /^sha256:[a-f0-9]{64}$/u.test(value),
+        ),
+    ),
+  );
   assert.deepEqual(
     evaluator.questionCountsByCase.get("ref:cal-duplicate"),
     [6, 1, 1, 1, 1, 1, 1],
@@ -439,6 +451,7 @@ test("the metadata adapter uses only an injected native provider with exact usag
             probabilitySemantics: "native_calibrated",
             answers: labelsForRequest(request),
           },
+          providerRequestIdHash: sha256(request.id),
           usage: {
             inputTokens: request.questions.length * 10,
             outputTokens: request.questions.length,
@@ -454,6 +467,15 @@ test("the metadata adapter uses only an injected native provider with exact usag
   );
   assert.doesNotThrow(() => assertFintechEvidence(evidence));
   assert.equal(calls, 14);
+  assert.ok(
+    evidence.traces
+      .filter((trace) => trace.arm !== "no_jev")
+      .every((trace) =>
+        trace.runtime.providerRequestIdHashes.every(
+          (value) => typeof value === "string",
+        ),
+      ),
+  );
 
   assert.throws(
     () =>

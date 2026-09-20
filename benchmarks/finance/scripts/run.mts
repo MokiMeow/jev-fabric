@@ -118,6 +118,7 @@ export interface FinanceComponentAccounting {
   readonly inputTokens: number | null;
   readonly outputTokens: number | null;
   readonly costNanoUsd: string | null;
+  readonly providerRequestIdHash: string | null;
 }
 
 export type FinanceDriverResult =
@@ -498,7 +499,7 @@ export async function runFinanceBenchmark(options: {
   const rows = recomputed.rows;
   const tracesJsonl = `${ordered.map(canonicalCompactJson).join("\n")}\n`;
   const run = {
-    schemaVersion: "3",
+    schemaVersion: "4",
     runId: options.runId,
     executionState: "COMPLETED",
     sampleCount: testCases.length,
@@ -1943,7 +1944,7 @@ function traceBase(
   durationMs: number,
 ): Record<string, unknown> {
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     traceId: `${runId}/${architecture}/${benchmarkCase.id}`,
     runId,
     caseId: benchmarkCase.id,
@@ -2113,7 +2114,13 @@ function validateComponentAccounting(
   for (const [index, component] of value.componentAccounting.entries()) {
     exactPlainObject(
       component,
-      ["costNanoUsd", "inputTokens", "outputTokens", "role"],
+      [
+        "costNanoUsd",
+        "inputTokens",
+        "outputTokens",
+        "providerRequestIdHash",
+        "role",
+      ],
       `${architecture} component accounting`,
     );
     const measured = component as unknown as FinanceComponentAccounting;
@@ -2138,6 +2145,11 @@ function validateComponentAccounting(
       measured.costNanoUsd === null ||
         /^(0|[1-9][0-9]*)$/u.test(measured.costNanoUsd),
       `${architecture} component cost is invalid`,
+    );
+    invariant(
+      measured.providerRequestIdHash === null ||
+        /^sha256:[a-f0-9]{64}$/u.test(measured.providerRequestIdHash),
+      `${architecture} component provider request ID hash is invalid`,
     );
     const pricing = architectureRuntime.components[index]?.pricing ?? null;
     const expectedCost =

@@ -18,7 +18,7 @@
     "metrics"
   ],
   "properties": {
-    "schemaVersion": { "const": "1" },
+    "schemaVersion": { "const": "2" },
     "runId": { "$ref": "#/$defs/nonEmptyString" },
     "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
     "createdAt": { "$ref": "#/$defs/timestamp" },
@@ -313,6 +313,7 @@
       "required": [
         "caseExecutionOrdinal",
         "providerInvocationCount",
+        "providerRequestIdHashes",
         "inputTokens",
         "outputTokens",
         "costNanoUsd",
@@ -334,6 +335,13 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 1000
+        },
+        "providerRequestIdHashes": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "oneOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }]
+          }
         },
         "inputTokens": {
           "type": "integer",
@@ -639,7 +647,7 @@
         "boundary"
       ],
       "properties": {
-        "schemaVersion": { "const": "1" },
+        "schemaVersion": { "const": "2" },
         "traceId": { "$ref": "#/$defs/nonEmptyString" },
         "caseId": { "$ref": "#/$defs/nonEmptyString" },
         "groupId": { "$ref": "#/$defs/nonEmptyString" },
@@ -680,6 +688,7 @@
                 "properties": {
                   "caseExecutionOrdinal": { "const": 0 },
                   "providerInvocationCount": { "const": 0 },
+                  "providerRequestIdHashes": { "type": "array", "maxItems": 0 },
                   "inputTokens": { "const": 0 },
                   "outputTokens": { "const": 0 },
                   "costNanoUsd": { "const": "0" },

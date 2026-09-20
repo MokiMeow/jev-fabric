@@ -58,6 +58,8 @@ export interface FintechMeasuredEvaluation {
     readonly inputTokens: number;
     readonly outputTokens: number;
   };
+  /** Hash-only upstream identity, or explicit null when the header is absent. */
+  readonly providerRequestIdHash: string | null;
 }
 
 /**
@@ -86,6 +88,7 @@ export interface FintechProviderWithMetadata {
       readonly inputTokens?: number | undefined;
       readonly outputTokens?: number | undefined;
     };
+    readonly providerRequestIdHash?: string | undefined;
   }>;
 }
 
@@ -138,6 +141,7 @@ interface ProjectedCase {
 
 interface ArmAccounting {
   providerInvocationCount: number;
+  providerRequestIdHashes: (string | null)[];
   inputTokens: number;
   outputTokens: number;
   providerMs: number;
@@ -237,6 +241,7 @@ export function createFintechMeasuredEvaluator(
         );
       return {
         response: result.response,
+        providerRequestIdHash: result.providerRequestIdHash ?? null,
         usage: {
           inputTokens: result.usage.inputTokens,
           outputTokens: result.usage.outputTokens,
@@ -271,7 +276,7 @@ export async function runFintechBenchmark(
   );
   const traces = traceGroups.flat();
   const partial: FintechEvidence = {
-    schemaVersion: "1",
+    schemaVersion: "2",
     runId: options.runId,
     executionState: "COMPLETED",
     createdAt: options.createdAt,
@@ -511,6 +516,7 @@ async function evaluateQuestions(
     };
     const measured = await invoke(request, options, budget);
     accounting.providerInvocationCount += 1;
+    accounting.providerRequestIdHashes.push(measured.providerRequestIdHash);
     accounting.inputTokens += measured.usage.inputTokens;
     accounting.outputTokens += measured.usage.outputTokens;
     accounting.providerMs += measured.providerMs;
@@ -552,6 +558,7 @@ async function invoke(
       deadline,
     ]);
     validateUsage(measured.usage);
+    validateProviderRequestIdHash(measured.providerRequestIdHash);
     reservation.settle(measured.usage.inputTokens);
     return { ...measured, providerMs: performance.now() - started };
   } catch (error) {
@@ -600,7 +607,7 @@ function trace(
 ): FintechTrace {
   const jev = arm !== "no_jev";
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     traceId: `trace-${sha256Digest(
       { caseId: item.source.caseId, arm },
       "jev-fabric/fintech-trace-id/v1",
@@ -616,6 +623,7 @@ function trace(
     runtime: {
       caseExecutionOrdinal: value.caseExecutionOrdinal,
       providerInvocationCount: value.accounting.providerInvocationCount,
+      providerRequestIdHashes: [...value.accounting.providerRequestIdHashes],
       inputTokens: value.accounting.inputTokens,
       outputTokens: value.accounting.outputTokens,
       costNanoUsd: (
@@ -784,6 +792,14 @@ function validateUsage(value: FintechMeasuredEvaluation["usage"]): void {
     );
 }
 
+function validateProviderRequestIdHash(value: unknown): void {
+  if (
+    value !== null &&
+    (typeof value !== "string" || !sha256Pattern.test(value))
+  )
+    throw new BenchmarkIntegrityError("provider request ID hash is invalid");
+}
+
 function validNativeNoulAnswers(
   answers: readonly DecisionAnswer[],
   questions: readonly DecisionQuestion[],
@@ -854,6 +870,7 @@ function requestId(
 function emptyAccounting(): ArmAccounting {
   return {
     providerInvocationCount: 0,
+    providerRequestIdHashes: [],
     inputTokens: 0,
     outputTokens: 0,
     providerMs: 0,

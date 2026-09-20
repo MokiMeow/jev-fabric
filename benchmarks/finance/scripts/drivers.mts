@@ -46,6 +46,8 @@ export interface FinanceMeasuredProviderResult {
   /** Provider-measured usage; both values are known or both are null. */
   readonly inputTokens: number | null;
   readonly outputTokens: number | null;
+  /** Hash-only upstream identity, or explicit null when unavailable. */
+  readonly providerRequestIdHash?: string | null;
 }
 
 /**
@@ -168,6 +170,7 @@ interface ComponentResult {
   readonly inputTokens: number | null;
   readonly outputTokens: number | null;
   readonly costNanoUsd: string | null;
+  readonly providerRequestIdHash: string | null;
 }
 
 interface MetadataProviderLike {
@@ -184,6 +187,7 @@ interface MetadataProviderLike {
           readonly outputTokens?: number | undefined;
         }
       | undefined;
+    readonly providerRequestIdHash?: string | undefined;
   }>;
 }
 
@@ -246,6 +250,7 @@ function metadataInvoker(
         result.usage.outputTokens !== undefined;
       return {
         response: result.response,
+        providerRequestIdHash: result.providerRequestIdHash ?? null,
         inputTokens: completeUsage ? (result.usage?.inputTokens ?? null) : null,
         outputTokens: completeUsage
           ? (result.usage?.outputTokens ?? null)
@@ -500,6 +505,7 @@ async function evaluateComponent(
     inputTokens: measurement.inputTokens,
     outputTokens: measurement.outputTokens,
     costNanoUsd: measuredCost(measurement, arm.pricing),
+    providerRequestIdHash: measurement.providerRequestIdHash ?? null,
   });
 }
 
@@ -637,6 +643,7 @@ function componentAccounting(result: ComponentResult) {
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
     costNanoUsd: result.costNanoUsd,
+    providerRequestIdHash: result.providerRequestIdHash,
   });
 }
 
@@ -680,10 +687,16 @@ function validateMeasurement(
     safeNonNegative(value.inputTokens, "inputTokens");
     safeNonNegative(value.outputTokens as number, "outputTokens");
   }
+  const providerRequestIdHash = value.providerRequestIdHash ?? null;
+  if (providerRequestIdHash !== null && !sha256.test(providerRequestIdHash))
+    throw new FinanceMeasurementError(
+      "finance provider request ID hash is invalid",
+    );
   return Object.freeze({
     response: value.response,
     inputTokens: value.inputTokens,
     outputTokens: value.outputTokens,
+    providerRequestIdHash,
   });
 }
 

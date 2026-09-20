@@ -92,7 +92,7 @@ function traceFor(
   }));
   const jev = arm !== "no_jev";
   return {
-    schemaVersion: "1",
+    schemaVersion: "2",
     traceId: `${datasetCase.caseId}-${arm}`,
     caseId: datasetCase.caseId,
     groupId: datasetCase.groupId,
@@ -114,6 +114,13 @@ function traceFor(
               ? 1
               : 2,
       providerInvocationCount: arm === "jev_serial" ? 6 : jev ? 1 : 0,
+      providerRequestIdHashes: Array.from(
+        { length: arm === "jev_serial" ? 6 : jev ? 1 : 0 },
+        (_, index) =>
+          `sha256:${String(caseIndex * 10 + index + 1)
+            .padStart(64, "0")
+            .slice(-64)}`,
+      ),
       inputTokens: arm === "jev_serial" ? 600 : jev ? 150 : 0,
       outputTokens: 0,
       costNanoUsd: arm === "jev_serial" ? "25200" : jev ? "6300" : "0",
@@ -140,7 +147,7 @@ function traceFor(
 function completedEvidence() {
   const dataset = buildDataset();
   const value = {
-    schemaVersion: "1",
+    schemaVersion: "2",
     runId: "fintech-contract-test-run",
     executionState: "COMPLETED",
     createdAt: "2026-09-20T00:00:00.000Z",
@@ -343,6 +350,43 @@ test("every provider attempt is bound to the frozen per-case state digest", () =
   assert.throws(
     () => assertFintechEvidence(datasetDrift),
     /provider state digest.*frozen dataset/u,
+  );
+});
+
+test("every provider attempt retains one bounded request-ID hash slot", () => {
+  const evidence = completedEvidence();
+  for (const trace of evidence.traces) {
+    assert.equal(
+      trace.runtime.providerRequestIdHashes.length,
+      trace.runtime.providerInvocationCount,
+    );
+    assert.ok(
+      trace.runtime.providerRequestIdHashes.every(
+        (value) => value === null || /^sha256:[a-f0-9]{64}$/u.test(value),
+      ),
+    );
+  }
+
+  const missingSlot = completedEvidence();
+  const missingTrace = missingSlot.traces.find(
+    (item) => item.arm === "jev_serial",
+  );
+  assert.ok(missingTrace);
+  missingTrace.runtime.providerRequestIdHashes.pop();
+  assert.throws(
+    () => assertFintechEvidence(missingSlot),
+    /hash count.*provider invocations/u,
+  );
+
+  const malformed = completedEvidence();
+  const malformedTrace = malformed.traces.find(
+    (item) => item.arm === "jev_batched",
+  );
+  assert.ok(malformedTrace);
+  malformedTrace.runtime.providerRequestIdHashes[0] = "req_raw_not_retained";
+  assert.throws(
+    () => assertFintechEvidence(malformed),
+    /request ID hash is invalid/u,
   );
 });
 

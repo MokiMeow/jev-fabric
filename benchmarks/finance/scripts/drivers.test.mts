@@ -804,6 +804,7 @@ test("metadata helpers adapt injected TypeSafe and compatible providers without 
             probabilitySemantics: "native_calibrated",
           }).response,
           usage: { inputTokens: 8, outputTokens: 3, totalTokens: 11 },
+          providerRequestIdHash: hash("a"),
         };
       },
     },
@@ -835,6 +836,11 @@ test("metadata helpers adapt injected TypeSafe and compatible providers without 
   assert.deepEqual(
     [jevResult.inputTokens, jevResult.outputTokens, jevResult.costNanoUsd],
     [8, 3, "25"],
+  );
+  assert.equal(hostResult.componentAccounting[0]?.providerRequestIdHash, null);
+  assert.equal(
+    jevResult.componentAccounting[0]?.providerRequestIdHash,
+    hash("a"),
   );
   returnedCompatibleModel = "different-model-2026-09-20";
   await assert.rejects(
@@ -997,6 +1003,34 @@ test("accounting keeps token pairs and sourced pricing independent and rejects o
         context("host_model_only"),
       ),
     /token accounting/,
+  );
+
+  const rawRequestId = testInvoker({
+    providerId: "raw-request-id",
+    modelVersion: "host-2026-09-01",
+    evaluate: (request) =>
+      measuredResponse(
+        request,
+        {
+          providerId: "raw-request-id",
+          modelVersion: "host-2026-09-01",
+          probabilitySemantics: "self_reported",
+        },
+        {},
+        {
+          inputTokens: 9,
+          outputTokens: 2,
+          providerRequestIdHash: "raw-provider-request-id",
+        },
+      ),
+  });
+  await assert.rejects(
+    async () =>
+      bundle(rawRequestId).drivers.host_model_only(
+        financeState(),
+        context("host_model_only"),
+      ),
+    /provider request ID hash is invalid/u,
   );
 
   const host = testInvoker({

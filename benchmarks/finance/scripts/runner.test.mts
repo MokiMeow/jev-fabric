@@ -457,6 +457,7 @@ const predicted = {
       inputTokens: 10,
       outputTokens: 2,
       costNanoUsd: "5000",
+      providerRequestIdHash: null,
     },
   ],
 };
@@ -490,6 +491,7 @@ const drivers: FinanceBenchmarkDrivers = {
         inputTokens: 10,
         outputTokens: 2,
         costNanoUsd: "5000",
+        providerRequestIdHash: null,
       },
     ],
   }),
@@ -511,12 +513,14 @@ const drivers: FinanceBenchmarkDrivers = {
         inputTokens: 10,
         outputTokens: 2,
         costNanoUsd: "5000",
+        providerRequestIdHash: null,
       },
       {
         role: "jev",
         inputTokens: 10,
         outputTokens: 2,
         costNanoUsd: "5000",
+        providerRequestIdHash: null,
       },
     ],
   }),
@@ -645,7 +649,7 @@ test("NOT_RUN schema and runtime reject legacy or fabricated evidence", async ()
     ).then(JSON.parse),
   ]);
   const legacy = structuredClone(fixture) as { schemaVersion: string };
-  legacy.schemaVersion = "2";
+  legacy.schemaVersion = "3";
   assert.throws(
     () => validateAgainstSchema(schema, legacy, "legacy finance run"),
     /does not match its schema/u,
@@ -756,6 +760,27 @@ test("runs, retains, and independently validates the complete finance matrix", a
         },
       ],
     });
+    for (const trace of artifacts.traces) {
+      const expectedComponentCount =
+        trace.status === "rejected_lookahead" ||
+        trace.architecture === "deterministic_only"
+          ? 0
+          : trace.architecture === "host_plus_jev"
+            ? 2
+            : 1;
+      assert.equal(trace.componentAccounting.length, expectedComponentCount);
+      for (const component of trace.componentAccounting) {
+        assert.ok(
+          Object.hasOwn(component, "providerRequestIdHash"),
+          "provider-backed finance components must retain an explicit request ID hash slot",
+        );
+        assert.ok(
+          component.providerRequestIdHash === null ||
+            /^sha256:[a-f0-9]{64}$/u.test(component.providerRequestIdHash),
+          "finance request provenance must be null or a SHA-256 hash",
+        );
+      }
+    }
     const retainedTraces = artifacts.traces as Array<Record<string, unknown>>;
     const calibrationTraces = retainedTraces.filter(
       (trace) => trace.evaluationSplit === "calibration",
@@ -1423,6 +1448,7 @@ test("rejects an observe route that contradicts an unclear atomic claim", async 
                   inputTokens: 10,
                   outputTokens: 2,
                   costNanoUsd: "5000",
+                  providerRequestIdHash: null,
                 },
               ],
             };
@@ -1534,6 +1560,7 @@ test("rejects digest drift, split leakage, and unsafe driver output", async () =
                 inputTokens: 10,
                 outputTokens: 2,
                 costNanoUsd: "5000",
+                providerRequestIdHash: null,
               },
             ],
           }),
@@ -1569,6 +1596,59 @@ test("trace tampering invalidates the retained set hash", async () => {
     await assert.rejects(
       validateFinanceArtifactDirectory(output),
       /traceSetHash/u,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("independent validation rejects raw provider request identifiers", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    const artifacts = await runFinanceBenchmark({
+      runId: "finance-request-id-tamper",
+      dataset,
+      drivers,
+      runtime,
+      runtimeEvidence,
+      observeGate,
+      now: () => 100,
+    });
+    const output = join(fixture.root, "artifacts");
+    await writeFinanceArtifacts(output, artifacts);
+    const tracesPath = join(output, "traces.jsonl");
+    const traces = (await readFile(tracesPath, "utf8"))
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line)) as Array<
+      FinanceBenchmarkTrace & Record<string, unknown>
+    >;
+    const target = traces.find(
+      (trace) =>
+        trace.status === "predicted" && trace.architecture === "jev_advisory",
+    );
+    assert.ok(target);
+    assert.ok(target.componentAccounting[0]);
+    (
+      target.componentAccounting[0] as {
+        providerRequestIdHash: string | null;
+      }
+    ).providerRequestIdHash = "raw-provider-request-id";
+    const traceText = `${traces.map((trace) => JSON.stringify(trace)).join("\n")}\n`;
+    await writeFile(tracesPath, traceText);
+    const runPath = join(output, "run.json");
+    const run = JSON.parse(await readFile(runPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    run.traceSetHash = `sha256:${createHash("sha256")
+      .update(traceText)
+      .digest("hex")}`;
+    await writeFile(runPath, JSON.stringify(run));
+    await assert.rejects(
+      validateFinanceArtifactDirectory(output),
+      /does not match its schema/u,
     );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -2125,6 +2205,7 @@ test("token and price accounting remain independently unavailable rather than ze
               inputTokens: 10,
               outputTokens: 2,
               costNanoUsd: null,
+              providerRequestIdHash: null,
             },
           ],
         }),
@@ -2142,6 +2223,7 @@ test("token and price accounting remain independently unavailable rather than ze
               inputTokens: null,
               outputTokens: null,
               costNanoUsd: null,
+              providerRequestIdHash: null,
             },
           ],
         }),
@@ -2163,12 +2245,14 @@ test("token and price accounting remain independently unavailable rather than ze
               inputTokens: 10,
               outputTokens: 2,
               costNanoUsd: null,
+              providerRequestIdHash: null,
             },
             {
               role: "jev",
               inputTokens: 10,
               outputTokens: 2,
               costNanoUsd: "5000",
+              providerRequestIdHash: null,
             },
           ],
         }),

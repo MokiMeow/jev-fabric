@@ -49,6 +49,8 @@ The executable contract in `scripts/evidence.mts` rejects an artifact unless:
 - calibration and test groups are disjoint;
 - every case commits to the exact provider-visible projected-state digest and
   each attempted Jev arm matches that frozen digest;
+- schema v2 retains exactly one hash-or-null upstream request-ID slot per
+  metered provider attempt, in attempt order; raw provider IDs are prohibited;
 - every case has exactly one no-Jev, batched, and serial trace;
 - the frozen `fintech-exception-routing-v2` task alternates which Jev arm runs
   first by canonical retained-case index, and every trace retains the expected
@@ -127,6 +129,9 @@ authority-bearing, bypassed, or malformed cases. During execution it:
 - reserves a conservative input-token allowance before each concurrent call so
   parallel work cannot overshoot the declared budget;
 - records every metered malformed retry in calls, tokens, latency, and cost;
+- carries the native adapter's hash-only upstream request identity into the
+  same ordered attempt accounting, using explicit `null` when the optional
+  provider header is absent;
 - fails the entire run on unmetered transport errors or provider/model/semantics
   drift instead of fabricating zero-cost evidence; and
 - retains only labels, state digests, probabilities, and accounting—never raw

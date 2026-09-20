@@ -96,7 +96,7 @@
         "stateDigest"
       ],
       "properties": {
-        "schemaVersion": { "const": "1" },
+        "schemaVersion": { "const": "2" },
         "traceId": { "type": "string", "minLength": 1, "maxLength": 320 },
         "runId": { "type": "string", "minLength": 1, "maxLength": 160 },
         "caseId": { "type": "string", "minLength": 1, "maxLength": 160 },
@@ -130,7 +130,13 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["role", "inputTokens", "outputTokens", "costNanoUsd"],
+            "required": [
+              "role",
+              "inputTokens",
+              "outputTokens",
+              "costNanoUsd",
+              "providerRequestIdHash"
+            ],
             "properties": {
               "role": { "enum": ["host", "jev"] },
               "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
@@ -138,6 +144,9 @@
               "costNanoUsd": {
                 "type": ["string", "null"],
                 "pattern": "^(0|[1-9][0-9]*)$"
+              },
+              "providerRequestIdHash": {
+                "anyOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }]
               }
             }
           }

@@ -72,7 +72,7 @@
     "rows"
   ],
   "properties": {
-    "schemaVersion": { "const": "3" },
+    "schemaVersion": { "const": "4" },
     "runId": { "type": "string", "minLength": 1, "maxLength": 160 },
     "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
     "sampleCount": { "type": "integer", "minimum": 0 },

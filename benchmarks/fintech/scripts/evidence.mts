@@ -45,7 +45,7 @@ export interface FintechDatasetCase {
 }
 
 export interface FintechTrace {
-  readonly schemaVersion: "1";
+  readonly schemaVersion: "2";
   readonly traceId: string;
   readonly caseId: string;
   readonly groupId: string;
@@ -62,6 +62,7 @@ export interface FintechTrace {
   readonly runtime: {
     readonly caseExecutionOrdinal: 0 | 1 | 2;
     readonly providerInvocationCount: number;
+    readonly providerRequestIdHashes: readonly (string | null)[];
     readonly inputTokens: number;
     readonly outputTokens: number;
     readonly costNanoUsd: string;
@@ -85,7 +86,7 @@ export interface FintechTrace {
 }
 
 export interface FintechEvidence {
-  readonly schemaVersion: "1";
+  readonly schemaVersion: "2";
   readonly runId: string;
   readonly executionState: "NOT_RUN" | "COMPLETED";
   readonly createdAt: string;
@@ -428,6 +429,11 @@ function boundedMetricInput(value: unknown): FintechEvidence {
       runtime.providerInvocationCount,
       maxProviderInvocationCount,
       "provider invocation count",
+    );
+    invariant(
+      Array.isArray(runtime.providerRequestIdHashes) &&
+        runtime.providerRequestIdHashes.length <= maxProviderInvocationCount,
+      "provider request ID hashes exceed the bounded maximum",
     );
     boundedNonNegativeInteger(
       runtime.inputTokens,
@@ -1032,6 +1038,7 @@ function validateRuntime(
     [
       "caseExecutionOrdinal",
       "providerInvocationCount",
+      "providerRequestIdHashes",
       "inputTokens",
       "outputTokens",
       "costNanoUsd",
@@ -1055,6 +1062,19 @@ function validateRuntime(
     maxProviderInvocationCount,
     "provider invocation count",
   );
+  invariant(
+    Array.isArray(runtime.providerRequestIdHashes) &&
+      runtime.providerRequestIdHashes.length ===
+        runtime.providerInvocationCount,
+    "provider request ID hash count must match provider invocations",
+  );
+  for (const requestIdHash of runtime.providerRequestIdHashes)
+    invariant(
+      requestIdHash === null ||
+        (typeof requestIdHash === "string" &&
+          sha256Pattern.test(requestIdHash)),
+      "provider request ID hash is invalid",
+    );
   boundedNonNegativeInteger(
     runtime.inputTokens,
     maxTokensPerTrace,
@@ -1207,7 +1227,7 @@ function validateTrace(
     ],
     "trace",
   );
-  invariant(trace.schemaVersion === "1", "trace schema version is invalid");
+  invariant(trace.schemaVersion === "2", "trace schema version is invalid");
   nonEmptyString(trace.traceId, "trace id");
   invariant(
     trace.caseId === datasetCase.caseId,
@@ -1302,7 +1322,7 @@ export function assertFintechEvidence(
     "fintech evidence",
   );
   invariant(
-    evidence.schemaVersion === "1",
+    evidence.schemaVersion === "2",
     "fintech evidence schema version is invalid",
   );
   nonEmptyString(evidence.runId, "run id");

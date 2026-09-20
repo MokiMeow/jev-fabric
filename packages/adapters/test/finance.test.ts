@@ -763,7 +763,27 @@ describe("finance advisory evidence boundary", () => {
     }
   });
 
-  it("validates optional trusted claim source spans without treating them as proof", () => {
+  it("requires and validates trusted claim source spans without treating them as proof", () => {
+    const { sourceSpan: _omittedSourceSpan, ...claimWithoutSourceSpan } =
+      trustedWithClaims.text.candidateBindings[0];
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        {
+          ...trustedWithClaims,
+          text: {
+            ...trustedWithClaims.text,
+            candidateBindings: [
+              claimWithoutSourceSpan,
+              trustedWithClaims.text.candidateBindings[1],
+            ],
+          },
+        },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts], claims: [...candidateClaims] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/trusted projection is invalid/u);
+
     for (const sourceSpan of [
       { byteStart: -1, byteEnd: 10, sectionHash: hash("7") },
       { byteStart: 10, byteEnd: 10, sectionHash: hash("7") },

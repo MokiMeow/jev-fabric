@@ -4,9 +4,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import {
-  aggregateFinanceBenchmarkTraces,
-  type FinanceBenchmarkCell,
-  type FinanceBenchmarkTrace,
   financeArchitectures,
   financeTracks,
   stableJson,
@@ -14,10 +11,12 @@ import {
 import {
   type ArchitectureRuntimePricing,
   type FinanceBenchmarkCase,
+  type FinanceObserveGateConfiguration,
   type FinanceRuntimeEvidence,
   type FinanceRuntimeProvenance,
   financeCaseStateDigest,
   loadFinanceDataset,
+  recomputeFinanceBenchmarkEvidence,
 } from "./run.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,8 +41,6 @@ interface FinanceRunDataset {
   readonly testStart: string | null;
 }
 
-type FinanceRunMetricName = keyof FinanceBenchmarkCell["metrics"];
-
 interface FinanceRunRow {
   readonly track: string;
   readonly architecture: string;
@@ -54,17 +51,31 @@ interface FinanceRunRow {
   readonly tokenAccountingReason: "unmetered_attempt" | null;
   readonly costAccountingStatus: "NOT_RUN" | "MEASURED" | "UNMETERED";
   readonly costAccountingReason: "unmetered_attempt" | null;
-  readonly metrics: Readonly<Record<FinanceRunMetricName, number | null>>;
+  readonly metrics: Readonly<Record<string, number | null>>;
 }
 
 interface FinanceRunDocument {
   readonly runId: string;
   readonly executionState: "NOT_RUN" | "COMPLETED";
   readonly sampleCount: number;
+  readonly calibrationSampleCount: number;
   readonly traceCount: number;
   readonly traceSetHash: string | null;
   readonly dataset: FinanceRunDataset;
   readonly runtime: FinanceRuntimeProvenance;
+  readonly observeGate: Readonly<{
+    status: "NOT_RUN" | "COMPLETED";
+    policyId: "finance.observe-gate.v1";
+    formulaId: "minimum-required-observe-support.v1";
+    riskSemantics: "empirical_calibration_only";
+    maxObservedFalseObserveRisk: number | null;
+    minimumCalibrationGroups: number | null;
+    calibrationCaseCount: number;
+    calibrationTraceCount: number;
+    testCaseCount: number;
+    testTraceCount: number;
+    policies: readonly unknown[] | null;
+  }>;
   readonly rows: readonly FinanceRunRow[];
 }
 
@@ -131,8 +142,10 @@ export function validateFinanceRun(value: unknown): void {
           Number.isFinite(row.metrics.accuracy)),
       `completed row ${key} has invalid accuracy`,
     );
+    const p50Ms = row.metrics.p50Ms;
+    const p95Ms = row.metrics.p95Ms;
     invariant(
-      row.metrics.p50Ms <= row.metrics.p95Ms,
+      typeof p50Ms === "number" && typeof p95Ms === "number" && p50Ms <= p95Ms,
       `completed row ${key} has unordered latency`,
     );
     invariant(
@@ -155,21 +168,23 @@ export function validateFinanceRun(value: unknown): void {
           row.metrics.routeQuestionEce === null,
         `completed row ${key} must explain unavailable calibration`,
       );
+    const inputTokens = row.metrics.inputTokens;
+    const outputTokens = row.metrics.outputTokens;
     if (row.tokenAccountingStatus === "MEASURED")
       invariant(
         row.tokenAccountingReason === null &&
-          Number.isSafeInteger(row.metrics.inputTokens) &&
-          row.metrics.inputTokens >= 0 &&
-          Number.isSafeInteger(row.metrics.outputTokens) &&
-          row.metrics.outputTokens >= 0,
+          Number.isSafeInteger(inputTokens) &&
+          (inputTokens ?? -1) >= 0 &&
+          Number.isSafeInteger(outputTokens) &&
+          (outputTokens ?? -1) >= 0,
         `completed row ${key} has invalid token accounting evidence`,
       );
     else
       invariant(
         row.tokenAccountingStatus === "UNMETERED" &&
           row.tokenAccountingReason === "unmetered_attempt" &&
-          row.metrics.inputTokens === null &&
-          row.metrics.outputTokens === null,
+          inputTokens === null &&
+          outputTokens === null,
         `completed row ${key} must preserve unknown token accounting`,
       );
     if (row.costAccountingStatus === "MEASURED")
@@ -196,9 +211,20 @@ export function validateFinanceRun(value: unknown): void {
       run.dataset.status === "NOT_SELECTED",
       "NOT_RUN finance run cannot claim a dataset",
     );
+    invariant(
+      run.calibrationSampleCount === 0 &&
+        run.observeGate.status === "NOT_RUN" &&
+        run.observeGate.maxObservedFalseObserveRisk === null &&
+        run.observeGate.minimumCalibrationGroups === null &&
+        run.observeGate.policies === null,
+      "NOT_RUN finance run cannot claim an observe-gate calibration",
+    );
     return;
   }
-  invariant(run.sampleCount > 0, "completed finance run requires samples");
+  invariant(
+    run.sampleCount > 0 && run.calibrationSampleCount > 0,
+    "completed finance run requires calibration and test samples",
+  );
   invariant(
     run.dataset.status === "RETAINED" &&
       typeof run.dataset.datasetId === "string" &&
@@ -209,20 +235,25 @@ export function validateFinanceRun(value: unknown): void {
     "completed finance run requires retained dataset metadata",
   );
   invariant(
-    Date.parse(run.dataset.trainEnd) < Date.parse(run.dataset.testStart),
+    typeof run.dataset.trainEnd === "string" &&
+      typeof run.dataset.testStart === "string" &&
+      Date.parse(run.dataset.trainEnd) < Date.parse(run.dataset.testStart),
     "finance dataset must use a forward time split",
   );
   invariant(
-    run.traceCount === financeArchitectures.length * run.sampleCount &&
+    run.traceCount ===
+      financeArchitectures.length *
+        (run.sampleCount + run.calibrationSampleCount) &&
       typeof run.traceSetHash === "string",
-    "completed finance run requires one retained trace per architecture and test case",
+    "completed finance run requires one retained trace per architecture and retained case",
   );
   invariant(
     run.rows.reduce(
       (total: number, row: { sampleCount: number }) => total + row.sampleCount,
       0,
-    ) === run.traceCount,
-    "finance row sample counts do not match traceCount",
+    ) ===
+      financeArchitectures.length * run.sampleCount,
+    "finance row sample counts do not match held-out test cases",
   );
   for (const architecture of financeArchitectures)
     invariant(
@@ -238,6 +269,25 @@ export function validateFinanceRun(value: unknown): void {
       `finance ${architecture} rows do not cover every test case`,
     );
   validateRuntimeProvenance(run.runtime);
+  invariant(
+    run.observeGate.status === "COMPLETED" &&
+      run.observeGate.policyId === "finance.observe-gate.v1" &&
+      run.observeGate.formulaId === "minimum-required-observe-support.v1" &&
+      run.observeGate.riskSemantics === "empirical_calibration_only" &&
+      finite(run.observeGate.maxObservedFalseObserveRisk) &&
+      Number.isSafeInteger(run.observeGate.minimumCalibrationGroups) &&
+      (run.observeGate.minimumCalibrationGroups ?? 0) >= 1 &&
+      run.observeGate.calibrationCaseCount === run.calibrationSampleCount &&
+      run.observeGate.calibrationTraceCount ===
+        financeArchitectures.length * run.calibrationSampleCount &&
+      run.observeGate.testCaseCount === run.sampleCount &&
+      run.observeGate.testTraceCount ===
+        financeArchitectures.length * run.sampleCount &&
+      Array.isArray(run.observeGate.policies) &&
+      run.observeGate.policies.length ===
+        financeTracks.length * financeArchitectures.length,
+    "completed finance run has invalid observe-gate evidence",
+  );
 }
 
 export async function validateFinanceArtifactDirectory(
@@ -303,14 +353,25 @@ export async function validateFinanceArtifactDirectory(
     validateAgainstSchema(traceSchema, trace, `finance trace ${index + 1}`);
     return trace as Record<string, unknown>;
   });
-  const testCases = dataset.cases.filter((entry) => entry.split === "test");
-  validateTraceCoverage(run, traces, testCases);
+  validateTraceCoverage(run, traces, dataset.cases);
   validateTracePricing(run, traces);
-  const rows = aggregateFinanceBenchmarkTraces(
-    traces as unknown as readonly FinanceBenchmarkTrace[],
+  const recomputed = recomputeFinanceBenchmarkEvidence(
+    traces,
+    dataset,
+    run.runtime,
+    {
+      maxObservedFalseObserveRisk: run.observeGate
+        .maxObservedFalseObserveRisk as number,
+      minimumCalibrationGroups: run.observeGate
+        .minimumCalibrationGroups as number,
+    } satisfies FinanceObserveGateConfiguration,
   );
   invariant(
-    stableJson(rows) === stableJson(run.rows),
+    stableJson(recomputed.policies) === stableJson(run.observeGate.policies),
+    "finance observe-gate policies do not match calibration traces",
+  );
+  invariant(
+    stableJson(recomputed.rows) === stableJson(run.rows),
     "finance aggregate rows do not match retained traces",
   );
 }
@@ -673,7 +734,9 @@ function validateTraceCoverage(
     invariant(
       trace.groupId === entry.groupId &&
         trace.track === entry.track &&
+        trace.evaluationSplit === entry.split &&
         trace.goldRoute === entry.goldRoute &&
+        stableJson(trace.goldAtomic) === stableJson(entry.goldAtomic) &&
         trace.lookaheadProbe === entry.lookaheadProbe &&
         trace.stateDigest === financeCaseStateDigest(entry),
       `finance trace ${String(trace.traceId)} drifted from its case`,
@@ -688,6 +751,15 @@ function validateTraceCoverage(
       entry.lookaheadProbe === (trace.status === "rejected_lookahead"),
       `finance trace ${String(trace.traceId)} has the wrong boundary outcome`,
     );
+    invariant(
+      entry.split === "test" || trace.observeGateStatus === "CALIBRATION",
+      `finance calibration trace ${String(trace.traceId)} claims a fitted policy`,
+    );
+    if (entry.split === "calibration")
+      invariant(
+        trace.observeGatePolicyDigest === null && trace.abstained === false,
+        `finance calibration trace ${String(trace.traceId)} was gated`,
+      );
   }
   invariant(
     actual.size === expected.size,

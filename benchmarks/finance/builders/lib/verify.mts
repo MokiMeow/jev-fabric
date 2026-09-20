@@ -2,6 +2,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020Module, { type ValidateFunction } from "ajv/dist/2020.js";
 import {
+  FINANCE_CHART_RENDERER,
+  FINANCE_VISUAL_MUTATION_ROUTES,
+  renderFinanceChart,
+} from "../visual/render.mjs";
+import {
   assertCanonicalHttpsUrl,
   assertExactKeys,
   assertSafeRelativePath,
@@ -12,11 +17,6 @@ import {
   readSafeRelativeFile,
   sha256,
 } from "./canonical.mjs";
-import {
-  FINANCE_CHART_RENDERER,
-  FINANCE_VISUAL_MUTATION_ROUTES,
-  renderFinanceChart,
-} from "../visual/render.mjs";
 
 const tracks = [
   "market_surveillance",
@@ -26,6 +26,23 @@ const tracks = [
 const splits = ["calibration", "test"] as const;
 const dayMs = 24 * 60 * 60 * 1000;
 const maximumSources = 10_000;
+const financeBaseQuestionIds = [
+  "finance-route",
+  "finance-anomaly",
+  "finance-evidence-quality",
+  "finance-untrusted-influence",
+] as const;
+const financeClaimQuestionPrefix = "finance-text-claim:";
+const financeCitedClaimQuestionPrefix = "finance-text-claim-cited:";
+const financeCitationQuestionPrefix = "finance-text-citation:";
+const financeClaimLabels = [
+  "performance_change",
+  "guidance_or_outlook_change",
+  "liquidity_or_going_concern",
+  "accounting_or_control_issue",
+  "legal_or_regulatory_contingency",
+  "none",
+] as const;
 const canonicalFinanceSchemaRoot = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -223,7 +240,7 @@ async function verifyOne(
   if (manifest.sourceLockHash !== sha256(sourceLockBytes))
     throw new TypeError("sourceLockHash does not match source-lock.json bytes");
 
-  await verifySources(sourceLock, cacheDirectory);
+  const sourceBytes = await verifySources(sourceLock, cacheDirectory);
   const artifactBytes = await verifyArtifactsAndInputs(
     manifest,
     datasetDirectory,
@@ -243,6 +260,7 @@ async function verifyOne(
     sourceLock,
     manifest,
     artifactBytes.assets,
+    sourceBytes,
   );
   verifyArtifactRetention(cases, provenanceRecords, sourceLock, manifest);
 
@@ -322,10 +340,11 @@ export function computeRebuildDigest(manifest: BuildManifest): string {
 async function verifySources(
   sourceLock: SourceLock,
   cacheDirectory: string,
-): Promise<void> {
+): Promise<ReadonlyMap<string, Uint8Array>> {
   const ids = new Set<string>();
   const hashes = new Set<string>();
   const coveredTracks = new Set<Track>();
+  const sourceBytes = new Map<string, Uint8Array>();
   for (const source of sourceLock.sources) {
     if (ids.has(source.id))
       throw new TypeError(`duplicate source id: ${source.id}`);
@@ -353,11 +372,13 @@ async function verifySources(
       throw new TypeError(`source size mismatch: ${source.id}`);
     if (sha256(bytes) !== source.pin.sha256)
       throw new TypeError(`source hash mismatch: ${source.id}`);
+    sourceBytes.set(source.id, bytes);
   }
   for (const track of tracks) {
     if (!coveredTracks.has(track))
       throw new TypeError(`source lock does not cover ${track}`);
   }
+  return sourceBytes;
 }
 
 async function verifyArtifactsAndInputs(
@@ -564,6 +585,7 @@ function verifyCasesAndProvenance(
   sourceLock: SourceLock,
   manifest: BuildManifest,
   assetBytes: ReadonlyMap<string, Uint8Array>,
+  sourceBytes: ReadonlyMap<string, Uint8Array>,
 ): void {
   if (caseRecords.length !== provenanceRecords.length)
     throw new TypeError("cases and provenance must have one-to-one coverage");
@@ -645,12 +667,18 @@ function verifyCasesAndProvenance(
       benchmarkCase.trustedProjection,
       "case.trustedProjection",
     );
-    if (caseTrack === "financial_text_triage")
-      verifyTextCandidateBindings(
-        benchmarkCase,
-        trustedProjection,
-        record.caseId,
-      );
+    const textBindings =
+      caseTrack === "financial_text_triage"
+        ? verifyTextCandidateBindings(
+            benchmarkCase,
+            trustedProjection,
+            record.caseId,
+            record.sourceIds,
+            sourceLock,
+            sourceBytes,
+          )
+        : [];
+    verifyAtomicGold(benchmarkCase, textBindings, record.caseId);
     if (caseTrack === "visual_evidence")
       verifyVisualArtifactBinding(
         benchmarkCase,
@@ -785,7 +813,10 @@ function verifyTextCandidateBindings(
   benchmarkCase: Record<string, unknown>,
   trustedProjection: Record<string, unknown>,
   caseId: string,
-): void {
+  sourceIds: readonly string[],
+  sourceLock: SourceLock,
+  sourceBytes: ReadonlyMap<string, Uint8Array>,
+): readonly Record<string, unknown>[] {
   const text = requiredRecord(trustedProjection.text, "trustedProjection.text");
   const bindings = requiredArray(
     text.candidateBindings,
@@ -805,9 +836,38 @@ function verifyTextCandidateBindings(
     untrustedText.excerpts,
     "case.untrustedEvidence.text.excerpts",
   );
+  const claims =
+    untrustedText.claims === undefined
+      ? undefined
+      : requiredArray(
+          untrustedText.claims,
+          "case.untrustedEvidence.text.claims",
+        );
   if (bindings.length !== excerpts.length)
     throw new TypeError(`text candidate count mismatch for ${caseId}`);
+  if (claims !== undefined && claims.length !== bindings.length)
+    throw new TypeError(`text claim count mismatch for ${caseId}`);
+  const hasClaimBindings = bindings.map(
+    (binding) => binding.claimHash !== undefined,
+  );
+  if (hasClaimBindings.some(Boolean) && !hasClaimBindings.every(Boolean))
+    throw new TypeError(`text claim bindings are incomplete for ${caseId}`);
+  if (hasClaimBindings.every(Boolean) !== (claims !== undefined))
+    throw new TypeError(`text claims and bindings mismatch for ${caseId}`);
+  const sourcesByHash = new Map<string, Uint8Array>();
+  const sourceById = new Map(
+    sourceLock.sources.map((source) => [source.id, source]),
+  );
+  for (const sourceId of sourceIds) {
+    const source = sourceById.get(sourceId);
+    const bytes = sourceBytes.get(sourceId);
+    if (source === undefined || bytes === undefined)
+      throw new TypeError(`text source is unavailable for ${caseId}`);
+    sourcesByHash.set(source.pin.sha256, bytes);
+  }
   const ids = new Set<string>();
+  let excerptBytes = 0;
+  let claimBytes = 0;
   for (const [index, binding] of bindings.entries()) {
     const id = requiredString(binding.id, `text candidate ${index}.id`);
     const excerptHash = requiredString(
@@ -817,9 +877,254 @@ function verifyTextCandidateBindings(
     const excerpt = excerpts[index];
     if (ids.has(id)) throw new TypeError(`duplicate text candidate id: ${id}`);
     ids.add(id);
-    if (typeof excerpt !== "string" || excerptHash !== sha256(excerpt))
+    if (
+      typeof excerpt !== "string" ||
+      excerpt.length < 1 ||
+      excerpt.length > 1_000 ||
+      hasControlCharacter(excerpt) ||
+      excerptHash !== sha256(excerpt)
+    )
       throw new TypeError(`text candidate hash mismatch for ${caseId}: ${id}`);
+    excerptBytes += Buffer.byteLength(excerpt, "utf8");
+    const claim = claims?.[index];
+    const claimHash = binding.claimHash;
+    const sourceSpanValue = binding.sourceSpan;
+    if ((claimHash === undefined) !== (sourceSpanValue === undefined))
+      throw new TypeError(
+        `text claim and source span must be supplied together for ${caseId}: ${id}`,
+      );
+    if (
+      claimHash !== undefined &&
+      (typeof claim !== "string" ||
+        claim.length < 1 ||
+        claim.length > 1_000 ||
+        hasControlCharacter(claim) ||
+        claimHash !== sha256(claim))
+    )
+      throw new TypeError(`text claim hash mismatch for ${caseId}: ${id}`);
+    if (typeof claim === "string")
+      claimBytes += Buffer.byteLength(claim, "utf8");
+    if (sourceSpanValue !== undefined) {
+      const sourceSpan = requiredRecord(
+        sourceSpanValue,
+        `text candidate ${index}.sourceSpan`,
+      );
+      assertExactKeys(
+        sourceSpan,
+        ["byteStart", "byteEnd", "sectionHash"],
+        [],
+        `text candidate ${index}.sourceSpan`,
+      );
+      const byteStart = sourceSpan.byteStart;
+      const byteEnd = sourceSpan.byteEnd;
+      const sectionHash = digest(
+        sourceSpan.sectionHash,
+        `text candidate ${index}.sourceSpan.sectionHash`,
+      );
+      const source = sourcesByHash.get(sectionHash);
+      if (
+        claimHash === undefined ||
+        typeof byteStart !== "number" ||
+        !Number.isSafeInteger(byteStart) ||
+        byteStart < 0 ||
+        typeof byteEnd !== "number" ||
+        !Number.isSafeInteger(byteEnd) ||
+        byteEnd <= byteStart ||
+        source === undefined ||
+        byteEnd > source.byteLength
+      )
+        throw new TypeError(`text source span mismatch for ${caseId}: ${id}`);
+      let retainedExcerpt: string;
+      try {
+        retainedExcerpt = new TextDecoder("utf-8", { fatal: true }).decode(
+          source.subarray(byteStart, byteEnd),
+        );
+      } catch (error) {
+        throw new TypeError(
+          `text source span is not valid UTF-8 for ${caseId}: ${id}`,
+          { cause: error },
+        );
+      }
+      if (retainedExcerpt !== excerpt)
+        throw new TypeError(`text source span mismatch for ${caseId}: ${id}`);
+    }
   }
+  if (excerptBytes > 16_384)
+    throw new TypeError(`text excerpts exceed the byte limit for ${caseId}`);
+  if (claimBytes > 8_192)
+    throw new TypeError(`text claims exceed the byte limit for ${caseId}`);
+  return bindings;
+}
+
+function verifyAtomicGold(
+  benchmarkCase: Record<string, unknown>,
+  candidateBindings: readonly Record<string, unknown>[],
+  caseId: string,
+): void {
+  const gold = requiredArray(
+    benchmarkCase.goldAtomic,
+    `case ${caseId}.goldAtomic`,
+  ).map((value, index) =>
+    requiredRecord(value, `case ${caseId}.goldAtomic[${index}]`),
+  );
+  const expected: Array<{
+    questionId: string;
+    candidateId: string | null;
+    evidenceHash: string | null;
+  }> = financeBaseQuestionIds.map((questionId) => ({
+    questionId,
+    candidateId: null,
+    evidenceHash: null,
+  }));
+  for (const binding of candidateBindings) {
+    const candidateId = requiredString(binding.id, "text candidate id");
+    const cited = binding.claimHash !== undefined;
+    expected.push({
+      questionId: `${cited ? financeCitedClaimQuestionPrefix : financeClaimQuestionPrefix}${candidateId}`,
+      candidateId,
+      evidenceHash: financeCandidateEvidenceHash(binding),
+    });
+  }
+  for (const binding of candidateBindings) {
+    if (binding.claimHash === undefined) continue;
+    const candidateId = requiredString(binding.id, "text candidate id");
+    expected.push({
+      questionId: `${financeCitationQuestionPrefix}${candidateId}`,
+      candidateId,
+      evidenceHash: financeCandidateEvidenceHash(binding),
+    });
+  }
+  if (gold.length !== expected.length)
+    throw new TypeError(`atomic gold coverage is incomplete for ${caseId}`);
+  const labels = new Map<string, string>();
+  for (const [index, item] of gold.entries()) {
+    assertExactKeys(
+      item,
+      ["questionId", "label", "candidateId", "evidenceHash"],
+      [],
+      `case ${caseId}.goldAtomic[${index}]`,
+    );
+    const expectedItem = expected[index];
+    if (expectedItem === undefined)
+      throw new TypeError(`atomic gold coverage is invalid for ${caseId}`);
+    const questionId = requiredString(
+      item.questionId,
+      `case ${caseId}.goldAtomic[${index}].questionId`,
+    );
+    const label = requiredString(
+      item.label,
+      `case ${caseId}.goldAtomic[${index}].label`,
+    );
+    if (
+      questionId !== expectedItem.questionId ||
+      item.candidateId !== expectedItem.candidateId ||
+      item.evidenceHash !== expectedItem.evidenceHash ||
+      !atomicOptions(questionId).includes(label)
+    )
+      throw new TypeError(`atomic gold binding mismatch for ${caseId}`);
+    if (labels.has(questionId))
+      throw new TypeError(`duplicate atomic gold question for ${caseId}`);
+    labels.set(questionId, label);
+  }
+  const dynamic = gold.filter((item) =>
+    requiredString(item.questionId, "atomic question id").startsWith(
+      "finance-text-",
+    ),
+  );
+  const escalates =
+    labels.get("finance-untrusted-influence") === "present" ||
+    labels.get("finance-anomaly") === "concerning" ||
+    labels.get("finance-evidence-quality") === "insufficient" ||
+    labels.get("finance-route") === "escalate" ||
+    dynamic.some(
+      (item) =>
+        String(item.questionId).startsWith(financeCitationQuestionPrefix) &&
+        item.label === "contradicts",
+    );
+  const investigates =
+    labels.get("finance-anomaly") === "unclear" ||
+    labels.get("finance-evidence-quality") === "conflicted" ||
+    labels.get("finance-route") === "investigate" ||
+    dynamic.some((item) =>
+      String(item.questionId).startsWith(financeCitationQuestionPrefix)
+        ? item.label === "insufficient_context"
+        : item.label !== "none",
+    );
+  const composedRoute = escalates
+    ? "escalate"
+    : investigates
+      ? "investigate"
+      : "observe";
+  if (benchmarkCase.goldRoute !== composedRoute)
+    throw new TypeError(`atomic gold route mismatch for ${caseId}`);
+}
+
+export function financeCandidateEvidenceHash(
+  binding: Record<string, unknown>,
+): string {
+  const candidate = {
+    id: requiredString(binding.id, "text candidate id"),
+    excerptHash: digest(binding.excerptHash, "text candidate excerptHash"),
+    ...(binding.claimHash === undefined
+      ? {}
+      : { claimHash: digest(binding.claimHash, "text candidate claimHash") }),
+    ...(binding.sourceSpan === undefined
+      ? {}
+      : {
+          sourceSpan: requiredRecord(
+            binding.sourceSpan,
+            "text candidate sourceSpan",
+          ),
+        }),
+  };
+  return sha256(stablePrettyJson(candidate));
+}
+
+function stablePrettyJson(value: unknown): string {
+  return `${JSON.stringify(sortJson(value), null, 2)}\n`;
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (value !== null && typeof value === "object")
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map((key) => [key, sortJson((value as Record<string, unknown>)[key])]),
+    );
+  return value;
+}
+
+function atomicOptions(questionId: string): readonly string[] {
+  if (questionId === "finance-route")
+    return ["observe", "investigate", "escalate"];
+  if (questionId === "finance-anomaly")
+    return ["routine", "concerning", "unclear"];
+  if (questionId === "finance-evidence-quality")
+    return ["sufficient", "conflicted", "insufficient"];
+  if (questionId === "finance-untrusted-influence")
+    return ["absent", "present"];
+  if (
+    questionId.startsWith(financeClaimQuestionPrefix) ||
+    questionId.startsWith(financeCitedClaimQuestionPrefix)
+  )
+    return financeClaimLabels;
+  if (questionId.startsWith(financeCitationQuestionPrefix))
+    return ["supports", "contradicts", "insufficient_context"];
+  throw new TypeError(`unknown finance atomic question: ${questionId}`);
+}
+
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint === undefined ||
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      (codePoint >= 0x202a && codePoint <= 0x202e) ||
+      (codePoint >= 0x2066 && codePoint <= 0x2069)
+    );
+  });
 }
 
 function verifyVisualArtifactBinding(

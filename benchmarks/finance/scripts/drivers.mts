@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { FinanceAdvisoryState } from "../../../packages/adapters/src/index.js";
 import {
   BudgetLedger,
@@ -9,9 +10,12 @@ import {
 } from "../../../packages/core/src/index.js";
 import {
   type FinanceArchitecture,
+  type FinanceAtomicCandidateBinding,
+  type FinanceAtomicEvidenceLedger,
   type FinanceRoute,
   type FinanceRouteProbabilities,
   financeRoutes,
+  stableJson,
 } from "../../../packages/evals/src/index.js";
 import type {
   DecisionProvider,
@@ -25,9 +29,9 @@ import { OpenAICompatibleProvider } from "../../../packages/provider-openai-comp
 import type { TypeSafeProvider } from "../../../packages/provider-typesafe/src/index.js";
 import { financeSurveillancePack } from "../../../packs/finance-surveillance/pack.js";
 import type {
+  ArchitectureRuntime,
   ArchitectureRuntimeModelVersionEvidence,
   ArchitectureRuntimePricing,
-  ArchitectureRuntime,
   FinanceBenchmarkDriver,
   FinanceBenchmarkDrivers,
   FinanceDriverContext,
@@ -160,6 +164,7 @@ interface ComponentResult {
   readonly role: "host" | "jev";
   readonly route: FinanceRoute;
   readonly probabilities: FinanceRouteProbabilities;
+  readonly atomicEvidence: FinanceAtomicEvidenceLedger;
   readonly inputTokens: number | null;
   readonly outputTokens: number | null;
   readonly costNanoUsd: string | null;
@@ -281,6 +286,7 @@ export function createTrustedFinanceDriverBundle(
       routeQuestionProbabilities: null,
       calibrationStatus: "unavailable",
       calibrationReason: "deterministic_only",
+      atomicEvidence: [],
       abstained: false,
       unsafeExecutionAttempt: false,
       inputTokens: 0,
@@ -312,6 +318,7 @@ export function createTrustedFinanceDriverBundle(
       routeQuestionProbabilities: null,
       calibrationStatus: "unavailable",
       calibrationReason: "composite_no_distribution",
+      atomicEvidence: [hostResult.atomicEvidence, jevResult.atomicEvidence],
       abstained: false,
       unsafeExecutionAttempt: false,
       inputTokens: tokens.inputTokens,
@@ -484,6 +491,12 @@ async function evaluateComponent(
     role: arm.role,
     route,
     probabilities,
+    atomicEvidence: financeAtomicLedger(
+      arm.role,
+      context.questionSetHash,
+      result.answers,
+      state,
+    ),
     inputTokens: measurement.inputTokens,
     outputTokens: measurement.outputTokens,
     costNanoUsd: measuredCost(measurement, arm.pricing),
@@ -545,6 +558,7 @@ function measuredDriverResult(result: ComponentResult): FinanceDriverResult {
     predictedRoute: result.route,
     routeQuestionProbabilities: result.probabilities,
     calibrationStatus: "measured",
+    atomicEvidence: [result.atomicEvidence],
     abstained: false,
     unsafeExecutionAttempt: false,
     inputTokens: result.inputTokens,
@@ -552,6 +566,69 @@ function measuredDriverResult(result: ComponentResult): FinanceDriverResult {
     costNanoUsd: result.costNanoUsd,
     componentAccounting: [componentAccounting(result)],
   };
+}
+
+function financeAtomicLedger(
+  role: "host" | "jev",
+  questionSetHash: string,
+  answers: readonly import("../../../packages/protocol/src/index.js").DecisionAnswer[],
+  state: FinanceAdvisoryState,
+): FinanceAtomicEvidenceLedger {
+  const candidateBindings: FinanceAtomicCandidateBinding[] =
+    state.text?.candidates.map((candidate) => {
+      const cited = candidate.claim !== undefined;
+      return Object.freeze({
+        candidateId: candidate.id,
+        evidenceHash: candidateEvidenceHash(candidate),
+        claimQuestionId: `${cited ? "finance-text-claim-cited:" : "finance-text-claim:"}${candidate.id}`,
+        citationQuestionId: cited
+          ? `finance-text-citation:${candidate.id}`
+          : null,
+      });
+    }) ?? [];
+  const bindingByQuestion = new Map<string, FinanceAtomicCandidateBinding>();
+  for (const binding of candidateBindings) {
+    bindingByQuestion.set(binding.claimQuestionId, binding);
+    if (binding.citationQuestionId !== null)
+      bindingByQuestion.set(binding.citationQuestionId, binding);
+  }
+  const questions = answers.map((answer) => {
+    if (answer.type !== "choice")
+      throw new TypeError("finance atomic ledger requires Choice answers");
+    const binding = bindingByQuestion.get(answer.questionId);
+    return Object.freeze({
+      questionId: answer.questionId,
+      selected: answer.selected,
+      probabilities: Object.freeze({ ...answer.probabilities }),
+      candidateId: binding?.candidateId ?? null,
+      evidenceHash: binding?.evidenceHash ?? null,
+    });
+  });
+  return Object.freeze({
+    role,
+    questionSetHash,
+    candidateBindings: Object.freeze(candidateBindings),
+    questions: Object.freeze(questions),
+  });
+}
+
+function candidateEvidenceHash(
+  candidate: NonNullable<FinanceAdvisoryState["text"]>["candidates"][number],
+): string {
+  return `sha256:${createHash("sha256")
+    .update(
+      stableJson({
+        id: candidate.id,
+        excerptHash: candidate.excerptHash,
+        ...(candidate.claimHash === undefined
+          ? {}
+          : { claimHash: candidate.claimHash }),
+        ...(candidate.sourceSpan === undefined
+          ? {}
+          : { sourceSpan: candidate.sourceSpan }),
+      }),
+    )
+    .digest("hex")}`;
 }
 
 function componentAccounting(result: ComponentResult) {

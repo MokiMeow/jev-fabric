@@ -832,6 +832,17 @@ describe("built-in decision packs", () => {
         },
       }),
     ).toThrow(/all or none/u);
+    const { sourceSpan: _omittedSourceSpan, ...claimWithoutSourceSpan } =
+      citedOutlook;
+    expect(() =>
+      project({
+        ...citedState,
+        text: {
+          ...citedState.text,
+          candidates: [claimWithoutSourceSpan, citedLiquidity],
+        },
+      }),
+    ).toThrow(/finance text candidate is invalid/u);
     expect(() =>
       project({
         ...citedState,

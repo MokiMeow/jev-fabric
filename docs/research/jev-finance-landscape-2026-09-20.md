@@ -298,3 +298,71 @@ excluded as an abuse label: the SEC cautions that a fail does not by itself show
 abusive or naked short selling. Dataset manifests must therefore retain the
 source URL, license statement, redistribution flag, exact case-set hash, and
 forward-time split before a completed run can be published.
+
+### Retained-corpus hardening plan
+
+The next public corpus should be small enough to review and strict enough to
+rebuild. Mutable discovery endpoints are never source locks: a selected object
+becomes eligible only after the builder records its exact byte length, SHA-256,
+canonical URL, retrieval time, source/publication cutoff, rights evidence, and
+derivation policy.
+
+For filing-text and claim/citation cases, start with 30–50 SEC-authored or EDGAR
+documents and 3–6 adjudicated claims per document. Retain the literal source
+span, byte offsets, normalized-span hash, bounded surrounding section,
+document-body hash, accession or canonical page URL, CIK/entity group,
+publication cutoff, separate operational-route gold, and one citation gold
+label: `supports`, `contradicts`, or `says_nothing`. Two reviewers plus an
+adjudicator should label non-exact semantic cases. Amendments stay with their
+original filing, issuers/matters do not cross splits, and split windows have at
+least a 30-day embargo. A reasonable preregistered first partition is training
+through 2024-06-30, validation from 2024-08-01 through 2025-06-30, and test
+from 2025-08-01 through the content-lock date. Later-evidence and missing-quote
+probes remain explicit failure cases. The SEC's
+[developer guidance](https://www.sec.gov/about/developer-resources) and
+[website reuse policy](https://www.sec.gov/about/privacy-information) support
+this route; attribution must not use SEC seals or imply endorsement.
+
+For charts, select bounded rows from the SEC
+[Financial Statement Data Sets](https://www.sec.gov/data-research/sec-markets-data/financial-statement-data-sets)
+and retain only those public-source rows, the derivation recipe, and generated
+SVGs. Quarterly ZIP URLs can be replaced, so the source ZIP must be hashed and
+size-locked before offline generation. Resolve units, periods, duplicates, and
+amendments in code; every point binds to an accession and accepted date. A
+useful first frozen slice is 60 issuer-disjoint base charts per split, at most
+two series and 4–12 points each, expanded through the five existing deterministic
+render/mutation variants. All variants of a base chart remain in one split.
+The [Data.gov record](https://catalog.data.gov/dataset/financial-statement-data-sets)
+currently labels the dataset for public access, but the retained manifest must
+still preserve a dated rights snapshot rather than rely on this sentence.
+
+For synthetic surveillance, pin the archived
+[ABIDES-JPMC revision](https://github.com/jpmorganchase/abides-jpmc-public/tree/f9cbe51342b7dedd9587e4e069040d68a5c6477f)
+and preserve its
+[BSD-3-Clause notice](https://github.com/jpmorganchase/abides-jpmc-public/blob/f9cbe51342b7dedd9587e4e069040d68a5c6477f/LICENSE).
+Build in a network-disabled, locked environment, run every seed twice, and
+retain aggregates rather than the simulator checkout or full market log.
+Labels describe seeded synthetic patterns, never illegal intent. Split whole
+parameter-template families—not merely random seeds—so calibration and test do
+not share a scenario generator. A first slice can cover four declared labels,
+three template families per label, and ten unique seeds per family, with fixed
+pre/event/post windows and code-owned aggregates.
+
+Optional corpora stay outside the core claim. The
+[FinQA pinned revision](https://github.com/czyssrs/FinQA/tree/0f16e2867befa6840783e58be38c9efb9229d742)
+is useful for supporting-fact and leakage regressions, but its repository
+license does not by itself settle redistribution of every underlying report;
+use fetch-at-build IDs/hashes until review. The
+[PlotQA pinned revision](https://github.com/NiteshMethani/PlotQA/tree/e0f5c34acbe92753f70798aafda99184e3e0cd8c)
+is a CC-BY-4.0 visual-parser stress set, not finance or no-look-ahead evidence.
+ChartQA is not a core retained source because the rights of all crawled chart
+assets are not established by the repository license alone.
+
+The same-day community scan reinforced two negative controls. The positive
+filtered result in
+[trade-jev](https://github.com/justinhe16/trade-jev) was selected from many
+settings on the same short window, so it is an overfitting lesson rather than
+alpha evidence. The very small
+[jev-tick-lab](https://github.com/shunta-furukawa/jev-tick-lab) suggests an
+append-only forward ledger but publishes no usable result. Fabric adopts the
+replay and forward-only mechanics, not either project's performance claim.

@@ -33,6 +33,22 @@ export {
   type UntrustedToolEnvironmentVisualEvidence,
 } from "./visual-observation.js";
 export {
+  bindToolEnvironmentProfiledVisualFindings,
+  bindToolEnvironmentProfiledVisualObservation,
+  toolEnvironmentProfiledVisualCaptureBindingHash,
+  toolEnvironmentProfiledVisualFindingsBindingHash,
+  toolEnvironmentVisualExtractorProfileHash,
+  validateToolEnvironmentProfiledVisualFindings,
+  validateToolEnvironmentProfiledVisualObservation,
+  type ToolEnvironmentProfiledVisualFindings,
+  type ToolEnvironmentProfiledVisualObservation,
+  type ToolEnvironmentVisualExtractorProfile,
+  type TrustedToolEnvironmentProfiledVisualBinding,
+  type TrustedToolEnvironmentProfiledVisualCapture,
+  type UntrustedToolEnvironmentVisualFindingEvidence,
+  type UntrustedToolEnvironmentProfiledVisualEvidence,
+} from "./visual-extractor-profiles.js";
+export {
   bindFinanceAdvisoryEvidence,
   bindFinanceAdvisoryEvidenceWithText,
   FinanceAdvisoryBoundaryError,

@@ -24,6 +24,17 @@ binding it to the exact adapter/session/workspace/state/capability projection,
 and bounded one-line annotations. Never put pixels, paths, URLs, DOM selectors,
 coordinates, tool IDs, action arguments, or approval claims in this envelope.
 
+A fixed visual extractor profile may further limit output to a trusted,
+versioned list of finding IDs and only the non-authorizing dispositions
+`visual_ambiguity`, `requires_structured_state`, and `requires_human_review`.
+Profile validation proves the reported ID was in that configured vocabulary and
+bound to a prior visual observation. In strict profile mode, the profile digest
+is also part of the independently trusted capture equality check and capture
+binding tuple, so a profile swap fails before findings are considered. None of
+this proves that an extractor's visual conclusion is true. Never add action
+IDs, target IDs, confidence values, coordinates, prompts, commands, approval
+claims, or host handles to a profile or its finding attachment.
+
 ## What Jev Fabric may do
 
 It may advise which declared candidate fits a bounded question, signal a risk,

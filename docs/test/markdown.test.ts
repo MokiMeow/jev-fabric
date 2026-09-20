@@ -32,6 +32,7 @@ const external = [
   "https://freecad.github.io/",
   "https://www.finra.org/",
   "https://www.sec.gov/",
+  "https://catalog.data.gov/",
   "https://www.nist.gov/",
   "https://x.com/",
   "https://madewithjev.com/",

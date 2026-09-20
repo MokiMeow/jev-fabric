@@ -5,14 +5,16 @@ three tracks by four architectures. It establishes neither performance nor
 trading results. Synthetic tests prove the runner and validator behave as
 specified; they are not model benchmarks.
 
-The eval package also exposes the experimental `finance.observe-gate.v1`
-building blocks. They compose the mandatory observe factors with a
-non-compensating minimum, fit only against caller-supplied calibration rows and
-a caller-declared **maximum observed** false-observe risk, and upgrade a rejected
-`observe` to `investigate`. The fitted value is empirical calibration evidence,
-not a statistical guarantee or permission to trade. This benchmark runner does
-not yet retain that gate's atomic ledgers or policy artifacts, so the committed
-`NOT_RUN` fixture deliberately makes no observe-gate performance claim.
+The runner implements the experimental `finance.observe-gate.v1`. It retains
+the complete atomic Choice ledgers, composes every mandatory observe factor
+with a non-compensating minimum, fits a threshold only on the calibration
+split, and upgrades a rejected `observe` to `investigate`. It never turns a
+more restrictive route into `observe`. The fitted threshold enforces only the
+caller-declared **maximum observed** false-observe risk on retained calibration
+rows. It is empirical evidence, not a confidence bound, statistical guarantee,
+authorization, or permission to trade. The committed fixture remains strictly
+`NOT_RUN`: its policy set, threshold inputs, atomic metrics, and performance
+metrics are null or empty and make no observe-gate claim.
 
 ## What the runner measures
 
@@ -24,13 +26,24 @@ financial-text triage. Every retained test case runs through:
 - Jev advisory questions only; and
 - host model plus Jev.
 
-The runner retains accuracy, macro-F1, selective coverage, route-question
-Brier score and ECE when a real route distribution exists, look-ahead
-rejection, unsafe-execution attempts, monotonic p50/p95 latency, input tokens,
-output tokens, and exact nano-USD cost. Token and price availability are
+The runner retains held-out accuracy, macro-F1, selective coverage, exact
+observe-gate counts and rates, look-ahead rejection, unsafe-execution attempts,
+monotonic p50/p95 latency, input tokens, output tokens, and exact nano-USD cost.
+`falseObserveRisk` is false accepted observes divided by accepted observes; it
+is `null`, not zero, when no observe was accepted. Per-role atomic accuracy,
+macro-F1, categorical Brier score, and top-label ECE are reported for the route,
+anomaly, evidence-quality, untrusted-influence, claim, and citation families
+that exist in the held-out cases.
+
+There is deliberately no final-route Brier score or ECE. A route-question
+distribution is scored only against the matching atomic gold label for
+`finance-route`, and the row declares
+`routeQuestionMetricTarget: atomic_gold_finance_route`. Deterministic and
+host-plus-Jev rows have no single role-owned route-question distribution, so
+that target and both route-question metrics remain `null`. A composite route
+never inherits a component's distribution. Token and price availability are
 tracked independently: known usage is retained even when no reviewed price is
-available, and every unknown remains `null`, never zero. Composite routes do
-not inherit a component's probability distribution.
+available, and every unknown remains `null`, never zero.
 
 Market returns and P&L are intentionally excluded. This evaluates a read-only
 control plane, not a trading strategy.
@@ -47,8 +60,14 @@ A dataset directory contains `dataset-manifest.json`, `cases.jsonl`, and the
 visual SVGs referenced beneath `assets/`. The schemas require a SHA-256
 case-set digest, source and licence metadata,
 redistribution status, a forward-chaining time split, fixed evaluation times,
-and group isolation across calibration and test. Each test track must contain
-ordinary cases and deliberate post-cutoff probes.
+and group isolation across calibration and test. Each regular case also carries
+exact atomic gold labels for the four fixed finance questions and for every
+source-bound claim or citation question created for that case. Dynamic labels
+retain the candidate id and evidence hash; the question id must use the pack's
+`finance-text-claim:`, `finance-text-claim-cited:`, or
+`finance-text-citation:` prefix. The final gold route must agree with those
+atomic labels. Each test track must contain ordinary cases and deliberate
+post-cutoff probes.
 
 Visual cases carry a unique SVG path, the complete canonical compiler input,
 code-verified axis/source bindings, and bounded untrusted annotations. Loading a
@@ -64,10 +83,28 @@ the repository; publish only evidence whose licence permits it.
 ## Running it
 
 `run.mts` is a programmatic API. Supply four code-reviewed drivers, complete
-per-component runtime provenance, and the canonical runtime-evidence documents
+per-component runtime provenance, the observe-gate empirical risk limit and
+minimum calibration-group count, and the canonical runtime-evidence documents
 whose hashes that provenance claims. Then call `loadFinanceDataset`,
 `runFinanceBenchmark`, and `writeFinanceArtifacts`. There is deliberately no
 CLI option that imports an arbitrary provider module.
+
+The runner executes every calibration case first for all four architectures,
+retains those traces with `observeGateStatus: CALIBRATION`, and fits one policy
+for each of the twelve track/architecture cells. Calibration traces have no
+policy digest and are never passed through the policy they are used to create.
+The frozen policy artifacts bind the dataset digest, pack and question-set
+identity, cell, provider/model/version/response identities, and probability
+semantics; their digest is then attached to test traces. An unavailable policy
+is retained with an explicit reason and cannot silently become a calibrated
+policy.
+
+Only test traces contribute to held-out classification, atomic, selective-risk,
+coverage, rejection, and latency metrics. Calibration and test cases and traces
+are counted separately. Token and cost totals intentionally include every
+retained provider call from both phases, because calibration is real work and
+excluding it would understate the cost of the evaluated system. Row
+`sampleCount` remains the held-out test count.
 
 For provider-backed runs, use `createTrustedFinanceDriverBundle` from
 `scripts/drivers.mts`. It creates all four arms together so the standalone and
@@ -104,7 +141,9 @@ identities. Budget tokens are conservative admission reservations, not billed
 usage reconciliation or a provider-side hard quota.
 
 A completed artifact directory contains the original dataset files and visual
-SVGs, `run.json`, canonical `traces.jsonl`, and an `evidence/` directory. The latter
+SVGs, `run.json`, canonical `traces.jsonl`, and an `evidence/` directory. The
+run retains all twelve observe-gate policy artifacts and every calibration and
+test trace; calibration rows remain excluded from held-out metrics. The latter
 contains one canonical JSON document named `<sha256>.json` for each distinct
 price record and external model-version attestation claimed by the runtime.
 The SHA-256 is computed over the exact retained bytes. Evidence documents are
@@ -144,8 +183,8 @@ look-ahead probes before a generated dataset reaches this runner.
 ## Trust boundary and claim limits
 
 The runner is a trusted in-process measurement harness, not a code sandbox.
-Drivers receive only the advisory state, architecture, track, deadline signal,
-and no dataset identifier or gold label. The timeout bounds how long the runner
+Drivers receive only the advisory state, architecture, track, question-set
+hash, deadline signal, and no dataset identifier or gold label. The timeout bounds how long the runner
 waits and asks a cooperative driver to abort; JavaScript cannot terminate a
 driver that ignores the signal. Therefore run drivers only in a credentialless,
 read-only worker or container with provider-only egress, no order-entry SDK,
@@ -153,7 +192,10 @@ and an independently instrumented execution sink. The retained unsafe-attempt
 field is output-contract telemetry, not proof that arbitrary driver code caused
 no external side effect.
 
-The validator proves artifact closure and self-consistency. A content hash does
+The validator proves artifact closure and self-consistency. It refits every
+cell policy from calibration traces, verifies each held-out gate decision and
+support score, and rejects any route-question distribution that drifts from
+its role-owned atomic ledger. A content hash does
 not prove that a price page, model-version attestation, publisher, source data,
 or label is truthful. Public performance evidence also needs an externally
 pinned dataset digest, reviewable generation recipe, and a signed CI/run

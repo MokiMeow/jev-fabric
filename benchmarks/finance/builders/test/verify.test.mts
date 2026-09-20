@@ -22,6 +22,7 @@ import {
 import {
   type BuildManifest,
   computeRebuildDigest,
+  financeCandidateEvidenceHash,
   verifyFinanceBuilderDirectory,
 } from "../lib/verify.mjs";
 import {
@@ -37,6 +38,8 @@ const fixtureRoot = join(
 );
 const temporaryRoots: string[] = [];
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
+const filingExcerpt = '"items": "2.02"';
+const filingClaim = "The filing reports Item 2.02.";
 
 after(async () => {
   await Promise.all(
@@ -423,16 +426,125 @@ test("rejects mismatched and duplicate financial-text candidate bindings", async
   duplicateCase.trustedProjection.text.candidateBindings.push({
     id: "fixture.claim.1",
     excerptHash: sha256("Second invented public-filing fixture excerpt."),
+    claimHash: sha256("Second fixture claim."),
+    sourceSpan: {
+      ...duplicateCase.trustedProjection.text.candidateBindings[0].sourceSpan,
+    },
   });
   duplicateCase.untrustedEvidence.text.excerpts.push(
     "Second invented public-filing fixture excerpt.",
   );
+  duplicateCase.untrustedEvidence.text.claims.push("Second fixture claim.");
   await writeCanonicalJsonLines(
     join(duplicate.dataset, "cases.jsonl"),
     duplicateCases,
   );
   await refreshManifest(duplicate.dataset);
   await assert.rejects(() => verify(duplicate), /duplicate text candidate id/u);
+});
+
+test("binds financial-text claims and source spans to retained source bytes", async () => {
+  const missingSpanFixture = await createFixture();
+  const missingSpanCases = await readJsonLines(
+    join(missingSpanFixture.dataset, "cases.jsonl"),
+  );
+  const missingSpanCase = missingSpanCases.find(
+    (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
+  );
+  delete missingSpanCase.trustedProjection.text.candidateBindings[0].sourceSpan;
+  await writeCanonicalJsonLines(
+    join(missingSpanFixture.dataset, "cases.jsonl"),
+    missingSpanCases,
+  );
+  await refreshManifest(missingSpanFixture.dataset);
+  await assert.rejects(
+    () => verify(missingSpanFixture),
+    /must have property sourceSpan when property claimHash is present/u,
+  );
+
+  const claimFixture = await createFixture();
+  const claimCases = await readJsonLines(
+    join(claimFixture.dataset, "cases.jsonl"),
+  );
+  const claimCase = claimCases.find(
+    (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
+  );
+  claimCase.untrustedEvidence.text.claims[0] = "A forged replacement claim.";
+  await writeCanonicalJsonLines(
+    join(claimFixture.dataset, "cases.jsonl"),
+    claimCases,
+  );
+  await refreshManifest(claimFixture.dataset);
+  await assert.rejects(() => verify(claimFixture), /text claim hash mismatch/u);
+
+  const spanFixture = await createFixture();
+  const spanCases = await readJsonLines(
+    join(spanFixture.dataset, "cases.jsonl"),
+  );
+  const spanCase = spanCases.find(
+    (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
+  );
+  spanCase.trustedProjection.text.candidateBindings[0].sourceSpan.byteStart -= 1;
+  await writeCanonicalJsonLines(
+    join(spanFixture.dataset, "cases.jsonl"),
+    spanCases,
+  );
+  await refreshManifest(spanFixture.dataset);
+  await assert.rejects(() => verify(spanFixture), /text source span mismatch/u);
+});
+
+test("requires exact finance observe-gate atomic coverage and bindings", async () => {
+  const idFixture = await createFixture();
+  const idCases = await readJsonLines(join(idFixture.dataset, "cases.jsonl"));
+  const idCase = idCases.find(
+    (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
+  );
+  idCase.goldAtomic[4].questionId = "finance-text-claim:fixture.claim.1";
+  await writeCanonicalJsonLines(
+    join(idFixture.dataset, "cases.jsonl"),
+    idCases,
+  );
+  await refreshManifest(idFixture.dataset);
+  await assert.rejects(
+    () => verify(idFixture),
+    /atomic gold binding mismatch/u,
+  );
+
+  const hashFixture = await createFixture();
+  const hashCases = await readJsonLines(
+    join(hashFixture.dataset, "cases.jsonl"),
+  );
+  const hashCase = hashCases.find(
+    (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
+  );
+  hashCase.goldAtomic[4].evidenceHash = hash("9");
+  await writeCanonicalJsonLines(
+    join(hashFixture.dataset, "cases.jsonl"),
+    hashCases,
+  );
+  await refreshManifest(hashFixture.dataset);
+  await assert.rejects(
+    () => verify(hashFixture),
+    /atomic gold binding mismatch/u,
+  );
+
+  const routeFixture = await createFixture();
+  const routeCases = await readJsonLines(
+    join(routeFixture.dataset, "cases.jsonl"),
+  );
+  const routeCase = routeCases.find(
+    (benchmarkCase) => benchmarkCase.track === "market_surveillance",
+  );
+  routeCase.goldRoute = "investigate";
+  await writeCanonicalJsonLines(
+    join(routeFixture.dataset, "cases.jsonl"),
+    routeCases,
+  );
+  await refreshManifest(routeFixture.dataset);
+  await assert.rejects(
+    () => verify(routeFixture),
+    /atomic gold route mismatch/u,
+  );
 });
 
 test("binds compiled visual mutations to their artifact and gold route", async () => {
@@ -444,6 +556,7 @@ test("binds compiled visual mutations to their artifact and gold route", async (
     (benchmarkCase) => benchmarkCase.track === "visual_evidence",
   );
   wrongRouteCase.goldRoute = "escalate";
+  wrongRouteCase.goldAtomic[0].label = "escalate";
   await writeCanonicalJsonLines(
     join(wrongRoute.dataset, "cases.jsonl"),
     wrongRouteCases,
@@ -762,7 +875,19 @@ async function createFixture(): Promise<Fixture> {
   };
   await writeJson(join(dataset, "source-lock.json"), sourceLock);
 
-  const cases = createCases();
+  const textSourceHash = sources.find((source) => source.id === "sec.edgar")
+    ?.pin.sha256;
+  if (textSourceHash === undefined)
+    throw new TypeError("fixture text source hash is missing");
+  const textSourceBytes = await readFile(
+    join(cache, "sources", "edgar", "fixture.json"),
+  );
+  const filingExcerptByteStart = textSourceBytes.indexOf(
+    Buffer.from(filingExcerpt, "utf8"),
+  );
+  if (filingExcerptByteStart < 0)
+    throw new TypeError("fixture filing excerpt is missing from its source");
+  const cases = createCases(textSourceHash, filingExcerptByteStart);
   const provenance = createProvenance(cases);
   const assetDeclarations: Record<string, unknown>[] = [];
   for (const benchmarkCase of cases) {
@@ -871,16 +996,31 @@ async function createFixture(): Promise<Fixture> {
   return { root, dataset, cache };
 }
 
-function createCases(): Record<string, unknown>[] {
+function createCases(
+  textSourceHash: string,
+  filingExcerptByteStart: number,
+): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = [];
   for (const track of [
     "financial_text_triage",
     "market_surveillance",
     "visual_evidence",
   ] as const) {
-    records.push(caseRecord(track, "calibration", false));
-    records.push(caseRecord(track, "test", false));
-    records.push(caseRecord(track, "test", true));
+    records.push(
+      caseRecord(
+        track,
+        "calibration",
+        false,
+        textSourceHash,
+        filingExcerptByteStart,
+      ),
+    );
+    records.push(
+      caseRecord(track, "test", false, textSourceHash, filingExcerptByteStart),
+    );
+    records.push(
+      caseRecord(track, "test", true, textSourceHash, filingExcerptByteStart),
+    );
   }
   return records.sort((left, right) =>
     String(left.id).localeCompare(String(right.id)),
@@ -891,6 +1031,8 @@ function caseRecord(
   track: "financial_text_triage" | "market_surveillance" | "visual_evidence",
   split: "calibration" | "test",
   probe: boolean,
+  textSourceHash: string,
+  filingExcerptByteStart: number,
 ): Record<string, unknown> {
   const id = `${track}.${split}.${probe ? "probe" : "normal"}`;
   const date = split === "calibration" ? "2025-01-01" : "2025-03-15";
@@ -922,20 +1064,27 @@ function caseRecord(
       },
     ],
   };
-  if (track === "financial_text_triage")
+  let textCandidateBinding: Record<string, unknown> | undefined;
+  if (track === "financial_text_triage") {
+    textCandidateBinding = {
+      id: "fixture.claim.1",
+      excerptHash: sha256(filingExcerpt),
+      claimHash: sha256(filingClaim),
+      sourceSpan: {
+        byteStart: filingExcerptByteStart,
+        byteEnd: filingExcerptByteStart + Buffer.byteLength(filingExcerpt),
+        sectionHash: textSourceHash,
+      },
+    };
     trustedProjection.text = {
       mode: "bounded_excerpts",
       extractorId: "fixture.extractor",
       extractorVersion: "1",
       documentHash: evidenceHash,
       sourceBindingHash: hash("b"),
-      candidateBindings: [
-        {
-          id: "fixture.claim.1",
-          excerptHash: sha256("Invented public-filing fixture excerpt."),
-        },
-      ],
+      candidateBindings: [textCandidateBinding],
     };
+  }
   if (track === "visual_evidence")
     trustedProjection.visual = (() => {
       const rendered = renderFinanceChart(
@@ -962,6 +1111,50 @@ function caseRecord(
       trustedProjection.visual as Record<string, unknown>
     ).imageHash;
   }
+  const goldAtomic: Record<string, unknown>[] = [
+    {
+      questionId: "finance-route",
+      label: "observe",
+      candidateId: null,
+      evidenceHash: null,
+    },
+    {
+      questionId: "finance-anomaly",
+      label: "routine",
+      candidateId: null,
+      evidenceHash: null,
+    },
+    {
+      questionId: "finance-evidence-quality",
+      label: "sufficient",
+      candidateId: null,
+      evidenceHash: null,
+    },
+    {
+      questionId: "finance-untrusted-influence",
+      label: "absent",
+      candidateId: null,
+      evidenceHash: null,
+    },
+  ];
+  if (textCandidateBinding !== undefined) {
+    const candidateEvidenceHash =
+      financeCandidateEvidenceHash(textCandidateBinding);
+    goldAtomic.push(
+      {
+        questionId: "finance-text-claim-cited:fixture.claim.1",
+        label: "none",
+        candidateId: "fixture.claim.1",
+        evidenceHash: candidateEvidenceHash,
+      },
+      {
+        questionId: "finance-text-citation:fixture.claim.1",
+        label: "supports",
+        candidateId: "fixture.claim.1",
+        evidenceHash: candidateEvidenceHash,
+      },
+    );
+  }
   return {
     schemaVersion: "1",
     id,
@@ -969,6 +1162,7 @@ function caseRecord(
     track,
     split,
     goldRoute: "observe",
+    goldAtomic,
     lookaheadProbe: probe,
     evaluationNow: `${date}T12:02:00.000Z`,
     ...(track === "visual_evidence"
@@ -982,7 +1176,7 @@ function caseRecord(
     trustedProjection,
     untrustedEvidence:
       track === "financial_text_triage"
-        ? { text: { excerpts: ["Invented public-filing fixture excerpt."] } }
+        ? { text: { excerpts: [filingExcerpt], claims: [filingClaim] } }
         : track === "visual_evidence"
           ? { visual: { annotations: [] } }
           : {},

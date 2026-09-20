@@ -98,10 +98,10 @@ const trustedTextCandidateBindingSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.sourceSpan !== undefined && value.claimHash === undefined)
+    if ((value.sourceSpan === undefined) !== (value.claimHash === undefined))
       context.addIssue({
         code: "custom",
-        message: "source span requires a bound claim",
+        message: "bound claim and source span must be supplied together",
         path: ["sourceSpan"],
       });
   });
@@ -332,12 +332,13 @@ export const financeAdvisoryStateSchema = z
                       "candidate claim and claim hash must be supplied together",
                   });
                 if (
-                  candidate.sourceSpan !== undefined &&
-                  candidate.claimHash === undefined
+                  (candidate.sourceSpan === undefined) !==
+                  (candidate.claimHash === undefined)
                 )
                   context.addIssue({
                     code: "custom",
-                    message: "candidate source span requires a bound claim",
+                    message:
+                      "candidate bound claim and source span must be supplied together",
                     path: ["sourceSpan"],
                   });
               }),

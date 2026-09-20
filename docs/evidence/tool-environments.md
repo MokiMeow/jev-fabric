@@ -87,6 +87,17 @@ stale capture rejection, and hostile annotation rejection. Measure the external
 extractor and host action phases separately. No retained result currently
 measures visual extraction accuracy, browser speed, or a Jev advantage.
 
+The optional fixed visual extractor-profile attachment is also conformance-only.
+It verifies that a bounded finding ID belongs to a trusted extractor/profile
+vocabulary and is hash-bound to an existing visual observation. Strict profile
+mode additionally binds the profile digest into the capture tuple and trusted
+capture equality. It does not measure whether the finding is visually correct,
+complete, calibrated, or useful. Before reporting visual quality, retain a
+replayable corpus with independently reviewed expected finding IDs, artifact
+digests, extractor/profile versions, abstentions, stale and profile-swap
+attacks, and per-class error denominators. Do not retain image bytes,
+proprietary scene contents, or browser user data in this repository.
+
 ## WebMCP maturity and security
 
 WebMCP is relevant because it can expose structured web tools to an agent,

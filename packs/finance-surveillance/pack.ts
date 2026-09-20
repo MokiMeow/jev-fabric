@@ -728,11 +728,7 @@ function financeTextCandidates(
     const claim = dataProperty(candidate, "claim");
     const sourceSpanValue = dataProperty(candidate, "sourceSpan");
     const hasClaim = claimHash !== undefined || claim !== undefined;
-    const expectedKeyCount = hasClaim
-      ? sourceSpanValue === undefined
-        ? 5
-        : 6
-      : 3;
+    const expectedKeyCount = hasClaim ? 6 : 3;
     if (
       keys.length !== expectedKeyCount ||
       typeof id !== "string" ||
@@ -758,8 +754,10 @@ function financeTextCandidates(
         claimHash !== sha256Text(claim))
     )
       throw new TypeError("finance text candidate claim is invalid");
-    if (!hasClaim && sourceSpanValue !== undefined)
-      throw new TypeError("finance text source span requires a bound claim");
+    if (hasClaim !== (sourceSpanValue !== undefined))
+      throw new TypeError(
+        "finance text bound claim and source span must be supplied together",
+      );
     const sourceSpan =
       sourceSpanValue === undefined
         ? undefined

@@ -5,54 +5,43 @@
       "type": "object",
       "allOf": [
         { "$ref": "#/$defs/base" },
+        { "$ref": "#/$defs/predicted" },
         {
-          "type": "object",
-          "required": [
-            "predictedRoute",
-            "routeQuestionProbabilities",
-            "calibrationStatus",
-            "abstained",
-            "responseDigest"
-          ],
-          "properties": {
-            "status": { "const": "predicted" },
-            "lookaheadRejected": { "const": false },
-            "predictedRoute": { "$ref": "#/$defs/route" },
-            "routeQuestionProbabilities": { "$ref": "#/$defs/probabilities" },
-            "calibrationStatus": { "const": "measured" },
-            "abstained": { "type": "boolean" },
-            "responseDigest": { "$ref": "#/$defs/hash" }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    {
-      "type": "object",
-      "allOf": [
-        { "$ref": "#/$defs/base" },
+          "oneOf": [
+            { "$ref": "#/$defs/measuredRouteQuestion" },
+            { "$ref": "#/$defs/unavailableRouteQuestion" }
+          ]
+        },
         {
-          "type": "object",
-          "required": [
-            "predictedRoute",
-            "routeQuestionProbabilities",
-            "calibrationStatus",
-            "calibrationReason",
-            "abstained",
-            "responseDigest"
-          ],
-          "properties": {
-            "status": { "const": "predicted" },
-            "lookaheadRejected": { "const": false },
-            "predictedRoute": { "$ref": "#/$defs/route" },
-            "routeQuestionProbabilities": { "type": "null" },
-            "calibrationStatus": { "const": "unavailable" },
-            "calibrationReason": {
-              "enum": ["deterministic_only", "composite_no_distribution"]
+          "oneOf": [
+            { "$ref": "#/$defs/calibrationDecision" },
+            { "$ref": "#/$defs/calibratedTestDecision" },
+            { "$ref": "#/$defs/unavailableTestDecision" }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "observeSupportScore": { "type": "null" },
+                "observeSupportFactorCount": { "const": 0 }
+              }
             },
-            "abstained": { "type": "boolean" },
-            "responseDigest": { "$ref": "#/$defs/hash" }
-          }
+            {
+              "properties": {
+                "observeSupportScore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "observeSupportFactorCount": {
+                  "type": "integer",
+                  "minimum": 4,
+                  "maximum": 40
+                }
+              }
+            }
+          ]
         }
       ],
       "unevaluatedProperties": false
@@ -71,6 +60,7 @@
             "inputTokens": { "const": 0 },
             "outputTokens": { "const": 0 },
             "costNanoUsd": { "const": "0" },
+            "componentAccounting": { "type": "array", "maxItems": 0 },
             "boundaryCode": {
               "enum": ["NO_LOOKAHEAD_ORDER", "SIGNAL_OUTSIDE_WINDOW"]
             }
@@ -91,7 +81,9 @@
         "groupId",
         "track",
         "architecture",
+        "evaluationSplit",
         "goldRoute",
+        "goldAtomic",
         "status",
         "lookaheadProbe",
         "lookaheadRejected",
@@ -109,22 +101,17 @@
         "runId": { "type": "string", "minLength": 1, "maxLength": 160 },
         "caseId": { "type": "string", "minLength": 1, "maxLength": 160 },
         "groupId": { "type": "string", "minLength": 1, "maxLength": 160 },
-        "track": {
-          "enum": [
-            "market_surveillance",
-            "visual_evidence",
-            "financial_text_triage"
-          ]
-        },
-        "architecture": {
-          "enum": [
-            "deterministic_only",
-            "host_model_only",
-            "jev_advisory",
-            "host_plus_jev"
-          ]
-        },
+        "track": { "$ref": "#/$defs/track" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "evaluationSplit": { "enum": ["calibration", "test"] },
         "goldRoute": { "$ref": "#/$defs/route" },
+        "goldAtomic": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/atomicGoldLabel" }
+        },
         "status": { "enum": ["predicted", "rejected_lookahead"] },
         "lookaheadProbe": { "type": "boolean" },
         "lookaheadRejected": { "type": "boolean" },
@@ -158,17 +145,491 @@
         "stateDigest": { "$ref": "#/$defs/hash" }
       }
     },
-    "route": { "enum": ["observe", "investigate", "escalate"] },
-    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-    "probabilities": {
+    "predicted": {
+      "type": "object",
+      "required": [
+        "ungatedRoute",
+        "predictedRoute",
+        "atomicEvidence",
+        "observeSupportScore",
+        "observeSupportFactorCount",
+        "observeGateStatus",
+        "observeGateReason",
+        "observeGatePolicyDigest",
+        "routeQuestionProbabilities",
+        "calibrationStatus",
+        "abstained",
+        "responseDigest"
+      ],
+      "properties": {
+        "status": { "const": "predicted" },
+        "lookaheadProbe": { "const": false },
+        "lookaheadRejected": { "const": false },
+        "ungatedRoute": { "$ref": "#/$defs/route" },
+        "predictedRoute": { "$ref": "#/$defs/route" },
+        "atomicEvidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/atomicEvidenceLedger" }
+        },
+        "observeSupportScore": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "observeSupportFactorCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "observeGateStatus": {
+          "enum": ["CALIBRATION", "CALIBRATED", "UNAVAILABLE"]
+        },
+        "observeGateReason": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "enum": [
+                "deterministic_only",
+                "insufficient_calibration_groups",
+                "no_eligible_observe_cases",
+                "no_threshold_meets_risk_bound"
+              ]
+            }
+          ]
+        },
+        "observeGatePolicyDigest": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/hash" }]
+        },
+        "routeQuestionProbabilities": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/routeProbabilities" }
+          ]
+        },
+        "calibrationStatus": { "enum": ["measured", "unavailable"] },
+        "calibrationReason": {
+          "enum": ["deterministic_only", "composite_no_distribution"]
+        },
+        "abstained": { "type": "boolean" },
+        "responseDigest": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "measuredRouteQuestion": {
+      "type": "object",
+      "properties": {
+        "routeQuestionProbabilities": { "$ref": "#/$defs/routeProbabilities" },
+        "calibrationStatus": { "const": "measured" },
+        "calibrationReason": false
+      }
+    },
+    "unavailableRouteQuestion": {
+      "type": "object",
+      "required": ["calibrationReason"],
+      "properties": {
+        "routeQuestionProbabilities": { "type": "null" },
+        "calibrationStatus": { "const": "unavailable" },
+        "calibrationReason": {
+          "enum": ["deterministic_only", "composite_no_distribution"]
+        }
+      }
+    },
+    "calibrationDecision": {
+      "type": "object",
+      "properties": {
+        "evaluationSplit": { "const": "calibration" },
+        "observeGateStatus": { "const": "CALIBRATION" },
+        "observeGateReason": { "type": "null" },
+        "observeGatePolicyDigest": { "type": "null" },
+        "abstained": { "const": false }
+      }
+    },
+    "calibratedTestDecision": {
+      "type": "object",
+      "properties": {
+        "evaluationSplit": { "const": "test" },
+        "observeGateStatus": { "const": "CALIBRATED" },
+        "observeGateReason": { "type": "null" },
+        "observeGatePolicyDigest": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "unavailableTestDecision": {
+      "type": "object",
+      "properties": {
+        "evaluationSplit": { "const": "test" },
+        "observeGateStatus": { "const": "UNAVAILABLE" },
+        "observeGateReason": {
+          "enum": [
+            "deterministic_only",
+            "insufficient_calibration_groups",
+            "no_eligible_observe_cases",
+            "no_threshold_meets_risk_bound"
+          ]
+        },
+        "observeGatePolicyDigest": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "atomicEvidenceLedger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "questionSetHash", "candidateBindings", "questions"],
+      "properties": {
+        "role": { "enum": ["host", "jev"] },
+        "questionSetHash": { "$ref": "#/$defs/hash" },
+        "candidateBindings": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/candidateBinding" }
+        },
+        "questions": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/atomicChoiceEvidence" }
+        }
+      }
+    },
+    "candidateBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateId",
+        "evidenceHash",
+        "claimQuestionId",
+        "citationQuestionId"
+      ],
+      "properties": {
+        "candidateId": { "$ref": "#/$defs/candidateId" },
+        "evidenceHash": { "$ref": "#/$defs/hash" },
+        "claimQuestionId": {
+          "type": "string",
+          "pattern": "^finance-text-claim(-cited)?:[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+        },
+        "citationQuestionId": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "string",
+              "pattern": "^finance-text-citation:[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+            }
+          ]
+        }
+      }
+    },
+    "atomicChoiceEvidence": {
+      "oneOf": [
+        { "$ref": "#/$defs/routeQuestionEvidence" },
+        { "$ref": "#/$defs/anomalyQuestionEvidence" },
+        { "$ref": "#/$defs/qualityQuestionEvidence" },
+        { "$ref": "#/$defs/influenceQuestionEvidence" },
+        { "$ref": "#/$defs/claimQuestionEvidence" },
+        { "$ref": "#/$defs/citationQuestionEvidence" }
+      ]
+    },
+    "routeQuestionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "selected",
+        "probabilities",
+        "candidateId",
+        "evidenceHash"
+      ],
+      "properties": {
+        "questionId": { "const": "finance-route" },
+        "selected": { "$ref": "#/$defs/route" },
+        "probabilities": { "$ref": "#/$defs/routeProbabilities" },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "anomalyQuestionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "selected",
+        "probabilities",
+        "candidateId",
+        "evidenceHash"
+      ],
+      "properties": {
+        "questionId": { "const": "finance-anomaly" },
+        "selected": { "enum": ["routine", "concerning", "unclear"] },
+        "probabilities": { "$ref": "#/$defs/anomalyProbabilities" },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "qualityQuestionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "selected",
+        "probabilities",
+        "candidateId",
+        "evidenceHash"
+      ],
+      "properties": {
+        "questionId": { "const": "finance-evidence-quality" },
+        "selected": { "enum": ["sufficient", "conflicted", "insufficient"] },
+        "probabilities": { "$ref": "#/$defs/qualityProbabilities" },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "influenceQuestionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "selected",
+        "probabilities",
+        "candidateId",
+        "evidenceHash"
+      ],
+      "properties": {
+        "questionId": { "const": "finance-untrusted-influence" },
+        "selected": { "enum": ["absent", "present"] },
+        "probabilities": { "$ref": "#/$defs/influenceProbabilities" },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "claimQuestionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "selected",
+        "probabilities",
+        "candidateId",
+        "evidenceHash"
+      ],
+      "properties": {
+        "questionId": {
+          "type": "string",
+          "pattern": "^finance-text-claim(-cited)?:[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+        },
+        "selected": { "$ref": "#/$defs/claimLabel" },
+        "probabilities": { "$ref": "#/$defs/claimProbabilities" },
+        "candidateId": { "$ref": "#/$defs/candidateId" },
+        "evidenceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "citationQuestionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "selected",
+        "probabilities",
+        "candidateId",
+        "evidenceHash"
+      ],
+      "properties": {
+        "questionId": {
+          "type": "string",
+          "pattern": "^finance-text-citation:[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+        },
+        "selected": { "$ref": "#/$defs/citationLabel" },
+        "probabilities": { "$ref": "#/$defs/citationProbabilities" },
+        "candidateId": { "$ref": "#/$defs/candidateId" },
+        "evidenceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "atomicGoldLabel": {
+      "oneOf": [
+        { "$ref": "#/$defs/routeGold" },
+        { "$ref": "#/$defs/anomalyGold" },
+        { "$ref": "#/$defs/qualityGold" },
+        { "$ref": "#/$defs/influenceGold" },
+        { "$ref": "#/$defs/claimGold" },
+        { "$ref": "#/$defs/citationGold" }
+      ]
+    },
+    "routeGold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "label", "candidateId", "evidenceHash"],
+      "properties": {
+        "questionId": { "const": "finance-route" },
+        "label": { "$ref": "#/$defs/route" },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "anomalyGold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "label", "candidateId", "evidenceHash"],
+      "properties": {
+        "questionId": { "const": "finance-anomaly" },
+        "label": { "enum": ["routine", "concerning", "unclear"] },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "qualityGold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "label", "candidateId", "evidenceHash"],
+      "properties": {
+        "questionId": { "const": "finance-evidence-quality" },
+        "label": { "enum": ["sufficient", "conflicted", "insufficient"] },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "influenceGold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "label", "candidateId", "evidenceHash"],
+      "properties": {
+        "questionId": { "const": "finance-untrusted-influence" },
+        "label": { "enum": ["absent", "present"] },
+        "candidateId": { "type": "null" },
+        "evidenceHash": { "type": "null" }
+      }
+    },
+    "claimGold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "label", "candidateId", "evidenceHash"],
+      "properties": {
+        "questionId": {
+          "type": "string",
+          "pattern": "^finance-text-claim(-cited)?:[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+        },
+        "label": { "$ref": "#/$defs/claimLabel" },
+        "candidateId": { "$ref": "#/$defs/candidateId" },
+        "evidenceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "citationGold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "label", "candidateId", "evidenceHash"],
+      "properties": {
+        "questionId": {
+          "type": "string",
+          "pattern": "^finance-text-citation:[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+        },
+        "label": { "$ref": "#/$defs/citationLabel" },
+        "candidateId": { "$ref": "#/$defs/candidateId" },
+        "evidenceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "routeProbabilities": {
       "type": "object",
       "additionalProperties": false,
       "required": ["observe", "investigate", "escalate"],
       "properties": {
-        "observe": { "type": "number", "minimum": 0, "maximum": 1 },
-        "investigate": { "type": "number", "minimum": 0, "maximum": 1 },
-        "escalate": { "type": "number", "minimum": 0, "maximum": 1 }
+        "observe": { "$ref": "#/$defs/probability" },
+        "investigate": { "$ref": "#/$defs/probability" },
+        "escalate": { "$ref": "#/$defs/probability" }
       }
-    }
+    },
+    "anomalyProbabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routine", "concerning", "unclear"],
+      "properties": {
+        "routine": { "$ref": "#/$defs/probability" },
+        "concerning": { "$ref": "#/$defs/probability" },
+        "unclear": { "$ref": "#/$defs/probability" }
+      }
+    },
+    "qualityProbabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sufficient", "conflicted", "insufficient"],
+      "properties": {
+        "sufficient": { "$ref": "#/$defs/probability" },
+        "conflicted": { "$ref": "#/$defs/probability" },
+        "insufficient": { "$ref": "#/$defs/probability" }
+      }
+    },
+    "influenceProbabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["absent", "present"],
+      "properties": {
+        "absent": { "$ref": "#/$defs/probability" },
+        "present": { "$ref": "#/$defs/probability" }
+      }
+    },
+    "claimProbabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "performance_change",
+        "guidance_or_outlook_change",
+        "liquidity_or_going_concern",
+        "accounting_or_control_issue",
+        "legal_or_regulatory_contingency",
+        "none"
+      ],
+      "properties": {
+        "performance_change": { "$ref": "#/$defs/probability" },
+        "guidance_or_outlook_change": { "$ref": "#/$defs/probability" },
+        "liquidity_or_going_concern": { "$ref": "#/$defs/probability" },
+        "accounting_or_control_issue": { "$ref": "#/$defs/probability" },
+        "legal_or_regulatory_contingency": { "$ref": "#/$defs/probability" },
+        "none": { "$ref": "#/$defs/probability" }
+      }
+    },
+    "citationProbabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supports", "contradicts", "insufficient_context"],
+      "properties": {
+        "supports": { "$ref": "#/$defs/probability" },
+        "contradicts": { "$ref": "#/$defs/probability" },
+        "insufficient_context": { "$ref": "#/$defs/probability" }
+      }
+    },
+    "claimLabel": {
+      "enum": [
+        "performance_change",
+        "guidance_or_outlook_change",
+        "liquidity_or_going_concern",
+        "accounting_or_control_issue",
+        "legal_or_regulatory_contingency",
+        "none"
+      ]
+    },
+    "citationLabel": {
+      "enum": ["supports", "contradicts", "insufficient_context"]
+    },
+    "route": { "enum": ["observe", "investigate", "escalate"] },
+    "track": {
+      "enum": [
+        "market_surveillance",
+        "visual_evidence",
+        "financial_text_triage"
+      ]
+    },
+    "architecture": {
+      "enum": [
+        "deterministic_only",
+        "host_model_only",
+        "jev_advisory",
+        "host_plus_jev"
+      ]
+    },
+    "candidateId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+    },
+    "probability": { "type": "number", "minimum": 0, "maximum": 1 },
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
   }
 }

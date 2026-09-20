@@ -54,14 +54,16 @@ all excerpt, ordered-candidate, annotation, and visual-artifact hashes. Stable
 window, binding, and general input failures without matching error text.
 
 A trusted candidate binding may also include a SHA-256 hash for one proposed
-claim. Claim binding is all-or-none across the candidate list: the untrusted
+claim. Every claim-bearing binding must also include its byte range and section
+hash. Claim binding is all-or-none across the candidate list: the untrusted
 evidence must then supply one claim per excerpt in the same order, each limited
 to 1,000 characters and 8 KiB total. The emitted candidate retains `claim` and
 `excerpt` as separate `untrusted_data_only` strings. Trusted code may retain an
-optional byte range and section hash with a claim-bearing candidate. The host
-must first locate the exact excerpt in the authenticated document and calculate
-those offsets; the adapter validates and binds the metadata but cannot prove
-source authenticity or quote location without the source document itself.
+exact byte range and section hash only after locating the excerpt in the
+authenticated document. The adapter validates and binds that metadata but
+cannot prove source authenticity or quote location without the source document
+itself; the retained benchmark builder additionally re-reads the pinned source
+bytes and verifies the exact span.
 
 Then use `financeSurveillancePack`. Its finite output vocabulary is:
 

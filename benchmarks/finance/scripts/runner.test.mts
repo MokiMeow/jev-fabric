@@ -13,15 +13,18 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { canonicalJson, sha256 } from "../builders/lib/canonical.mjs";
-import { FINANCE_CHART_RENDERER } from "../builders/visual/render.mjs";
-import { renderFinanceChart } from "../builders/visual/render.mjs";
+import type { FinanceAdvisoryState } from "../../../packages/adapters/src/index.js";
 import {
-  aggregateFinanceBenchmarkTraces,
+  type FinanceAtomicEvidenceLedger,
   type FinanceBenchmarkTrace,
   type FinanceTrack,
   stableJson,
 } from "../../../packages/evals/src/index.js";
+import { canonicalJson, sha256 } from "../builders/lib/canonical.mjs";
+import {
+  FINANCE_CHART_RENDERER,
+  renderFinanceChart,
+} from "../builders/visual/render.mjs";
 import {
   type FinanceBenchmarkCase,
   type FinanceBenchmarkDrivers,
@@ -29,6 +32,7 @@ import {
   type FinanceRuntimeEvidence,
   type FinanceRuntimeProvenance,
   loadFinanceDataset,
+  recomputeFinanceBenchmarkEvidence,
   runFinanceBenchmark,
   writeFinanceArtifacts,
 } from "./run.mjs";
@@ -84,6 +88,17 @@ function benchmarkCase(
           candidateBindings: [{ id: "filing.claim.1", excerptHash }],
         }
       : undefined;
+  const textEvidenceHash =
+    text === undefined
+      ? undefined
+      : `sha256:${createHash("sha256")
+          .update(
+            stableJson({
+              id: text.candidateBindings[0]?.id,
+              excerptHash: text.candidateBindings[0]?.excerptHash,
+            }),
+          )
+          .digest("hex")}`;
   return {
     schemaVersion: "1",
     id: prefix,
@@ -91,6 +106,42 @@ function benchmarkCase(
     track,
     split,
     goldRoute: "observe",
+    goldAtomic: [
+      {
+        questionId: "finance-route",
+        label: "observe",
+        candidateId: null,
+        evidenceHash: null,
+      },
+      {
+        questionId: "finance-anomaly",
+        label: "routine",
+        candidateId: null,
+        evidenceHash: null,
+      },
+      {
+        questionId: "finance-evidence-quality",
+        label: "sufficient",
+        candidateId: null,
+        evidenceHash: null,
+      },
+      {
+        questionId: "finance-untrusted-influence",
+        label: "absent",
+        candidateId: null,
+        evidenceHash: null,
+      },
+      ...(textEvidenceHash === undefined
+        ? []
+        : [
+            {
+              questionId: "finance-text-claim:filing.claim.1",
+              label: "none",
+              candidateId: "filing.claim.1",
+              evidenceHash: textEvidenceHash,
+            },
+          ]),
+    ],
     lookaheadProbe: probe,
     evaluationNow:
       split === "calibration"
@@ -257,6 +308,105 @@ async function datasetDirectory(
   return { root: fixtureRoot, directory };
 }
 
+function fixtureAtomicEvidence(
+  role: "host" | "jev",
+  state: FinanceAdvisoryState,
+  questionSetHash: string,
+): FinanceAtomicEvidenceLedger {
+  const candidateBindings =
+    state.text?.candidates.map((candidate) => {
+      const evidenceHash = `sha256:${createHash("sha256")
+        .update(
+          stableJson({
+            id: candidate.id,
+            excerptHash: candidate.excerptHash,
+            ...(candidate.claimHash === undefined
+              ? {}
+              : { claimHash: candidate.claimHash }),
+            ...(candidate.sourceSpan === undefined
+              ? {}
+              : { sourceSpan: candidate.sourceSpan }),
+          }),
+        )
+        .digest("hex")}`;
+      const cited = candidate.claim !== undefined;
+      return {
+        candidateId: candidate.id,
+        evidenceHash,
+        claimQuestionId:
+          `${cited ? "finance-text-claim-cited:" : "finance-text-claim:"}${candidate.id}` as
+            | `finance-text-claim:${string}`
+            | `finance-text-claim-cited:${string}`,
+        citationQuestionId: cited
+          ? (`finance-text-citation:${candidate.id}` as const)
+          : null,
+      };
+    }) ?? [];
+  const byCandidate = new Map(
+    candidateBindings.map((binding) => [binding.candidateId, binding]),
+  );
+  const questions: FinanceAtomicEvidenceLedger["questions"][number][] = [
+    {
+      questionId: "finance-route",
+      selected: "observe",
+      probabilities: { observe: 0.8, investigate: 0.1, escalate: 0.1 },
+      candidateId: null,
+      evidenceHash: null,
+    },
+    {
+      questionId: "finance-anomaly",
+      selected: "routine",
+      probabilities: { routine: 0.8, concerning: 0.1, unclear: 0.1 },
+      candidateId: null,
+      evidenceHash: null,
+    },
+    {
+      questionId: "finance-evidence-quality",
+      selected: "sufficient",
+      probabilities: { sufficient: 0.8, conflicted: 0.1, insufficient: 0.1 },
+      candidateId: null,
+      evidenceHash: null,
+    },
+    {
+      questionId: "finance-untrusted-influence",
+      selected: "absent",
+      probabilities: { absent: 0.8, present: 0.2 },
+      candidateId: null,
+      evidenceHash: null,
+    },
+  ];
+  for (const binding of candidateBindings) {
+    questions.push({
+      questionId: binding.claimQuestionId,
+      selected: "none",
+      probabilities: {
+        performance_change: 0.04,
+        guidance_or_outlook_change: 0.04,
+        liquidity_or_going_concern: 0.04,
+        accounting_or_control_issue: 0.04,
+        legal_or_regulatory_contingency: 0.04,
+        none: 0.8,
+      },
+      candidateId: binding.candidateId,
+      evidenceHash: binding.evidenceHash,
+    });
+    if (binding.citationQuestionId !== null)
+      questions.push({
+        questionId: binding.citationQuestionId,
+        selected: "supports",
+        probabilities: {
+          supports: 0.8,
+          contradicts: 0.1,
+          insufficient_context: 0.1,
+        },
+        candidateId: binding.candidateId,
+        evidenceHash:
+          byCandidate.get(binding.candidateId)?.evidenceHash ?? null,
+      });
+  }
+  return { role, questionSetHash, candidateBindings, questions };
+}
+
 const predicted = {
   status: "predicted" as const,
   predictedRoute: "observe" as const,
@@ -284,6 +434,7 @@ const predicted = {
 const drivers: FinanceBenchmarkDrivers = {
   deterministic_only: () => ({
     ...predicted,
+    atomicEvidence: [],
     routeQuestionProbabilities: null,
     calibrationStatus: "unavailable",
     calibrationReason: "deterministic_only",
@@ -292,9 +443,17 @@ const drivers: FinanceBenchmarkDrivers = {
     costNanoUsd: "0",
     componentAccounting: [],
   }),
-  host_model_only: () => predicted,
-  jev_advisory: () => ({
+  host_model_only: (state, context) => ({
     ...predicted,
+    atomicEvidence: [
+      fixtureAtomicEvidence("host", state, context.questionSetHash),
+    ],
+  }),
+  jev_advisory: (state, context) => ({
+    ...predicted,
+    atomicEvidence: [
+      fixtureAtomicEvidence("jev", state, context.questionSetHash),
+    ],
     componentAccounting: [
       {
         role: "jev",
@@ -304,8 +463,12 @@ const drivers: FinanceBenchmarkDrivers = {
       },
     ],
   }),
-  host_plus_jev: () => ({
+  host_plus_jev: (state, context) => ({
     ...predicted,
+    atomicEvidence: [
+      fixtureAtomicEvidence("host", state, context.questionSetHash),
+      fixtureAtomicEvidence("jev", state, context.questionSetHash),
+    ],
     routeQuestionProbabilities: null,
     calibrationStatus: "unavailable",
     calibrationReason: "composite_no_distribution",
@@ -354,6 +517,10 @@ const evidenceHash = (evidence: FinanceRuntimeEvidence) =>
   `sha256:${createHash("sha256").update(stableJson(evidence)).digest("hex")}`;
 
 const runtimeEvidence = [pricingEvidence, jevModelEvidence] as const;
+const observeGate = {
+  maxObservedFalseObserveRisk: 0,
+  minimumCalibrationGroups: 1,
+} as const;
 
 const component = (
   role: "deterministic" | "host" | "jev",
@@ -434,10 +601,57 @@ test("runs, retains, and independently validates the complete finance matrix", a
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     assert.equal(artifacts.run.sampleCount, 6);
-    assert.equal(artifacts.run.traceCount, 24);
+    assert.equal(artifacts.run.calibrationSampleCount, 3);
+    assert.equal(artifacts.run.traceCount, 36);
+    const retainedTraces = artifacts.traces as Array<Record<string, unknown>>;
+    const calibrationTraces = retainedTraces.filter(
+      (trace) => trace.evaluationSplit === "calibration",
+    );
+    const testPredictions = retainedTraces.filter(
+      (trace) =>
+        trace.evaluationSplit === "test" && trace.status === "predicted",
+    );
+    assert.equal(calibrationTraces.length, 12);
+    assert.ok(
+      calibrationTraces.every(
+        (trace) =>
+          trace.observeGateStatus === "CALIBRATION" &&
+          trace.observeGatePolicyDigest === null &&
+          trace.predictedRoute === trace.ungatedRoute &&
+          trace.abstained === false,
+      ),
+    );
+    assert.ok(
+      testPredictions
+        .filter((trace) => trace.architecture === "deterministic_only")
+        .every(
+          (trace) =>
+            trace.ungatedRoute === "observe" &&
+            trace.predictedRoute === "investigate" &&
+            trace.abstained === true &&
+            trace.observeGateStatus === "UNAVAILABLE",
+        ),
+    );
+    assert.ok(
+      testPredictions
+        .filter((trace) => trace.architecture !== "deterministic_only")
+        .every(
+          (trace) =>
+            trace.predictedRoute === "observe" &&
+            trace.abstained === false &&
+            trace.observeGateStatus === "CALIBRATED",
+        ),
+    );
+    const gate = artifacts.run.observeGate as {
+      policies: readonly unknown[];
+      riskSemantics: string;
+    };
+    assert.equal(gate.riskSemantics, "empirical_calibration_only");
+    assert.equal(gate.policies.length, 12);
     assert.equal(
       (artifacts.run.rows as Array<{ sampleCount: number }>).length,
       12,
@@ -445,6 +659,22 @@ test("runs, retains, and independently validates the complete finance matrix", a
     assert.ok(
       (artifacts.run.rows as Array<{ sampleCount: number }>).every(
         (row) => row.sampleCount === 2,
+      ),
+    );
+    assert.ok(
+      (
+        artifacts.run.rows as Array<{
+          architecture: string;
+          routeQuestionMetricTarget: string | null;
+          metrics: { routeQuestionBrier: number | null };
+        }>
+      ).every((row) =>
+        row.architecture === "host_model_only" ||
+        row.architecture === "jev_advisory"
+          ? row.routeQuestionMetricTarget === "atomic_gold_finance_route" &&
+            row.metrics.routeQuestionBrier !== null
+          : row.routeQuestionMetricTarget === null &&
+            row.metrics.routeQuestionBrier === null,
       ),
     );
     assert.doesNotThrow(() => validateFinanceRun(artifacts.run));
@@ -527,6 +757,7 @@ test("artifact writer rejects traversal before creating any outside file", async
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const first = artifacts.dataset.visualArtifacts[0];
@@ -564,6 +795,7 @@ test("artifact writer snapshots mutable retained bytes before its first await", 
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const first = artifacts.dataset.visualArtifacts[0];
@@ -589,6 +821,7 @@ test("offline validation rejects missing retained runtime evidence", async () =>
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const output = join(fixture.root, "artifacts");
@@ -619,6 +852,7 @@ test("offline validation rejects tampered or extra runtime evidence files", asyn
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const output = join(tamperedFixture.root, "artifacts");
@@ -648,6 +882,7 @@ test("offline validation rejects tampered or extra runtime evidence files", asyn
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const output = join(extraFixture.root, "artifacts");
@@ -672,6 +907,7 @@ test("offline validation rejects forged repricing without its retained evidence"
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const output = join(fixture.root, "artifacts");
@@ -731,7 +967,6 @@ test("offline validation rejects forged repricing without its retained evidence"
     run.traceSetHash = `sha256:${createHash("sha256")
       .update(traceText)
       .digest("hex")}`;
-    run.rows = aggregateFinanceBenchmarkTraces(traces);
     await writeFile(runPath, JSON.stringify(run));
 
     await assert.rejects(
@@ -753,6 +988,7 @@ test("concurrency does not change canonical retained traces", async () => {
       drivers,
       runtime: { ...runtime, concurrency: 1 },
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const concurrent = await runFinanceBenchmark({
@@ -761,6 +997,7 @@ test("concurrency does not change canonical retained traces", async () => {
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     assert.equal(serial.tracesJsonl, concurrent.tracesJsonl);
@@ -810,10 +1047,14 @@ test("rejects digest drift, split leakage, and unsafe driver output", async () =
         dataset,
         runtime,
         runtimeEvidence,
+        observeGate,
         drivers: {
           ...drivers,
-          jev_advisory: () => ({
+          jev_advisory: (state, context) => ({
             ...predicted,
+            atomicEvidence: [
+              fixtureAtomicEvidence("jev", state, context.questionSetHash),
+            ],
             unsafeExecutionAttempt: true,
             componentAccounting: [
               {
@@ -844,6 +1085,7 @@ test("trace tampering invalidates the retained set hash", async () => {
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const output = join(fixture.root, "artifacts");
@@ -861,6 +1103,148 @@ test("trace tampering invalidates the retained set hash", async () => {
   }
 });
 
+test("independent validation rejects a forged observe-gate policy digest", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    const artifacts = await runFinanceBenchmark({
+      runId: "finance-policy-tamper",
+      dataset,
+      drivers,
+      runtime,
+      runtimeEvidence,
+      observeGate,
+      now: () => 100,
+    });
+    const output = join(fixture.root, "artifacts");
+    await writeFinanceArtifacts(output, artifacts);
+    const runPath = join(output, "run.json");
+    const run = JSON.parse(await readFile(runPath, "utf8")) as {
+      observeGate: {
+        policies: Array<{ policyDigest: string }>;
+      };
+    };
+    const policy = run.observeGate.policies[0];
+    assert.ok(policy);
+    policy.policyDigest = hash("9");
+    await writeFile(runPath, JSON.stringify(run));
+    await assert.rejects(
+      validateFinanceArtifactDirectory(output),
+      /policies do not match calibration traces/u,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("recomputation rejects self-consistent atomic evidence rebound away from dataset gold", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    const artifacts = await runFinanceBenchmark({
+      runId: "finance-atomic-binding-tamper",
+      dataset,
+      drivers,
+      runtime,
+      runtimeEvidence,
+      observeGate,
+      now: () => 100,
+    });
+    type MutableLedger = {
+      candidateBindings: Array<{
+        candidateId: string;
+        evidenceHash: string;
+        claimQuestionId: string;
+        citationQuestionId: string | null;
+      }>;
+      questions: Array<{
+        questionId: string;
+        selected: string;
+        probabilities: Record<string, number>;
+        candidateId: string | null;
+        evidenceHash: string | null;
+      }>;
+    };
+    const expectRejected = (tamper: (ledger: MutableLedger) => void) => {
+      const traces = structuredClone(artifacts.traces) as Array<
+        Record<string, unknown> & {
+          architecture: string;
+          track: string;
+          status: string;
+          atomicEvidence: MutableLedger[];
+        }
+      >;
+      const target = traces.find(
+        (trace) =>
+          trace.status === "predicted" &&
+          trace.track === "financial_text_triage" &&
+          trace.architecture === "host_model_only",
+      );
+      assert.ok(target);
+      const ledger = target.atomicEvidence[0];
+      assert.ok(ledger);
+      tamper(ledger);
+      assert.throws(
+        () =>
+          recomputeFinanceBenchmarkEvidence(
+            traces,
+            dataset,
+            runtime,
+            observeGate,
+          ),
+        /dataset bindings are inconsistent/u,
+      );
+    };
+    expectRejected((ledger) => {
+      const binding = ledger.candidateBindings[0];
+      assert.ok(binding);
+      const forgedEvidenceHash = hash("9");
+      binding.evidenceHash = forgedEvidenceHash;
+      for (const question of ledger.questions)
+        if (question.candidateId === binding.candidateId)
+          question.evidenceHash = forgedEvidenceHash;
+    });
+    expectRejected((ledger) => {
+      const dynamicIds = new Set(
+        ledger.candidateBindings.flatMap((binding) => [
+          binding.claimQuestionId,
+          ...(binding.citationQuestionId === null
+            ? []
+            : [binding.citationQuestionId]),
+        ]),
+      );
+      ledger.candidateBindings = [];
+      ledger.questions = ledger.questions.filter(
+        (question) => !dynamicIds.has(question.questionId),
+      );
+    });
+    expectRejected((ledger) => {
+      ledger.candidateBindings.push({
+        candidateId: "forged-candidate",
+        evidenceHash: hash("9"),
+        claimQuestionId: "finance-text-claim:forged-candidate",
+        citationQuestionId: null,
+      });
+      ledger.questions.push({
+        questionId: "finance-text-claim:forged-candidate",
+        selected: "none",
+        probabilities: {
+          performance_change: 0.04,
+          guidance_or_outlook_change: 0.04,
+          liquidity_or_going_concern: 0.04,
+          accounting_or_control_issue: 0.04,
+          legal_or_regulatory_contingency: 0.04,
+          none: 0.8,
+        },
+        candidateId: "forged-candidate",
+        evidenceHash: hash("9"),
+      });
+    });
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("independent validation rejects repriced traces even after aggregate and hash forgery", async () => {
   const fixture = await datasetDirectory();
   try {
@@ -871,6 +1255,7 @@ test("independent validation rejects repriced traces even after aggregate and ha
       drivers,
       runtime,
       runtimeEvidence,
+      observeGate,
       now: () => 100,
     });
     const output = join(fixture.root, "artifacts");
@@ -904,7 +1289,6 @@ test("independent validation rejects repriced traces even after aggregate and ha
     run.traceSetHash = `sha256:${createHash("sha256")
       .update(traceText)
       .digest("hex")}`;
-    run.rows = aggregateFinanceBenchmarkTraces(traces);
     await writeFile(runPath, JSON.stringify(run));
     await assert.rejects(
       validateFinanceArtifactDirectory(output),
@@ -935,6 +1319,7 @@ test("runtime rejects inconsistent or malformed pricing provenance", async () =>
         drivers,
         runtime: inconsistent,
         runtimeEvidence,
+        observeGate,
         now: () => 100,
       }),
       /component provenance must be identical/u,
@@ -953,6 +1338,7 @@ test("runtime rejects inconsistent or malformed pricing provenance", async () =>
         drivers,
         runtime: malformed,
         runtimeEvidence,
+        observeGate,
         now: () => 100,
       }),
       /credential-free HTTPS/u,
@@ -971,6 +1357,7 @@ test("runtime rejects inconsistent or malformed pricing provenance", async () =>
         drivers,
         runtime: queryPricing,
         runtimeEvidence,
+        observeGate,
         now: () => 100,
       }),
       /credential-free HTTPS/u,
@@ -990,6 +1377,7 @@ test("runtime rejects inconsistent or malformed pricing provenance", async () =>
         drivers,
         runtime: queryModelEvidence,
         runtimeEvidence,
+        observeGate,
         now: () => 100,
       }),
       /credential-free HTTPS/u,
@@ -1020,6 +1408,7 @@ test("retained run metadata is bound to the dataset manifest", async () => {
         drivers,
         runtime,
         runtimeEvidence,
+        observeGate,
         now: () => 100,
       });
       const output = join(fixture.root, "artifacts");
@@ -1083,6 +1472,7 @@ test("driver context omits dataset identifiers and labels", async () => {
       dataset,
       runtime,
       runtimeEvidence,
+      observeGate,
       drivers: Object.fromEntries(
         Object.entries(drivers).map(([architecture, driver]) => [
           architecture,
@@ -1097,6 +1487,7 @@ test("driver context omits dataset identifiers and labels", async () => {
     assert.deepEqual([...observedKeys].sort(), [
       "architecture",
       "evaluationNowEpochMs",
+      "questionSetHash",
       "signal",
       "track",
     ]);
@@ -1125,10 +1516,14 @@ test("token and price accounting remain independently unavailable rather than ze
       dataset,
       runtime: unmeteredRuntime,
       runtimeEvidence,
+      observeGate,
       drivers: {
         ...drivers,
-        host_model_only: () => ({
+        host_model_only: (state, context) => ({
           ...predicted,
+          atomicEvidence: [
+            fixtureAtomicEvidence("host", state, context.questionSetHash),
+          ],
           costNanoUsd: null,
           componentAccounting: [
             {
@@ -1139,8 +1534,11 @@ test("token and price accounting remain independently unavailable rather than ze
             },
           ],
         }),
-        jev_advisory: () => ({
+        jev_advisory: (state, context) => ({
           ...predicted,
+          atomicEvidence: [
+            fixtureAtomicEvidence("jev", state, context.questionSetHash),
+          ],
           inputTokens: null,
           outputTokens: null,
           costNanoUsd: null,
@@ -1153,8 +1551,12 @@ test("token and price accounting remain independently unavailable rather than ze
             },
           ],
         }),
-        host_plus_jev: () => ({
+        host_plus_jev: (state, context) => ({
           ...predicted,
+          atomicEvidence: [
+            fixtureAtomicEvidence("host", state, context.questionSetHash),
+            fixtureAtomicEvidence("jev", state, context.questionSetHash),
+          ],
           routeQuestionProbabilities: null,
           calibrationStatus: "unavailable",
           calibrationReason: "composite_no_distribution",
@@ -1198,8 +1600,8 @@ test("token and price accounting remain independently unavailable rather than ze
         (row) =>
           row.tokenAccountingStatus === "MEASURED" &&
           row.costAccountingStatus === "UNMETERED" &&
-          row.metrics.inputTokens === 10 &&
-          row.metrics.outputTokens === 2 &&
+          row.metrics.inputTokens === 20 &&
+          row.metrics.outputTokens === 4 &&
           row.metrics.estimatedCostUsd === null,
       ),
     );

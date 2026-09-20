@@ -23,6 +23,33 @@ Validation also requires the host to pass the extractor's trusted capture
 projection separately from the snapshot. The public hashes detect mismatch;
 they do not authenticate a caller-supplied capture by themselves.
 
+## Fixed visual extractor profiles
+
+Use a `ToolEnvironmentVisualExtractorProfile` when an extractor must report a
+finite, code-reviewed vocabulary rather than free-form advisory annotations. A
+profile fixes its extractor id/version, schema version, supported visual
+modalities, and sorted finding identifiers. The only permitted dispositions are
+`visual_ambiguity`, `requires_structured_state`, and `requires_human_review`.
+They are advisory classifications, not actions, permissions, confidence scores,
+or approval signals.
+
+First validate the visual observation against its exact snapshot, trusted
+capture, and clock. For strict profile mode, use a separate profiled capture:
+its independently trusted equality projection and canonical snapshot binding
+both include the extractor profile hash. Then validate the fixed finding-ID
+attachment against that already-validated profiled observation and a separately
+trusted profile. Its binding commits to the observation's capture and
+annotation hashes, profile hash, and sorted finding IDs. Reject a profile,
+capture, observation, or finding-id swap. No profile may carry text prompts,
+pixels, file paths, URLs, DOM selectors, coordinates, host handles, action IDs,
+arguments, or executable data.
+
+This works for browser viewports and DCC viewports alike, including Blender,
+Unreal, Unity, Godot, and FreeCAD, because it describes evidence vocabulary
+only. It does not standardize rendering, screenshotting, OCR, scene inspection,
+or host invocation. For browsers, prefer a page's structured WebMCP/DOM state;
+use a visual profile only to request structured state or human review.
+
 The exported Zod schemas validate structure; they are deliberately not an
 authorization allowlist. A host must keep a code-reviewed
 `TrustedToolEnvironmentCatalogue` outside page, model, project, and request

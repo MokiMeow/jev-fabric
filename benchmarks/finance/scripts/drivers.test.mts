@@ -88,6 +88,7 @@ function context(
     architecture,
     signal,
     track: "market_surveillance",
+    questionSetHash: hash("e"),
     evaluationNowEpochMs: Date.parse("2026-02-15T12:01:00.000Z"),
   };
 }
@@ -756,7 +757,12 @@ test("metadata helpers adapt injected TypeSafe and compatible providers without 
   );
   returnedCompatibleModel = "different-model-2026-09-20";
   await assert.rejects(
-    created.drivers.host_model_only(financeState(), context("host_model_only")),
+    Promise.resolve(
+      created.drivers.host_model_only(
+        financeState(),
+        context("host_model_only"),
+      ),
+    ),
     /model mismatch/u,
   );
   const redirectingProvider = new OpenAICompatibleProvider({

@@ -3,24 +3,14 @@ import {
   lstat,
   mkdir,
   open,
-  realpath,
   readdir,
   readFile,
+  realpath,
   rename,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
-import {
-  assertSafeRelativePath,
-  canonicalJson,
-  readSafeRelativeFile,
-} from "../builders/lib/canonical.mjs";
-import {
-  FINANCE_CHART_RENDERER,
-  FINANCE_VISUAL_MUTATION_ROUTES,
-  renderFinanceChart,
-} from "../builders/visual/render.mjs";
 import {
   bindFinanceAdvisoryEvidenceWithText,
   FinanceAdvisoryBoundaryError,
@@ -31,16 +21,41 @@ import {
 } from "../../../packages/adapters/src/index.js";
 import {
   aggregateFinanceBenchmarkTraces,
+  applyFinanceObserveGate,
+  assertFinanceGoldRouteAlignment,
+  combineFinanceObserveSupport,
+  createFinanceObserveGatePolicyArtifact,
   type FinanceArchitecture,
+  type FinanceAtomicCandidateBinding,
+  type FinanceAtomicEvidenceLedger,
+  type FinanceAtomicGoldLabel,
   type FinanceBenchmarkTrace,
+  type FinanceObserveGatePolicyArtifact,
   type FinanceRoute,
   type FinanceRouteProbabilities,
   type FinanceTrack,
   financeArchitectures,
+  financeAtomicMetrics,
+  financeObserveGateFormulaId,
+  financeObserveGateMetrics,
+  financeObserveGatePolicyId,
   financeRoutes,
   financeTracks,
+  fitFinanceObserveGate,
   stableJson,
+  validateFinanceObserveGatePolicyArtifact,
 } from "../../../packages/evals/src/index.js";
+import { financeSurveillancePack } from "../../../packs/finance-surveillance/pack.js";
+import {
+  assertSafeRelativePath,
+  canonicalJson,
+  readSafeRelativeFile,
+} from "../builders/lib/canonical.mjs";
+import {
+  FINANCE_CHART_RENDERER,
+  FINANCE_VISUAL_MUTATION_ROUTES,
+  renderFinanceChart,
+} from "../builders/visual/render.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const maximumCases = 100_000;
@@ -55,6 +70,7 @@ export interface FinanceBenchmarkCase {
   readonly track: FinanceTrack;
   readonly split: "calibration" | "test";
   readonly goldRoute: FinanceRoute;
+  readonly goldAtomic: readonly FinanceAtomicGoldLabel[];
   readonly lookaheadProbe: boolean;
   readonly evaluationNow: string;
   readonly trustedProjection: TrustedFinanceProjection;
@@ -95,6 +111,7 @@ export type FinanceDriverResult =
       readonly predictedRoute: FinanceRoute;
       readonly routeQuestionProbabilities: FinanceRouteProbabilities;
       readonly calibrationStatus: "measured";
+      readonly atomicEvidence: readonly FinanceAtomicEvidenceLedger[];
       readonly abstained: boolean;
       readonly unsafeExecutionAttempt: boolean;
       readonly inputTokens: number | null;
@@ -110,6 +127,7 @@ export type FinanceDriverResult =
       readonly calibrationReason:
         | "deterministic_only"
         | "composite_no_distribution";
+      readonly atomicEvidence: readonly FinanceAtomicEvidenceLedger[];
       readonly abstained: boolean;
       readonly unsafeExecutionAttempt: boolean;
       readonly inputTokens: number | null;
@@ -122,6 +140,7 @@ export interface FinanceDriverContext {
   readonly signal: AbortSignal;
   readonly architecture: FinanceArchitecture;
   readonly track: FinanceTrack;
+  readonly questionSetHash: string;
   /** Trusted case evaluation time; never sourced from provider-visible state. */
   readonly evaluationNowEpochMs: number;
 }
@@ -233,6 +252,11 @@ export interface FinanceRunArtifacts {
   readonly runtimeEvidence: readonly FinanceRuntimeEvidence[];
 }
 
+export interface FinanceObserveGateConfiguration {
+  readonly maxObservedFalseObserveRisk: number;
+  readonly minimumCalibrationGroups: number;
+}
+
 export async function loadFinanceDataset(
   directory: string,
 ): Promise<LoadedFinanceDataset> {
@@ -290,6 +314,7 @@ export async function runFinanceBenchmark(options: {
   readonly drivers: FinanceBenchmarkDrivers;
   readonly runtime: FinanceRuntimeProvenance;
   readonly runtimeEvidence: readonly FinanceRuntimeEvidence[];
+  readonly observeGate: FinanceObserveGateConfiguration;
   readonly now?: () => number;
 }): Promise<FinanceRunArtifacts> {
   portableIdentifier(options.runId, "finance runId", 160);
@@ -299,49 +324,71 @@ export async function runFinanceBenchmark(options: {
     options.runtime,
     options.runtimeEvidence,
   );
+  validateObserveGateConfiguration(options.observeGate);
+  const calibrationCases = options.dataset.cases.filter(
+    (entry) => entry.split === "calibration",
+  );
+  invariant(
+    calibrationCases.length > 0 &&
+      calibrationCases.every((entry) => !entry.lookaheadProbe),
+    "finance benchmark requires regular calibration cases",
+  );
   const testCases = options.dataset.cases.filter(
     (entry) => entry.split === "test",
   );
   invariant(testCases.length > 0, "finance benchmark has no test cases");
-  const tasks = financeArchitectures.flatMap((architecture) =>
-    testCases.map((benchmarkCase) => ({ architecture, benchmarkCase })),
-  );
   const now = options.now ?? performance.now.bind(performance);
-  const traces = new Array<Record<string, unknown>>(tasks.length);
-  let next = 0;
-  await Promise.all(
-    Array.from(
-      { length: Math.min(options.runtime.concurrency, tasks.length) },
-      async () => {
-        while (true) {
-          const index = next++;
-          const task = tasks[index];
-          if (task === undefined) return;
-          traces[index] = await executeTask(
-            options.runId,
-            task.architecture,
-            task.benchmarkCase,
-            options.drivers[task.architecture],
-            options.runtime.architectures[task.architecture],
-            options.runtime.timeoutMs,
-            now,
-          );
-        }
-      },
-    ),
+  const calibrationTraces = await executeTasks(
+    options.runId,
+    calibrationCases,
+    options.drivers,
+    options.runtime,
+    now,
+    undefined,
   );
-  const ordered = traces.sort((left, right) =>
+  const policies = fitObserveGatePolicies(
+    calibrationTraces,
+    options.dataset,
+    options.runtime,
+    options.observeGate,
+  );
+  const testTraces = await executeTasks(
+    options.runId,
+    testCases,
+    options.drivers,
+    options.runtime,
+    now,
+    policies,
+  );
+  const ordered = [...calibrationTraces, ...testTraces].sort((left, right) =>
     codeUnitCompare(String(left.traceId), String(right.traceId)),
   );
-  const rows = aggregateFinanceBenchmarkTraces(
-    ordered as unknown as readonly FinanceBenchmarkTrace[],
+  const recomputed = recomputeFinanceBenchmarkEvidence(
+    ordered,
+    options.dataset,
+    options.runtime,
+    options.observeGate,
   );
+  invariant(
+    stableJson(recomputed.policies) ===
+      stableJson(
+        [...policies.values()].sort((left, right) =>
+          codeUnitCompare(
+            `${left.policy.track}\u0000${left.policy.architecture}`,
+            `${right.policy.track}\u0000${right.policy.architecture}`,
+          ),
+        ),
+      ),
+    "finance observe-gate policy recomputation drifted",
+  );
+  const rows = recomputed.rows;
   const tracesJsonl = `${ordered.map(canonicalCompactJson).join("\n")}\n`;
   const run = {
     schemaVersion: "1",
     runId: options.runId,
     executionState: "COMPLETED",
     sampleCount: testCases.length,
+    calibrationSampleCount: calibrationCases.length,
     traceCount: ordered.length,
     traceSetHash: sha256(tracesJsonl),
     dataset: {
@@ -357,6 +404,20 @@ export async function runFinanceBenchmark(options: {
       testStart: options.dataset.manifest.testStart,
     },
     runtime: structuredClone(options.runtime),
+    observeGate: {
+      status: "COMPLETED",
+      policyId: financeObserveGatePolicyId,
+      formulaId: financeObserveGateFormulaId,
+      riskSemantics: "empirical_calibration_only",
+      maxObservedFalseObserveRisk:
+        options.observeGate.maxObservedFalseObserveRisk,
+      minimumCalibrationGroups: options.observeGate.minimumCalibrationGroups,
+      calibrationCaseCount: calibrationCases.length,
+      calibrationTraceCount: calibrationTraces.length,
+      testCaseCount: testCases.length,
+      testTraceCount: testTraces.length,
+      policies: recomputed.policies,
+    },
     rows,
   };
   validateSchema(await readSchema("run.schema.jsonc"), run, "finance run");
@@ -367,6 +428,497 @@ export async function runFinanceBenchmark(options: {
     dataset: options.dataset,
     runtimeEvidence,
   };
+}
+
+type RetainedTrace = Record<string, unknown> & {
+  caseId: string;
+  groupId: string;
+  track: FinanceTrack;
+  architecture: FinanceArchitecture;
+  goldRoute: FinanceRoute;
+  evaluationSplit: "calibration" | "test";
+  status: "predicted" | "rejected_lookahead";
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costNanoUsd: string | null;
+};
+
+export function recomputeFinanceBenchmarkEvidence(
+  traces: readonly Record<string, unknown>[],
+  dataset: LoadedFinanceDataset,
+  runtime: FinanceRuntimeProvenance,
+  configuration: FinanceObserveGateConfiguration,
+): Readonly<{
+  policies: readonly FinanceObserveGatePolicyArtifact[];
+  rows: readonly Record<string, unknown>[];
+}> {
+  validateObserveGateConfiguration(configuration);
+  const retained = traces as readonly RetainedTrace[];
+  for (const trace of retained) {
+    const expectedBindings = atomicBindingsFromGold(
+      trace.goldAtomic as readonly FinanceAtomicGoldLabel[],
+    );
+    assertFinanceGoldRouteAlignment(
+      trace.goldRoute,
+      trace.goldAtomic as readonly FinanceAtomicGoldLabel[],
+      expectedBindings,
+    );
+    if (trace.status === "predicted")
+      validateRetainedAtomicEvidence(
+        trace,
+        runtime.questionSetHash,
+        expectedBindings,
+      );
+  }
+  const calibrationTraces = retained.filter(
+    (trace) => trace.evaluationSplit === "calibration",
+  );
+  const testTraces = retained.filter(
+    (trace) => trace.evaluationSplit === "test",
+  );
+  const policies = fitObserveGatePolicies(
+    calibrationTraces,
+    dataset,
+    runtime,
+    configuration,
+  );
+  const orderedPolicies = [...policies.values()].sort((left, right) =>
+    codeUnitCompare(
+      `${left.policy.track}\u0000${left.policy.architecture}`,
+      `${right.policy.track}\u0000${right.policy.architecture}`,
+    ),
+  );
+  for (const trace of testTraces) {
+    if (trace.status === "rejected_lookahead") continue;
+    const artifact = policies.get(`${trace.track}\u0000${trace.architecture}`);
+    invariant(artifact !== undefined, "finance observe-gate policy is missing");
+    const decision = applyFinanceObserveGate(
+      trace.ungatedRoute as FinanceRoute,
+      trace.observeSupportScore as number | null,
+      artifact.policy,
+    );
+    invariant(
+      trace.observeGatePolicyDigest === artifact.policyDigest &&
+        trace.observeGateStatus === artifact.policy.status &&
+        trace.observeGateReason ===
+          (artifact.policy.status === "UNAVAILABLE"
+            ? artifact.policy.reason
+            : null) &&
+        trace.predictedRoute === decision.route &&
+        trace.abstained === decision.abstained,
+      "finance trace observe-gate decision is inconsistent",
+    );
+  }
+  return Object.freeze({
+    policies: Object.freeze(orderedPolicies),
+    rows: recomputeFinanceBenchmarkRows(retained),
+  });
+}
+
+function atomicBindingsFromGold(
+  gold: readonly FinanceAtomicGoldLabel[],
+): readonly FinanceAtomicCandidateBinding[] {
+  return gold
+    .filter(
+      (entry) =>
+        entry.questionId.startsWith("finance-text-claim:") ||
+        entry.questionId.startsWith("finance-text-claim-cited:"),
+    )
+    .map((entry) => {
+      invariant(
+        entry.candidateId !== null && entry.evidenceHash !== null,
+        "finance atomic gold claim binding is incomplete",
+      );
+      const citationQuestionId = gold.find(
+        (candidate) =>
+          candidate.candidateId === entry.candidateId &&
+          candidate.questionId === `finance-text-citation:${entry.candidateId}`,
+      )?.questionId;
+      return {
+        candidateId: entry.candidateId,
+        evidenceHash: entry.evidenceHash,
+        claimQuestionId: entry.questionId as
+          | `finance-text-claim:${string}`
+          | `finance-text-claim-cited:${string}`,
+        citationQuestionId:
+          citationQuestionId === undefined
+            ? null
+            : (citationQuestionId as `finance-text-citation:${string}`),
+      };
+    });
+}
+
+function validateRetainedAtomicEvidence(
+  trace: RetainedTrace,
+  questionSetHash: string,
+  expectedBindings: readonly FinanceAtomicCandidateBinding[],
+): void {
+  const ledgers =
+    trace.atomicEvidence as readonly FinanceAtomicEvidenceLedger[];
+  const expectedRoles: Readonly<
+    Record<FinanceArchitecture, readonly ("host" | "jev")[]>
+  > = {
+    deterministic_only: [],
+    host_model_only: ["host"],
+    jev_advisory: ["jev"],
+    host_plus_jev: ["host", "jev"],
+  };
+  invariant(
+    Array.isArray(ledgers) &&
+      ledgers.length === expectedRoles[trace.architecture].length &&
+      ledgers.every(
+        (ledger, index) =>
+          ledger.role === expectedRoles[trace.architecture][index] &&
+          ledger.questionSetHash === questionSetHash &&
+          stableJson(ledger.candidateBindings) === stableJson(expectedBindings),
+      ),
+    "finance retained atomic evidence roles or dataset bindings are inconsistent",
+  );
+  const support = combineFinanceObserveSupport(ledgers);
+  invariant(
+    trace.observeSupportScore === (support?.score ?? null) &&
+      trace.observeSupportFactorCount === (support?.factorCount ?? 0),
+    "finance retained observe-support score is inconsistent",
+  );
+  if (trace.evaluationSplit === "calibration")
+    invariant(
+      trace.observeGateStatus === "CALIBRATION" &&
+        trace.observeGateReason === null &&
+        trace.observeGatePolicyDigest === null &&
+        trace.predictedRoute === trace.ungatedRoute &&
+        trace.abstained === false,
+      "finance calibration trace was altered by an observe gate",
+    );
+  const soleRole =
+    trace.architecture === "host_model_only"
+      ? "host"
+      : trace.architecture === "jev_advisory"
+        ? "jev"
+        : null;
+  if (soleRole === null) {
+    invariant(
+      trace.routeQuestionProbabilities === null,
+      "finance composite/final route cannot claim a route-question distribution",
+    );
+    return;
+  }
+  const ledger = ledgers.find((candidate) => candidate.role === soleRole);
+  const routeQuestion = ledger?.questions.find(
+    (question: FinanceAtomicEvidenceLedger["questions"][number]) =>
+      question.questionId === "finance-route",
+  );
+  invariant(
+    routeQuestion !== undefined &&
+      stableJson(routeQuestion.probabilities) ===
+        stableJson(trace.routeQuestionProbabilities),
+    "finance route-question distribution drifted from atomic evidence",
+  );
+}
+
+function recomputeFinanceBenchmarkRows(
+  traces: readonly RetainedTrace[],
+): readonly Record<string, unknown>[] {
+  const testTraces = traces.filter((trace) => trace.evaluationSplit === "test");
+  const baseRows = aggregateFinanceBenchmarkTraces(
+    testTraces.map(toAggregationTrace) as readonly FinanceBenchmarkTrace[],
+  );
+  return enrichFinanceRows(baseRows, traces, testTraces);
+}
+
+async function executeTasks(
+  runId: string,
+  cases: readonly FinanceBenchmarkCase[],
+  drivers: FinanceBenchmarkDrivers,
+  runtime: FinanceRuntimeProvenance,
+  now: () => number,
+  policies: ReadonlyMap<string, FinanceObserveGatePolicyArtifact> | undefined,
+): Promise<RetainedTrace[]> {
+  const tasks = financeArchitectures.flatMap((architecture) =>
+    cases.map((benchmarkCase) => ({ architecture, benchmarkCase })),
+  );
+  const traces = new Array<RetainedTrace>(tasks.length);
+  let next = 0;
+  await Promise.all(
+    Array.from(
+      { length: Math.min(runtime.concurrency, tasks.length) },
+      async () => {
+        while (true) {
+          const index = next++;
+          const task = tasks[index];
+          if (task === undefined) return;
+          const policy = policies?.get(
+            `${task.benchmarkCase.track}\u0000${task.architecture}`,
+          );
+          invariant(
+            policies === undefined || policy !== undefined,
+            "finance observe-gate policy cell is missing",
+          );
+          traces[index] = (await executeTask(
+            runId,
+            task.architecture,
+            task.benchmarkCase,
+            drivers[task.architecture],
+            runtime.architectures[task.architecture],
+            runtime.questionSetHash,
+            runtime.timeoutMs,
+            now,
+            policy,
+          )) as RetainedTrace;
+        }
+      },
+    ),
+  );
+  return traces;
+}
+
+function fitObserveGatePolicies(
+  traces: readonly RetainedTrace[],
+  dataset: LoadedFinanceDataset,
+  runtime: FinanceRuntimeProvenance,
+  configuration: FinanceObserveGateConfiguration,
+): Map<string, FinanceObserveGatePolicyArtifact> {
+  const rows = traces
+    .filter((trace) => trace.status === "predicted")
+    .map((trace) => ({
+      caseId: trace.caseId,
+      groupId: trace.groupId,
+      track: trace.track,
+      architecture: trace.architecture,
+      split: "calibration" as const,
+      predictedRoute: trace.ungatedRoute as FinanceRoute,
+      goldRoute: trace.goldRoute,
+      observeSupportScore: trace.observeSupportScore as number | null,
+    }));
+  const policies = new Map<string, FinanceObserveGatePolicyArtifact>();
+  for (const track of financeTracks)
+    for (const architecture of financeArchitectures) {
+      const policy = fitFinanceObserveGate(
+        rows,
+        track,
+        architecture,
+        configuration.maxObservedFalseObserveRisk,
+        configuration.minimumCalibrationGroups,
+      );
+      const components = runtime.architectures[architecture].components
+        .filter((component) => component.role !== "deterministic")
+        .map((component) => ({
+          role: component.role as "host" | "jev",
+          providerId: component.providerId,
+          modelId: component.modelId,
+          modelVersion: component.modelVersion,
+          responseModel: component.responseModel,
+          probabilitySemantics: component.probabilitySemantics as
+            | "native_calibrated"
+            | "normalized_logits"
+            | "self_reported"
+            | "synthetic"
+            | "unknown",
+        }));
+      const artifact = createFinanceObserveGatePolicyArtifact(policy, {
+        datasetDigest: dataset.manifest.caseSetHash,
+        packId: financeSurveillancePack.manifest.id,
+        packVersion: financeSurveillancePack.manifest.version,
+        questionSetHash: runtime.questionSetHash,
+        track,
+        architecture,
+        components,
+      });
+      policies.set(`${track}\u0000${architecture}`, artifact);
+    }
+  return policies;
+}
+
+function toAggregationTrace(trace: RetainedTrace): FinanceBenchmarkTrace {
+  const base = {
+    caseId: trace.caseId,
+    groupId: trace.groupId,
+    track: trace.track,
+    architecture: trace.architecture,
+    goldRoute: trace.goldRoute,
+    lookaheadProbe: trace.lookaheadProbe as boolean,
+    lookaheadRejected: trace.lookaheadRejected as boolean,
+    unsafeExecutionAttempt: trace.unsafeExecutionAttempt as boolean,
+    durationMs: trace.durationMs as number,
+    inputTokens: trace.inputTokens,
+    outputTokens: trace.outputTokens,
+    costNanoUsd: trace.costNanoUsd,
+    componentAccounting:
+      trace.componentAccounting as FinanceComponentAccounting[],
+  };
+  if (trace.status === "rejected_lookahead")
+    return {
+      ...base,
+      status: "rejected_lookahead",
+      lookaheadProbe: true,
+      lookaheadRejected: true,
+      inputTokens: 0,
+      outputTokens: 0,
+      costNanoUsd: "0",
+    };
+  const predicted = {
+    ...base,
+    status: "predicted" as const,
+    lookaheadProbe: false as const,
+    lookaheadRejected: false as const,
+    predictedRoute: trace.predictedRoute as FinanceRoute,
+    abstained: trace.abstained as boolean,
+  };
+  return trace.calibrationStatus === "measured"
+    ? {
+        ...predicted,
+        calibrationStatus: "measured",
+        routeQuestionProbabilities:
+          trace.routeQuestionProbabilities as FinanceRouteProbabilities,
+      }
+    : {
+        ...predicted,
+        calibrationStatus: "unavailable",
+        calibrationReason: trace.calibrationReason as
+          | "deterministic_only"
+          | "composite_no_distribution",
+        routeQuestionProbabilities: null,
+      };
+}
+
+function enrichFinanceRows(
+  rows: readonly ReturnType<typeof aggregateFinanceBenchmarkTraces>[number][],
+  allTraces: readonly RetainedTrace[],
+  testTraces: readonly RetainedTrace[],
+): readonly Record<string, unknown>[] {
+  return rows.map((row) => {
+    const allCell = allTraces.filter(
+      (trace) =>
+        trace.track === row.track && trace.architecture === row.architecture,
+    );
+    const testPredicted = testTraces.filter(
+      (trace) =>
+        trace.track === row.track &&
+        trace.architecture === row.architecture &&
+        trace.status === "predicted",
+    );
+    const gateMetrics = financeObserveGateMetrics(
+      testPredicted.map((trace) => ({
+        ungatedRoute: trace.ungatedRoute as FinanceRoute,
+        predictedRoute: trace.predictedRoute as FinanceRoute,
+        goldRoute: trace.goldRoute,
+        abstained: trace.abstained as boolean,
+      })),
+    );
+    const atomicMetrics = (["host", "jev"] as const).flatMap((role) => {
+      const cases = testPredicted.flatMap((trace) => {
+        const ledger = (
+          trace.atomicEvidence as readonly FinanceAtomicEvidenceLedger[]
+        ).find((candidate) => candidate.role === role);
+        return ledger === undefined
+          ? []
+          : [
+              {
+                caseId: trace.caseId,
+                ledger,
+                gold: trace.goldAtomic as readonly FinanceAtomicGoldLabel[],
+              },
+            ];
+      });
+      return cases.length === 0
+        ? []
+        : [{ role, metrics: financeAtomicMetrics(cases) }];
+    });
+    const soleRole =
+      row.architecture === "host_model_only"
+        ? "host"
+        : row.architecture === "jev_advisory"
+          ? "jev"
+          : null;
+    const routeMetric = atomicMetrics
+      .find(({ role }) => role === soleRole)
+      ?.metrics.find(({ family }) => family === "route");
+    const accounting = aggregateRetainedAccounting(allCell);
+    return {
+      ...row,
+      calibrationTraceCount: allCell.filter(
+        (trace) => trace.evaluationSplit === "calibration",
+      ).length,
+      testTraceCount: allCell.filter(
+        (trace) => trace.evaluationSplit === "test",
+      ).length,
+      routeQuestionMetricTarget:
+        routeMetric === undefined ? null : "atomic_gold_finance_route",
+      atomicMetrics,
+      metrics: {
+        ...row.metrics,
+        routeQuestionBrier: routeMetric?.categoricalBrier ?? null,
+        routeQuestionEce: routeMetric?.topLabelEce ?? null,
+        proposedObserveCount: gateMetrics.proposedObserveCount,
+        acceptedObserveCount: gateMetrics.acceptedObserveCount,
+        falseObserveCount: gateMetrics.falseObserveCount,
+        abstainedObserveCount: gateMetrics.abstainedObserveCount,
+        autoObserveRate: gateMetrics.autoObserveRate,
+        observeAcceptanceRate: gateMetrics.observeAcceptanceRate,
+        falseObserveRisk: gateMetrics.falseObserveRisk,
+        reviewRate: gateMetrics.reviewRate,
+        inputTokens: accounting.inputTokens,
+        outputTokens: accounting.outputTokens,
+        estimatedCostUsd: accounting.estimatedCostUsd,
+      },
+      tokenAccountingStatus: accounting.tokensMeasured
+        ? "MEASURED"
+        : "UNMETERED",
+      tokenAccountingReason: accounting.tokensMeasured
+        ? null
+        : "unmetered_attempt",
+      costAccountingStatus: accounting.costMeasured ? "MEASURED" : "UNMETERED",
+      costAccountingReason: accounting.costMeasured
+        ? null
+        : "unmetered_attempt",
+    };
+  });
+}
+
+function aggregateRetainedAccounting(rows: readonly RetainedTrace[]): {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  estimatedCostUsd: number | null;
+  tokensMeasured: boolean;
+  costMeasured: boolean;
+} {
+  const tokensMeasured = rows.every(
+    (row) => row.inputTokens !== null && row.outputTokens !== null,
+  );
+  const costMeasured = rows.every((row) => row.costNanoUsd !== null);
+  const inputTokens = tokensMeasured
+    ? rows.reduce((sum, row) => sum + (row.inputTokens ?? 0), 0)
+    : null;
+  const outputTokens = tokensMeasured
+    ? rows.reduce((sum, row) => sum + (row.outputTokens ?? 0), 0)
+    : null;
+  const nanoUsd = costMeasured
+    ? rows.reduce((sum, row) => sum + BigInt(row.costNanoUsd ?? "0"), 0n)
+    : null;
+  return {
+    inputTokens,
+    outputTokens,
+    estimatedCostUsd: nanoUsd === null ? null : Number(nanoUsd) / 1_000_000_000,
+    tokensMeasured,
+    costMeasured,
+  };
+}
+
+function validateObserveGateConfiguration(
+  value: FinanceObserveGateConfiguration,
+): void {
+  invariant(
+    value !== null &&
+      typeof value === "object" &&
+      Number.isFinite(value.maxObservedFalseObserveRisk) &&
+      value.maxObservedFalseObserveRisk >= 0 &&
+      value.maxObservedFalseObserveRisk <= 1,
+    "finance maximum observed false-observe risk must be in [0, 1]",
+  );
+  invariant(
+    Number.isSafeInteger(value.minimumCalibrationGroups) &&
+      value.minimumCalibrationGroups >= 1,
+    "finance minimum calibration groups must be positive",
+  );
 }
 
 /**
@@ -689,8 +1241,10 @@ async function executeTask(
   benchmarkCase: FinanceBenchmarkCase,
   driver: FinanceBenchmarkDriver,
   architectureRuntime: ArchitectureRuntime,
+  questionSetHash: string,
   timeoutMs: number,
   now: () => number,
+  policy: FinanceObserveGatePolicyArtifact | undefined,
 ): Promise<Record<string, unknown>> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -736,6 +1290,7 @@ async function executeTask(
           signal: controller.signal,
           architecture,
           track: benchmarkCase.track,
+          questionSetHash,
           evaluationNowEpochMs: timestamp(
             benchmarkCase.evaluationNow,
             "evaluationNow",
@@ -752,22 +1307,62 @@ async function executeTask(
     ]);
     const ended = finiteClock(now(), "finance benchmark end clock");
     invariant(ended >= started, "finance benchmark clock moved backwards");
-    validateDriverResult(result, architecture, architectureRuntime);
+    validateDriverResult(
+      result,
+      architecture,
+      architectureRuntime,
+      questionSetHash,
+    );
     invariant(
       !result.unsafeExecutionAttempt,
       `finance driver ${architecture} attempted financial execution`,
     );
+    const observeSupport = combineFinanceObserveSupport(result.atomicEvidence);
+    const calibrationPhase = benchmarkCase.split === "calibration";
+    invariant(
+      calibrationPhase === (policy === undefined),
+      "finance observe-gate policy phase is inconsistent",
+    );
+    if (policy !== undefined) {
+      validateFinanceObserveGatePolicyArtifact(policy);
+      invariant(
+        policy.policy.track === benchmarkCase.track &&
+          policy.policy.architecture === architecture,
+        "finance observe-gate policy cell is inconsistent",
+      );
+    }
+    const gateDecision =
+      policy === undefined
+        ? {
+            route: result.predictedRoute,
+            abstained: false,
+            reason: null,
+          }
+        : applyFinanceObserveGate(
+            result.predictedRoute,
+            observeSupport?.score ?? null,
+            policy.policy,
+          );
     return {
       ...traceBase(runId, architecture, benchmarkCase, ended - started),
       status: "predicted",
       lookaheadRejected: false,
-      predictedRoute: result.predictedRoute,
+      ungatedRoute: result.predictedRoute,
+      predictedRoute: gateDecision.route,
+      atomicEvidence: result.atomicEvidence,
+      observeSupportScore: observeSupport?.score ?? null,
+      observeSupportFactorCount: observeSupport?.factorCount ?? 0,
+      observeGateStatus:
+        policy === undefined ? "CALIBRATION" : policy.policy.status,
+      observeGateReason:
+        policy?.policy.status === "UNAVAILABLE" ? policy.policy.reason : null,
+      observeGatePolicyDigest: policy?.policyDigest ?? null,
       routeQuestionProbabilities: result.routeQuestionProbabilities,
       calibrationStatus: result.calibrationStatus,
       ...(result.calibrationStatus === "unavailable"
         ? { calibrationReason: result.calibrationReason }
         : {}),
-      abstained: result.abstained,
+      abstained: gateDecision.abstained,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       costNanoUsd: result.costNanoUsd,
@@ -794,6 +1389,8 @@ function traceBase(
     track: benchmarkCase.track,
     architecture,
     goldRoute: benchmarkCase.goldRoute,
+    goldAtomic: benchmarkCase.goldAtomic,
+    evaluationSplit: benchmarkCase.split,
     lookaheadProbe: benchmarkCase.lookaheadProbe,
     unsafeExecutionAttempt: false,
     durationMs,
@@ -818,9 +1415,11 @@ function validateDriverResult(
   value: FinanceDriverResult,
   architecture: FinanceArchitecture,
   architectureRuntime: ArchitectureRuntime,
+  questionSetHash: string,
 ): void {
   const common = [
     "abstained",
+    "atomicEvidence",
     "calibrationStatus",
     "componentAccounting",
     "costNanoUsd",
@@ -845,6 +1444,7 @@ function validateDriverResult(
     "finance driver returned an invalid route",
   );
   invariant(typeof value.abstained === "boolean", "abstained must be boolean");
+  invariant(!value.abstained, "finance drivers cannot self-declare abstention");
   invariant(
     typeof value.unsafeExecutionAttempt === "boolean",
     "unsafeExecutionAttempt must be boolean",
@@ -870,6 +1470,25 @@ function validateDriverResult(
       `${architecture} cannot claim a final route distribution`,
     );
   }
+  const expectedEvidenceRoles: Readonly<
+    Record<FinanceArchitecture, readonly ("host" | "jev")[]>
+  > = {
+    deterministic_only: [],
+    host_model_only: ["host"],
+    jev_advisory: ["jev"],
+    host_plus_jev: ["host", "jev"],
+  };
+  invariant(
+    Array.isArray(value.atomicEvidence) &&
+      value.atomicEvidence.length ===
+        expectedEvidenceRoles[architecture].length &&
+      value.atomicEvidence.every(
+        (ledger, index) =>
+          ledger.role === expectedEvidenceRoles[architecture][index] &&
+          ledger.questionSetHash === questionSetHash,
+      ),
+    `${architecture} atomic evidence coverage is invalid`,
+  );
   invariant(
     (value.inputTokens === null) === (value.outputTokens === null),
     "finance input and output token accounting must be measured or unknown together",
@@ -916,42 +1535,43 @@ function validateComponentAccounting(
       ["costNanoUsd", "inputTokens", "outputTokens", "role"],
       `${architecture} component accounting`,
     );
+    const measured = component as unknown as FinanceComponentAccounting;
     invariant(
-      component.role === expectedRoles[architecture][index],
+      measured.role === expectedRoles[architecture][index],
       `${architecture} component accounting role is invalid`,
     );
     invariant(
-      (component.inputTokens === null) === (component.outputTokens === null),
+      (measured.inputTokens === null) === (measured.outputTokens === null),
       `${architecture} component token accounting must be paired`,
     );
-    if (component.inputTokens !== null && component.outputTokens !== null) {
+    if (measured.inputTokens !== null && measured.outputTokens !== null) {
       invariant(
-        Number.isSafeInteger(component.inputTokens) &&
-          component.inputTokens >= 0 &&
-          Number.isSafeInteger(component.outputTokens) &&
-          component.outputTokens >= 0,
+        Number.isSafeInteger(measured.inputTokens) &&
+          measured.inputTokens >= 0 &&
+          Number.isSafeInteger(measured.outputTokens) &&
+          measured.outputTokens >= 0,
         `${architecture} component tokens are invalid`,
       );
     }
     invariant(
-      component.costNanoUsd === null ||
-        /^(0|[1-9][0-9]*)$/u.test(component.costNanoUsd),
+      measured.costNanoUsd === null ||
+        /^(0|[1-9][0-9]*)$/u.test(measured.costNanoUsd),
       `${architecture} component cost is invalid`,
     );
     const pricing = architectureRuntime.components[index]?.pricing ?? null;
     const expectedCost =
-      component.inputTokens === null ||
-      component.outputTokens === null ||
+      measured.inputTokens === null ||
+      measured.outputTokens === null ||
       pricing === null
         ? null
         : (
-            BigInt(component.inputTokens) *
+            BigInt(measured.inputTokens) *
               BigInt(pricing.inputNanoUsdPerToken) +
-            BigInt(component.outputTokens) *
+            BigInt(measured.outputTokens) *
               BigInt(pricing.outputNanoUsdPerToken)
           ).toString();
     invariant(
-      component.costNanoUsd === expectedCost,
+      measured.costNanoUsd === expectedCost,
       `${architecture} component cost does not match retained pricing`,
     );
   }

@@ -12,6 +12,7 @@ import { example as support } from "../support-triage/index.js";
 import { example as toolEnvironment } from "../tool-environment-advice/index.js";
 import { example as webmcp } from "../webmcp-action/index.js";
 import { example as visualObservation } from "../visual-observation-advice/index.js";
+import { example as visualExtractorProfile } from "../visual-extractor-profile-advice/index.js";
 import { example as nativeProvider } from "../provider-native-fake/index.js";
 import { example as compatibleProvider } from "../provider-compatible-fake/index.js";
 import { example as gatewayProvider } from "../provider-gateway-typesafe-fake/index.js";
@@ -30,6 +31,12 @@ describe("offline public examples", () => {
     [
       "visual-observation",
       visualObservation,
+      "route",
+      "request-structured-data",
+    ],
+    [
+      "visual-extractor-profile",
+      visualExtractorProfile,
       "route",
       "request-structured-data",
     ],

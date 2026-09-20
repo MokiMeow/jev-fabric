@@ -70,6 +70,28 @@ limits. Neither entitlement is assumed by code or benchmark accounting.
 - This server-side factory is intentionally not a general browser provider or
   an additional CLI live mode.
 
+### Team-wide routing rules
+
+Vercel's [routing rules](https://vercel.com/docs/ai-gateway/models-and-providers/routing-rules)
+can rewrite a requested model for every request made with a team's credentials,
+without an application-code change. That is useful for general model routing,
+but it crosses Fabric's calibrated-model boundary:
+
+- do not configure a rewrite whose source is `typesafe-ai/jev` for a Fabric
+  credential;
+- isolate the credential in a team/project where model and provider allowlists
+  admit only the intended Jev route, and audit routing-rule changes outside the
+  application;
+- the adapter rejects a response whose reported model is outside its exact
+  allowlist, but this response check is not a substitute for controlling the
+  Gateway account configuration;
+- retain the requested transport route and the response-reported model as
+  separate benchmark provenance. Never infer either value from the other.
+
+This matters even when a replacement exposes the same response shape: a
+different model has a different calibration population, so its probabilities
+cannot inherit Jev's semantics or a locally fitted threshold.
+
 Vercel also documents an AI SDK 7
 [evaluation API](https://vercel.com/docs/ai-gateway/getting-started/evaluation)
 for greenfield applications. Fabric uses the compatible TypeSafe endpoint

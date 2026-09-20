@@ -2,15 +2,49 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "executionState": { "const": "NOT_RUN" } },
+        "required": ["executionState"]
+      },
+      "then": {
+        "properties": {
+          "sampleCount": { "const": 0 },
+          "calibrationSampleCount": { "const": 0 },
+          "traceCount": { "const": 0 },
+          "traceSetHash": { "type": "null" },
+          "dataset": { "$ref": "#/$defs/notRunDataset" },
+          "runtime": { "$ref": "#/$defs/notRunRuntime" },
+          "observeGate": { "$ref": "#/$defs/observeGateNotRun" },
+          "rows": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/notRunRow" }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "sampleCount": { "type": "integer", "minimum": 1 },
+          "calibrationSampleCount": { "type": "integer", "minimum": 1 },
+          "traceCount": { "type": "integer", "minimum": 24 },
+          "traceSetHash": { "$ref": "#/$defs/hash" },
+          "observeGate": { "$ref": "#/$defs/observeGateCompleted" }
+        }
+      }
+    }
+  ],
   "required": [
     "schemaVersion",
     "runId",
     "executionState",
     "sampleCount",
+    "calibrationSampleCount",
     "traceCount",
     "traceSetHash",
     "dataset",
     "runtime",
+    "observeGate",
     "rows"
   ],
   "properties": {
@@ -18,6 +52,7 @@
     "runId": { "type": "string", "minLength": 1, "maxLength": 160 },
     "executionState": { "enum": ["NOT_RUN", "COMPLETED"] },
     "sampleCount": { "type": "integer", "minimum": 0 },
+    "calibrationSampleCount": { "type": "integer", "minimum": 0 },
     "traceCount": { "type": "integer", "minimum": 0 },
     "traceSetHash": {
       "anyOf": [
@@ -120,6 +155,12 @@
         }
       }
     },
+    "observeGate": {
+      "oneOf": [
+        { "$ref": "#/$defs/observeGateNotRun" },
+        { "$ref": "#/$defs/observeGateCompleted" }
+      ]
+    },
     "rows": {
       "type": "array",
       "minItems": 12,
@@ -131,6 +172,10 @@
           "track",
           "architecture",
           "sampleCount",
+          "calibrationTraceCount",
+          "testTraceCount",
+          "routeQuestionMetricTarget",
+          "atomicMetrics",
           "calibrationStatus",
           "calibrationReason",
           "tokenAccountingStatus",
@@ -156,6 +201,18 @@
             ]
           },
           "sampleCount": { "type": "integer", "minimum": 0 },
+          "calibrationTraceCount": { "type": "integer", "minimum": 0 },
+          "testTraceCount": { "type": "integer", "minimum": 0 },
+          "routeQuestionMetricTarget": {
+            "type": ["string", "null"],
+            "enum": ["atomic_gold_finance_route", null]
+          },
+          "atomicMetrics": {
+            "type": "array",
+            "minItems": 0,
+            "maxItems": 2,
+            "items": { "$ref": "#/$defs/atomicMetricLedger" }
+          },
           "calibrationStatus": {
             "enum": ["NOT_RUN", "measured", "unavailable"]
           },
@@ -180,12 +237,44 @@
           "metrics": {
             "type": "object",
             "additionalProperties": false,
+            "oneOf": [
+              {
+                "properties": {
+                  "acceptedObserveCount": { "type": "null" },
+                  "falseObserveRisk": { "type": "null" }
+                }
+              },
+              {
+                "properties": {
+                  "acceptedObserveCount": { "const": 0 },
+                  "falseObserveRisk": { "type": "null" }
+                }
+              },
+              {
+                "properties": {
+                  "acceptedObserveCount": { "type": "integer", "minimum": 1 },
+                  "falseObserveRisk": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            ],
             "required": [
               "accuracy",
               "macroF1",
               "routeQuestionBrier",
               "routeQuestionEce",
               "coverage",
+              "proposedObserveCount",
+              "acceptedObserveCount",
+              "falseObserveCount",
+              "abstainedObserveCount",
+              "autoObserveRate",
+              "observeAcceptanceRate",
+              "falseObserveRisk",
+              "reviewRate",
               "unsafeExecutionAttemptRate",
               "lookaheadRejectionRate",
               "p50Ms",
@@ -219,6 +308,42 @@
                 "minimum": 0,
                 "maximum": 1
               },
+              "proposedObserveCount": {
+                "type": ["integer", "null"],
+                "minimum": 0
+              },
+              "acceptedObserveCount": {
+                "type": ["integer", "null"],
+                "minimum": 0
+              },
+              "falseObserveCount": {
+                "type": ["integer", "null"],
+                "minimum": 0
+              },
+              "abstainedObserveCount": {
+                "type": ["integer", "null"],
+                "minimum": 0
+              },
+              "autoObserveRate": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "observeAcceptanceRate": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "falseObserveRisk": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "reviewRate": {
+                "type": ["number", "null"],
+                "minimum": 0,
+                "maximum": 1
+              },
               "unsafeExecutionAttemptRate": {
                 "type": ["number", "null"],
                 "minimum": 0,
@@ -236,11 +361,435 @@
               "estimatedCostUsd": { "type": ["number", "null"], "minimum": 0 }
             }
           }
-        }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "routeQuestionMetricTarget": { "type": "null" },
+              "metrics": {
+                "type": "object",
+                "properties": {
+                  "routeQuestionBrier": { "type": "null" },
+                  "routeQuestionEce": { "type": "null" }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "routeQuestionMetricTarget": {
+                "const": "atomic_gold_finance_route"
+              },
+              "metrics": {
+                "type": "object",
+                "properties": {
+                  "routeQuestionBrier": { "type": "number", "minimum": 0 },
+                  "routeQuestionEce": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   },
   "$defs": {
+    "notRunDataset": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "NOT_SELECTED" },
+        "datasetId": { "type": "null" },
+        "sourceUrl": { "type": "null" },
+        "digest": { "type": "null" },
+        "license": { "type": "null" },
+        "evidenceClass": { "type": "null" },
+        "redistributionAllowed": { "type": "null" },
+        "trainEnd": { "type": "null" },
+        "testStart": { "type": "null" }
+      }
+    },
+    "notRunRuntime": {
+      "type": "object",
+      "properties": {
+        "questionSetHash": { "type": "null" },
+        "policyVersion": { "type": "null" },
+        "featureSetHash": { "type": "null" },
+        "hardware": { "type": "null" },
+        "region": { "type": "null" },
+        "concurrency": { "type": "null" },
+        "timeoutMs": { "type": "null" },
+        "architectures": {
+          "type": "object",
+          "properties": {
+            "deterministic_only": {
+              "$ref": "#/$defs/notRunArchitectureRuntime"
+            },
+            "host_model_only": { "$ref": "#/$defs/notRunArchitectureRuntime" },
+            "jev_advisory": { "$ref": "#/$defs/notRunArchitectureRuntime" },
+            "host_plus_jev": { "$ref": "#/$defs/notRunArchitectureRuntime" }
+          }
+        }
+      }
+    },
+    "notRunArchitectureRuntime": {
+      "type": "object",
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "providerId": { "type": "null" },
+              "modelId": { "type": "null" },
+              "modelVersion": { "type": "null" },
+              "responseModel": { "type": "null" },
+              "modelVersionEvidence": { "type": "null" },
+              "probabilitySemantics": { "type": "null" },
+              "pricing": { "type": "null" }
+            }
+          }
+        },
+        "combinerId": { "type": "null" },
+        "combinerVersion": { "type": "null" }
+      }
+    },
+    "notRunRow": {
+      "type": "object",
+      "properties": {
+        "sampleCount": { "const": 0 },
+        "calibrationTraceCount": { "const": 0 },
+        "testTraceCount": { "const": 0 },
+        "routeQuestionMetricTarget": { "type": "null" },
+        "atomicMetrics": { "type": "array", "maxItems": 0 },
+        "calibrationStatus": { "const": "NOT_RUN" },
+        "calibrationReason": { "type": "null" },
+        "tokenAccountingStatus": { "const": "NOT_RUN" },
+        "tokenAccountingReason": { "type": "null" },
+        "costAccountingStatus": { "const": "NOT_RUN" },
+        "costAccountingReason": { "type": "null" },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "accuracy": { "type": "null" },
+            "macroF1": { "type": "null" },
+            "routeQuestionBrier": { "type": "null" },
+            "routeQuestionEce": { "type": "null" },
+            "coverage": { "type": "null" },
+            "proposedObserveCount": { "type": "null" },
+            "acceptedObserveCount": { "type": "null" },
+            "falseObserveCount": { "type": "null" },
+            "abstainedObserveCount": { "type": "null" },
+            "autoObserveRate": { "type": "null" },
+            "observeAcceptanceRate": { "type": "null" },
+            "falseObserveRisk": { "type": "null" },
+            "reviewRate": { "type": "null" },
+            "unsafeExecutionAttemptRate": { "type": "null" },
+            "lookaheadRejectionRate": { "type": "null" },
+            "p50Ms": { "type": "null" },
+            "p95Ms": { "type": "null" },
+            "inputTokens": { "type": "null" },
+            "outputTokens": { "type": "null" },
+            "estimatedCostUsd": { "type": "null" }
+          }
+        }
+      }
+    },
+    "observeGateNotRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "policyId",
+        "formulaId",
+        "riskSemantics",
+        "maxObservedFalseObserveRisk",
+        "minimumCalibrationGroups",
+        "calibrationCaseCount",
+        "calibrationTraceCount",
+        "testCaseCount",
+        "testTraceCount",
+        "policies"
+      ],
+      "properties": {
+        "status": { "const": "NOT_RUN" },
+        "policyId": { "const": "finance.observe-gate.v1" },
+        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "riskSemantics": { "const": "empirical_calibration_only" },
+        "maxObservedFalseObserveRisk": { "type": "null" },
+        "minimumCalibrationGroups": { "type": "null" },
+        "calibrationCaseCount": { "const": 0 },
+        "calibrationTraceCount": { "const": 0 },
+        "testCaseCount": { "const": 0 },
+        "testTraceCount": { "const": 0 },
+        "policies": { "type": "null" }
+      }
+    },
+    "observeGateCompleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "policyId",
+        "formulaId",
+        "riskSemantics",
+        "maxObservedFalseObserveRisk",
+        "minimumCalibrationGroups",
+        "calibrationCaseCount",
+        "calibrationTraceCount",
+        "testCaseCount",
+        "testTraceCount",
+        "policies"
+      ],
+      "properties": {
+        "status": { "const": "COMPLETED" },
+        "policyId": { "const": "finance.observe-gate.v1" },
+        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "riskSemantics": { "const": "empirical_calibration_only" },
+        "maxObservedFalseObserveRisk": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "minimumCalibrationGroups": { "type": "integer", "minimum": 1 },
+        "calibrationCaseCount": { "type": "integer", "minimum": 1 },
+        "calibrationTraceCount": { "type": "integer", "minimum": 12 },
+        "testCaseCount": { "type": "integer", "minimum": 1 },
+        "testTraceCount": { "type": "integer", "minimum": 12 },
+        "policies": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/observeGatePolicyArtifact" }
+        }
+      }
+    },
+    "observeGatePolicyArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "binding", "policyDigest"],
+      "properties": {
+        "policy": {
+          "oneOf": [
+            { "$ref": "#/$defs/calibratedObserveGatePolicy" },
+            { "$ref": "#/$defs/unavailableObserveGatePolicy" }
+          ]
+        },
+        "binding": { "$ref": "#/$defs/observeGatePolicyBinding" },
+        "policyDigest": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "calibratedObserveGatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "policyId",
+        "formulaId",
+        "track",
+        "architecture",
+        "riskSemantics",
+        "maxObservedFalseObserveRisk",
+        "minimumCalibrationGroups",
+        "status",
+        "threshold",
+        "calibrationCaseCount",
+        "calibrationGroupCount",
+        "eligibleObserveCount",
+        "acceptedObserveCount",
+        "falseObserveCount",
+        "observedFalseObserveRisk"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "policyId": { "const": "finance.observe-gate.v1" },
+        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "track": { "$ref": "#/$defs/track" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "riskSemantics": { "const": "empirical_calibration_only" },
+        "maxObservedFalseObserveRisk": { "$ref": "#/$defs/unit" },
+        "minimumCalibrationGroups": { "type": "integer", "minimum": 1 },
+        "status": { "const": "CALIBRATED" },
+        "threshold": { "$ref": "#/$defs/unit" },
+        "calibrationCaseCount": { "type": "integer", "minimum": 0 },
+        "calibrationGroupCount": { "type": "integer", "minimum": 0 },
+        "eligibleObserveCount": { "type": "integer", "minimum": 1 },
+        "acceptedObserveCount": { "type": "integer", "minimum": 1 },
+        "falseObserveCount": { "type": "integer", "minimum": 0 },
+        "observedFalseObserveRisk": { "$ref": "#/$defs/unit" }
+      }
+    },
+    "unavailableObserveGatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "policyId",
+        "formulaId",
+        "track",
+        "architecture",
+        "riskSemantics",
+        "maxObservedFalseObserveRisk",
+        "minimumCalibrationGroups",
+        "status",
+        "reason",
+        "threshold",
+        "calibrationCaseCount",
+        "calibrationGroupCount",
+        "eligibleObserveCount",
+        "acceptedObserveCount",
+        "falseObserveCount",
+        "observedFalseObserveRisk"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "policyId": { "const": "finance.observe-gate.v1" },
+        "formulaId": { "const": "minimum-required-observe-support.v1" },
+        "track": { "$ref": "#/$defs/track" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "riskSemantics": { "const": "empirical_calibration_only" },
+        "maxObservedFalseObserveRisk": { "$ref": "#/$defs/unit" },
+        "minimumCalibrationGroups": { "type": "integer", "minimum": 1 },
+        "status": { "const": "UNAVAILABLE" },
+        "reason": {
+          "enum": [
+            "deterministic_only",
+            "insufficient_calibration_groups",
+            "no_eligible_observe_cases",
+            "no_threshold_meets_risk_bound"
+          ]
+        },
+        "threshold": { "type": "null" },
+        "calibrationCaseCount": { "type": "integer", "minimum": 0 },
+        "calibrationGroupCount": { "type": "integer", "minimum": 0 },
+        "eligibleObserveCount": { "type": "integer", "minimum": 0 },
+        "acceptedObserveCount": { "const": 0 },
+        "falseObserveCount": { "const": 0 },
+        "observedFalseObserveRisk": { "type": "null" }
+      }
+    },
+    "observeGatePolicyBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "datasetDigest",
+        "packId",
+        "packVersion",
+        "questionSetHash",
+        "track",
+        "architecture",
+        "components"
+      ],
+      "properties": {
+        "datasetDigest": { "$ref": "#/$defs/hash" },
+        "packId": { "type": "string", "minLength": 1 },
+        "packVersion": { "type": "string", "minLength": 1 },
+        "questionSetHash": { "$ref": "#/$defs/hash" },
+        "track": { "$ref": "#/$defs/track" },
+        "architecture": { "$ref": "#/$defs/architecture" },
+        "components": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/observeGateModelComponent" }
+        }
+      }
+    },
+    "observeGateModelComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "providerId",
+        "modelId",
+        "modelVersion",
+        "responseModel",
+        "probabilitySemantics"
+      ],
+      "properties": {
+        "role": { "enum": ["host", "jev"] },
+        "providerId": { "type": "string", "minLength": 1 },
+        "modelId": { "type": "string", "minLength": 1 },
+        "modelVersion": { "type": "string", "minLength": 1 },
+        "responseModel": { "type": "string", "minLength": 1 },
+        "probabilitySemantics": {
+          "enum": [
+            "native_calibrated",
+            "normalized_logits",
+            "self_reported",
+            "synthetic",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "atomicMetricLedger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "metrics"],
+      "properties": {
+        "role": { "enum": ["host", "jev"] },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/atomicMetricRow" }
+        }
+      }
+    },
+    "atomicMetricRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "sampleCount",
+        "caseCount",
+        "accuracy",
+        "macroF1",
+        "categoricalBrier",
+        "topLabelEce"
+      ],
+      "properties": {
+        "family": {
+          "enum": [
+            "route",
+            "anomaly",
+            "evidence_quality",
+            "untrusted_influence",
+            "claim",
+            "citation"
+          ]
+        },
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "caseCount": { "type": "integer", "minimum": 1 },
+        "accuracy": { "$ref": "#/$defs/unit" },
+        "macroF1": { "$ref": "#/$defs/unit" },
+        "categoricalBrier": { "type": "number", "minimum": 0, "maximum": 2 },
+        "topLabelEce": { "$ref": "#/$defs/unit" }
+      }
+    },
+    "track": {
+      "enum": [
+        "market_surveillance",
+        "visual_evidence",
+        "financial_text_triage"
+      ]
+    },
+    "architecture": {
+      "enum": [
+        "deterministic_only",
+        "host_model_only",
+        "jev_advisory",
+        "host_plus_jev"
+      ]
+    },
+    "unit": { "type": "number", "minimum": 0, "maximum": 1 },
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "architectureRuntime": {
       "type": "object",
       "additionalProperties": false,

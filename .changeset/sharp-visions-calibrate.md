@@ -10,4 +10,6 @@ finance observe-gate evaluation primitive, and freshness-bound visual
 observations for browser, chart, and DCC advisory workflows. These additions
 remain non-executing: contradictions and incomplete evidence fail closed,
 visual annotations cannot carry actions, and hosts retain policy and side-effect
-authority.
+authority. Retain calibration/test-separated finance observe-gate evidence in
+the benchmark contract and add profile-bound visual extractor vocabularies that
+bind an independently trusted profile into the capture tuple.

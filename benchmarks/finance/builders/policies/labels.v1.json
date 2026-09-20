@@ -2,6 +2,23 @@
   "schemaVersion": "1",
   "policyId": "finance.labels.v1",
   "scope": "operational_triage_not_investment_advice",
+  "observeGate": {
+    "policyId": "finance.observe-gate.v1",
+    "formulaId": "minimum-required-observe-support.v1",
+    "baseQuestionIds": [
+      "finance-route",
+      "finance-anomaly",
+      "finance-evidence-quality",
+      "finance-untrusted-influence"
+    ],
+    "dynamicQuestionPrefixes": [
+      "finance-text-claim:",
+      "finance-text-claim-cited:",
+      "finance-text-citation:"
+    ],
+    "candidateEvidenceBinding": "sha256_stable_json_of_id_excerptHash_optional_claimHash_optional_sourceSpan",
+    "calibrationParameters": "caller_owned_not_declared_by_dataset"
+  },
   "financialTextTriage": {
     "excludedFormSuffixes": ["/A"],
     "ignoredItems": ["9.01"],

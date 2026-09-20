@@ -266,7 +266,7 @@ export async function runFintechBenchmark(
   const traceGroups = await mapLimit(
     projected,
     options.limits.concurrency,
-    async (item) => runCase(item, options, budget),
+    async (item, caseIndex) => runCase(item, caseIndex, options, budget),
     () => budget.abort(),
   );
   const traces = traceGroups.flat();
@@ -276,10 +276,11 @@ export async function runFintechBenchmark(
     executionState: "COMPLETED",
     createdAt: options.createdAt,
     taskContract: {
-      id: "fintech-exception-routing-v1",
+      id: "fintech-exception-routing-v2",
       frozen: true,
       preregisteredAt: options.preregisteredAt,
       primaryMetric: "held_out_route_accuracy",
+      armOrderPolicy: "alternating_by_canonical_case_index_v1",
       prohibitedClaims: ["financial_authorization", "execution", "identity"],
     },
     pack: {
@@ -363,6 +364,7 @@ function projectCase(input: FintechBenchmarkCase): ProjectedCase {
 
 async function runCase(
   item: ProjectedCase,
+  caseIndex: number,
   options: FintechBenchmarkOptions,
   budget: GlobalBudget,
 ): Promise<readonly FintechTrace[]> {
@@ -375,18 +377,27 @@ async function runCase(
     routeScore: null,
     signals: [],
     accounting: emptyAccounting(),
+    caseExecutionOrdinal: 0,
     endToEndMs: baselineMs,
     price: options.pricing.inputNanoUsdPerToken,
     evaluator: options.evaluator,
   });
-  const batched = await runJevArm(item, "jev_batched", options, budget);
-  const serial = await runJevArm(item, "jev_serial", options, budget);
+  let batched: FintechTrace;
+  let serial: FintechTrace;
+  if (caseIndex % 2 === 0) {
+    batched = await runJevArm(item, "jev_batched", 1, options, budget);
+    serial = await runJevArm(item, "jev_serial", 2, options, budget);
+  } else {
+    serial = await runJevArm(item, "jev_serial", 1, options, budget);
+    batched = await runJevArm(item, "jev_batched", 2, options, budget);
+  }
   return [baseline, batched, serial];
 }
 
 async function runJevArm(
   item: ProjectedCase,
   arm: "jev_batched" | "jev_serial",
+  caseExecutionOrdinal: 1 | 2,
   options: FintechBenchmarkOptions,
   budget: GlobalBudget,
 ): Promise<FintechTrace> {
@@ -477,6 +488,7 @@ async function runJevArm(
     routeScore,
     signals,
     accounting,
+    caseExecutionOrdinal,
     endToEndMs: performance.now() - started,
     price: options.pricing.inputNanoUsdPerToken,
     evaluator: options.evaluator,
@@ -580,6 +592,7 @@ function trace(
     readonly routeScore: number | null;
     readonly signals: FintechTrace["signals"];
     readonly accounting: ArmAccounting;
+    readonly caseExecutionOrdinal: 0 | 1 | 2;
     readonly endToEndMs: number;
     readonly price: string;
     readonly evaluator: FintechMeasuredEvaluator;
@@ -601,6 +614,7 @@ function trace(
     routeScore: value.routeScore,
     signals: value.signals,
     runtime: {
+      caseExecutionOrdinal: value.caseExecutionOrdinal,
       providerInvocationCount: value.accounting.providerInvocationCount,
       inputTokens: value.accounting.inputTokens,
       outputTokens: value.accounting.outputTokens,
@@ -849,7 +863,7 @@ function emptyAccounting(): ArmAccounting {
 async function mapLimit<T, R>(
   values: readonly T[],
   concurrency: number,
-  mapper: (value: T) => Promise<R>,
+  mapper: (value: T, index: number) => Promise<R>,
   onError: () => void,
 ): Promise<R[]> {
   const result = new Array<R>(values.length);
@@ -866,7 +880,7 @@ async function mapLimit<T, R>(
         if (value === undefined)
           throw new BenchmarkIntegrityError("benchmark work item disappeared");
         try {
-          result[index] = await mapper(value);
+          result[index] = await mapper(value, index);
         } catch (error) {
           if (firstError === undefined) {
             firstError = error;

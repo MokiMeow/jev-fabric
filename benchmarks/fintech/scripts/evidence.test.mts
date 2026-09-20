@@ -83,6 +83,7 @@ function buildDataset() {
 function traceFor(
   datasetCase: ReturnType<typeof buildDataset>["cases"][number],
   arm: "no_jev" | "jev_batched" | "jev_serial",
+  caseIndex: number,
 ) {
   const values = fintechSignalIds.map((signalId) => ({
     signalId,
@@ -102,6 +103,16 @@ function traceFor(
     routeScore: jev ? 0.9 : null,
     signals: jev ? values : [],
     runtime: {
+      caseExecutionOrdinal:
+        arm === "no_jev"
+          ? 0
+          : caseIndex % 2 === 0
+            ? arm === "jev_batched"
+              ? 1
+              : 2
+            : arm === "jev_serial"
+              ? 1
+              : 2,
       providerInvocationCount: arm === "jev_serial" ? 6 : jev ? 1 : 0,
       inputTokens: arm === "jev_serial" ? 600 : jev ? 150 : 0,
       outputTokens: 0,
@@ -134,10 +145,11 @@ function completedEvidence() {
     executionState: "COMPLETED",
     createdAt: "2026-09-20T00:00:00.000Z",
     taskContract: {
-      id: "fintech-exception-routing-v1",
+      id: "fintech-exception-routing-v2",
       frozen: true,
       preregisteredAt: "2026-09-19T00:00:00.000Z",
       primaryMetric: "held_out_route_accuracy",
+      armOrderPolicy: "alternating_by_canonical_case_index_v1",
       prohibitedClaims: ["financial_authorization", "execution", "identity"],
     },
     pack: {
@@ -157,9 +169,9 @@ function completedEvidence() {
       observedAt: "2026-09-20T00:00:00.000Z",
     },
     dataset,
-    traces: dataset.cases.flatMap((datasetCase) =>
+    traces: dataset.cases.flatMap((datasetCase, caseIndex) =>
       (["no_jev", "jev_batched", "jev_serial"] as const).map((arm) =>
-        traceFor(datasetCase, arm),
+        traceFor(datasetCase, arm, caseIndex),
       ),
     ),
     metrics: null,
@@ -267,6 +279,26 @@ test("batching robustness exposes missing valid signal pairs instead of hiding t
   assert.equal(
     evidence.metrics.batching.testSignalRobustness.labelAgreementRate,
     1,
+  );
+});
+
+test("counterbalanced arm order is retained and cannot be forged", () => {
+  const evidence = completedEvidence();
+  assert.doesNotThrow(() => assertFintechEvidence(evidence));
+  const firstBatched = evidence.traces.find(
+    (trace) => trace.caseId === "cal-observe" && trace.arm === "jev_batched",
+  );
+  const secondBatched = evidence.traces.find(
+    (trace) => trace.caseId === "cal-escalate" && trace.arm === "jev_batched",
+  );
+  assert.ok(firstBatched && secondBatched);
+  assert.equal(firstBatched.runtime.caseExecutionOrdinal, 1);
+  assert.equal(secondBatched.runtime.caseExecutionOrdinal, 2);
+
+  firstBatched.runtime.caseExecutionOrdinal = 2;
+  assert.throws(
+    () => assertFintechEvidence(evidence),
+    /execution ordinal.*counterbalanced/u,
   );
 });
 

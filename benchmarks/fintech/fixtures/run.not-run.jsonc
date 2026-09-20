@@ -4,10 +4,11 @@
   "executionState": "NOT_RUN",
   "createdAt": "2026-09-20T00:00:00.000Z",
   "taskContract": {
-    "id": "fintech-exception-routing-v1",
+    "id": "fintech-exception-routing-v2",
     "frozen": true,
     "preregisteredAt": "2026-09-20T00:00:00.000Z",
     "primaryMetric": "held_out_route_accuracy",
+    "armOrderPolicy": "alternating_by_canonical_case_index_v1",
     "prohibitedClaims": ["financial_authorization", "execution", "identity"]
   },
   "pack": {

@@ -133,6 +133,7 @@ class FixtureEvaluator implements FintechMeasuredEvaluator {
   calls = 0;
   active = 0;
   maxActive = 0;
+  readonly questionCountsByCase = new Map<string, number[]>();
   mutate?: (
     response: DecisionResponse,
     request: DecisionRequest,
@@ -144,6 +145,11 @@ class FixtureEvaluator implements FintechMeasuredEvaluator {
     usage: { inputTokens: number; outputTokens: number };
   }> {
     this.calls += 1;
+    const caseRef = (request.state as { caseRef?: unknown }).caseRef;
+    assert.ok(typeof caseRef === "string");
+    const questionCounts = this.questionCountsByCase.get(caseRef) ?? [];
+    questionCounts.push(request.questions.length);
+    this.questionCountsByCase.set(caseRef, questionCounts);
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
     try {
@@ -218,16 +224,35 @@ test("runs one batched and six serial calls per case without retaining raw state
   assert.equal(evidence.metrics?.byArm.no_jev.providerInvocationCount, 0);
   assert.equal(evidence.metrics?.byArm.jev_batched.testRouteAccuracy, 1);
   assert.equal(evidence.metrics?.byArm.jev_serial.testRouteAccuracy, 1);
+  assert.deepEqual(
+    evaluator.questionCountsByCase.get("ref:cal-duplicate"),
+    [6, 1, 1, 1, 1, 1, 1],
+  );
+  assert.deepEqual(
+    evaluator.questionCountsByCase.get("ref:test-urgent"),
+    [1, 1, 1, 1, 1, 1, 6],
+  );
   assert.equal(
     JSON.stringify(evidence).includes("SYNTHETIC_PRIVATE_MARKER"),
     false,
   );
 
   for (const datasetCase of evidence.dataset.cases) {
+    const caseIndex = evidence.dataset.cases.indexOf(datasetCase);
     const jevTraces = evidence.traces.filter(
       (trace) => trace.caseId === datasetCase.caseId && trace.arm !== "no_jev",
     );
     assert.equal(jevTraces.length, 2);
+    assert.equal(
+      jevTraces.find((trace) => trace.arm === "jev_batched")?.runtime
+        .caseExecutionOrdinal,
+      caseIndex % 2 === 0 ? 1 : 2,
+    );
+    assert.equal(
+      jevTraces.find((trace) => trace.arm === "jev_serial")?.runtime
+        .caseExecutionOrdinal,
+      caseIndex % 2 === 0 ? 2 : 1,
+    );
     assert.ok(
       jevTraces.every(
         (trace) =>

@@ -229,6 +229,23 @@ regressions, recoveries, and valid-pair coverage. Agreement without independent
 gold remains stability evidence only; empty or missing pairs cannot become a
 zero-error accuracy claim.
 
+A separate same-week
+[structured-output comparison](https://github.com/iammrduncan/typesafe-ai-benchmark)
+retains paired browser exports for Jev and a Qwen structured-output baseline.
+Its September 17 run is useful evidence about that harness, but not a universal
+ranking: it used one paired run per scene, repeated several synthetic fixtures,
+excluded unknown canceled-call usage from cost, used different scoring
+representations, and allowed stateful trajectories to diverge. Its strongest
+reusable methods are the separation of dispatched, validated, failed, and
+canceled calls; successful versus all-settled latency; retained environment and
+source hashes; overlapping paired start evidence; and an explicit warning that
+fixture agreement is not calibration. Fabric already aborts a publishable run
+when a failed attempt has unknown metering. It now also removes its prior fixed
+batched-first bias: the frozen fintech v2 task alternates batched-first and
+serial-first cases by canonical retained-case index and binds execution ordinals
+into every trace. This controls one temporal confound without claiming that a
+single counterbalanced run proves a causal speed advantage.
+
 The official model page also fixes a 32k budget for `state` plus the longest
 question and the jaggedness guide warns that irrelevant state reduces accuracy.
 The provider-facing visual bridge therefore caps its complete annotation JSON

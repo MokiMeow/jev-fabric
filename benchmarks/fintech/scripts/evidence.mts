@@ -60,6 +60,7 @@ export interface FintechTrace {
     readonly probabilityYes: number;
   }[];
   readonly runtime: {
+    readonly caseExecutionOrdinal: 0 | 1 | 2;
     readonly providerInvocationCount: number;
     readonly inputTokens: number;
     readonly outputTokens: number;
@@ -89,10 +90,11 @@ export interface FintechEvidence {
   readonly executionState: "NOT_RUN" | "COMPLETED";
   readonly createdAt: string;
   readonly taskContract: {
-    readonly id: "fintech-exception-routing-v1";
+    readonly id: "fintech-exception-routing-v2";
     readonly frozen: true;
     readonly preregisteredAt: string;
     readonly primaryMetric: "held_out_route_accuracy";
+    readonly armOrderPolicy: "alternating_by_canonical_case_index_v1";
     readonly prohibitedClaims: readonly string[];
   };
   readonly pack: {
@@ -737,15 +739,26 @@ function validateTaskContract(value: unknown): void {
   const task = record(value, "task contract");
   exactKeys(
     task,
-    ["id", "frozen", "preregisteredAt", "primaryMetric", "prohibitedClaims"],
+    [
+      "id",
+      "frozen",
+      "preregisteredAt",
+      "primaryMetric",
+      "armOrderPolicy",
+      "prohibitedClaims",
+    ],
     "task contract",
   );
-  invariant(task.id === "fintech-exception-routing-v1", "task id is invalid");
+  invariant(task.id === "fintech-exception-routing-v2", "task id is invalid");
   invariant(task.frozen === true, "task contract must be frozen");
   exactTimestamp(task.preregisteredAt, "task preregistration");
   invariant(
     task.primaryMetric === "held_out_route_accuracy",
     "primary metric is invalid",
+  );
+  invariant(
+    task.armOrderPolicy === "alternating_by_canonical_case_index_v1",
+    "arm order policy is invalid",
   );
   invariant(
     Array.isArray(task.prohibitedClaims),
@@ -1017,6 +1030,7 @@ function validateRuntime(
   exactKeys(
     runtime,
     [
+      "caseExecutionOrdinal",
       "providerInvocationCount",
       "inputTokens",
       "outputTokens",
@@ -1030,6 +1044,11 @@ function validateRuntime(
       "questionSetHash",
     ],
     "trace runtime",
+  );
+  nonNegativeInteger(runtime.caseExecutionOrdinal, "case execution ordinal");
+  invariant(
+    runtime.caseExecutionOrdinal <= 2,
+    "case execution ordinal exceeds its bounded maximum",
   );
   boundedNonNegativeInteger(
     runtime.providerInvocationCount,
@@ -1074,7 +1093,8 @@ function validateRuntime(
   );
   if (arm === "no_jev") {
     invariant(
-      runtime.providerInvocationCount === 0 &&
+      runtime.caseExecutionOrdinal === 0 &&
+        runtime.providerInvocationCount === 0 &&
         runtime.inputTokens === 0 &&
         runtime.outputTokens === 0 &&
         runtime.costNanoUsd === "0" &&
@@ -1084,6 +1104,10 @@ function validateRuntime(
       "no-Jev baseline must have zero provider accounting",
     );
   } else {
+    invariant(
+      runtime.caseExecutionOrdinal === 1 || runtime.caseExecutionOrdinal === 2,
+      "Jev case execution ordinal must be 1 or 2",
+    );
     if (valid) {
       invariant(
         runtime.inputTokens > 0,
@@ -1370,16 +1394,27 @@ export function assertFintechEvidence(
     ),
     "every case requires exactly one trace for each arm",
   );
-  for (const datasetCase of datasetCases) {
+  for (const [caseIndex, datasetCase] of datasetCases.entries()) {
     const batched = validatedByCaseArm.get(
       `${datasetCase.caseId}\0jev_batched`,
     );
     const serial = validatedByCaseArm.get(`${datasetCase.caseId}\0jev_serial`);
     invariant(
-      batched?.runtime.model === serial?.runtime.model &&
-        batched?.runtime.transport === serial?.runtime.transport &&
-        batched?.runtime.questionSetHash === serial?.runtime.questionSetHash,
+      batched !== undefined && serial !== undefined,
+      "counterbalanced case is missing a Jev arm",
+    );
+    invariant(
+      batched.runtime.model === serial.runtime.model &&
+        batched.runtime.transport === serial.runtime.transport &&
+        batched.runtime.questionSetHash === serial.runtime.questionSetHash,
       "batched and serial arms must use the same model, transport, and question set",
+    );
+    const expectedBatchedOrdinal = caseIndex % 2 === 0 ? 1 : 2;
+    const expectedSerialOrdinal = caseIndex % 2 === 0 ? 2 : 1;
+    invariant(
+      batched.runtime.caseExecutionOrdinal === expectedBatchedOrdinal &&
+        serial.runtime.caseExecutionOrdinal === expectedSerialOrdinal,
+      "execution ordinal does not match the counterbalanced arm order policy",
     );
   }
   const recomputed = recomputeFintechMetrics({

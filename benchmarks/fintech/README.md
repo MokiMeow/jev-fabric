@@ -50,6 +50,9 @@ The executable contract in `scripts/evidence.mts` rejects an artifact unless:
 - every case commits to the exact provider-visible projected-state digest and
   each attempted Jev arm matches that frozen digest;
 - every case has exactly one no-Jev, batched, and serial trace;
+- the frozen `fintech-exception-routing-v2` task alternates which Jev arm runs
+  first by canonical retained-case index, and every trace retains the expected
+  per-case execution ordinal;
 - the batched and serial arms use the same concrete Jev version, transport,
   pack, and question-set hash;
 - every valid Jev trace contains exactly the six current Noul answers and each
@@ -117,7 +120,8 @@ Before any request, the runner projects every case through the exact
 authority-bearing, bypassed, or malformed cases. During execution it:
 
 - runs the deterministic baseline with zero provider calls;
-- compares one six-question batch with six independent serial requests;
+- compares one six-question batch with six independent serial requests and
+  alternates which Jev arm runs first across the frozen case order;
 - bounds case concurrency, attempts, request count, per-call deadline, and
   aggregate input tokens;
 - reserves a conservative input-token allowance before each concurrent call so
@@ -147,6 +151,12 @@ Never place a credential in the artifact, command line, repository, trace, test
 fixture, or provider-visible state. A thrown provider error is not publishable
 measurement evidence unless the provider can return exact usage for that
 attempt; the runner therefore aborts on such errors.
+
+Counterbalancing removes a fixed batched-first temporal bias; it does not turn a
+small run into causal evidence or an SLA. Cases may still overlap under bounded
+worker concurrency, while the two Jev arms for one case run sequentially in the
+retained ordinal order. A production comparison still needs enough independent
+cases and repeats to estimate uncertainty and time-of-run variation.
 
 ## Why the no-Jev arm is mandatory
 

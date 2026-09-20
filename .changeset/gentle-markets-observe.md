@@ -74,3 +74,10 @@ evaluation clock before cache or provider access.
 Pack interpretation now receives the validated provider, model, and
 probability-semantics context on both live and cached paths so calibrated
 confidence policy cannot silently cross incompatible response semantics.
+
+Evaluation consumers can now classify cross-system probability comparisons
+against a reusable, strict contract. Finance artifacts bind host-versus-Jev
+route comparisons to the same dataset population, question contract, metric
+target, and declared probability semantics; mismatched native, normalized, or
+self-reported probabilities remain descriptive rather than becoming a false
+calibration-equivalence claim.

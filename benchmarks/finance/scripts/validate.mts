@@ -21,8 +21,10 @@ import {
   type FinanceBenchmarkCase,
   type FinanceCounterfactualTrace,
   type FinanceObserveGateConfiguration,
+  type FinanceProbabilityComparison,
   type FinanceRuntimeEvidence,
   type FinanceRuntimeProvenance,
+  createFinanceProbabilityComparisons,
   financeCaseStateDigest,
   loadFinanceDataset,
   recomputeFinanceBenchmarkEvidence,
@@ -106,6 +108,7 @@ interface FinanceRunDocument {
     testTraceCount: number;
     policies: readonly unknown[] | null;
   }>;
+  readonly probabilityComparisons: readonly FinanceProbabilityComparison[];
   readonly rows: readonly FinanceRunRow[];
 }
 
@@ -121,6 +124,10 @@ export function validateFinanceRun(value: unknown): void {
     ),
   );
   const actual = new Set<string>();
+  invariant(
+    Array.isArray(run.probabilityComparisons),
+    "finance probability comparisons must be an array",
+  );
   invariant(
     run.rows.length === expected.size,
     "finance matrix must contain every track/architecture pair",
@@ -265,6 +272,10 @@ export function validateFinanceRun(value: unknown): void {
         run.observeGate.policies === null,
       "NOT_RUN finance run cannot claim an observe-gate calibration",
     );
+    invariant(
+      run.probabilityComparisons.length === 0,
+      "NOT_RUN finance run cannot claim probability comparability",
+    );
     return;
   }
   invariant(
@@ -339,6 +350,17 @@ export function validateFinanceRun(value: unknown): void {
     );
   validateRuntimeProvenance(run.runtime);
   invariant(
+    stableJson(run.probabilityComparisons) ===
+      stableJson(
+        createFinanceProbabilityComparisons(
+          run.dataset.digest as string,
+          run.runtime.questionSetHash,
+          run.runtime,
+        ),
+      ),
+    "finance probability comparisons do not match runtime and evaluation evidence",
+  );
+  invariant(
     run.observeGate.status === "COMPLETED" &&
       run.observeGate.policyId === "finance.observe-gate.v1" &&
       run.observeGate.formulaId === "minimum-required-observe-support.v1" &&
@@ -392,7 +414,6 @@ export async function validateFinanceArtifactDirectory(
     new TextDecoder().decode(runBytes),
   ) as FinanceRunDocument;
   validateAgainstSchema(runSchema, run, "finance run");
-  validateFinanceRun(run);
   invariant(
     run.executionState === "COMPLETED",
     "artifact directory must contain a completed finance run",
@@ -413,6 +434,7 @@ export async function validateFinanceArtifactDirectory(
     stableJson(run.dataset) === stableJson(expectedDataset),
     "finance run dataset metadata does not match its retained manifest",
   );
+  validateFinanceRun(run);
   await validateRetainedRuntimeEvidence(directory, run.runtime);
   const traceText = new TextDecoder("utf-8", { fatal: true }).decode(
     traceBytes,
@@ -462,6 +484,11 @@ export async function validateFinanceArtifactDirectory(
   invariant(
     stableJson(recomputed.rows) === stableJson(run.rows),
     "finance aggregate rows do not match retained traces",
+  );
+  invariant(
+    stableJson(recomputed.probabilityComparisons) ===
+      stableJson(run.probabilityComparisons),
+    "finance probability comparisons do not match retained evidence",
   );
 }
 

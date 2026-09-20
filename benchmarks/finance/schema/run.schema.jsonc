@@ -18,6 +18,10 @@
           "dataset": { "$ref": "#/$defs/notRunDataset" },
           "runtime": { "$ref": "#/$defs/notRunRuntime" },
           "observeGate": { "$ref": "#/$defs/observeGateNotRun" },
+          "probabilityComparisons": {
+            "type": "array",
+            "maxItems": 0
+          },
           "rows": {
             "type": "array",
             "items": { "$ref": "#/$defs/notRunRow" }
@@ -31,7 +35,12 @@
           "traceCount": { "type": "integer", "minimum": 24 },
           "traceSetHash": { "$ref": "#/$defs/hash" },
           "counterfactuals": { "$ref": "#/$defs/counterfactualsCompleted" },
-          "observeGate": { "$ref": "#/$defs/observeGateCompleted" }
+          "observeGate": { "$ref": "#/$defs/observeGateCompleted" },
+          "probabilityComparisons": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3
+          }
         }
       }
     }
@@ -48,6 +57,7 @@
     "dataset",
     "runtime",
     "observeGate",
+    "probabilityComparisons",
     "rows"
   ],
   "properties": {
@@ -169,6 +179,12 @@
         { "$ref": "#/$defs/observeGateNotRun" },
         { "$ref": "#/$defs/observeGateCompleted" }
       ]
+    },
+    "probabilityComparisons": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/probabilityComparison" }
     },
     "rows": {
       "type": "array",
@@ -842,6 +858,89 @@
           ]
         }
       }
+    },
+    "probabilityComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "track",
+        "referenceArchitecture",
+        "candidateArchitecture",
+        "evaluationContractId",
+        "populationId",
+        "metricTarget",
+        "referenceProbabilitySemantics",
+        "candidateProbabilitySemantics",
+        "assessment"
+      ],
+      "properties": {
+        "track": { "$ref": "#/$defs/track" },
+        "referenceArchitecture": { "const": "host_model_only" },
+        "candidateArchitecture": { "const": "jev_advisory" },
+        "evaluationContractId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "populationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "metricTarget": { "const": "atomic_gold_finance_route" },
+        "referenceProbabilitySemantics": {
+          "$ref": "#/$defs/probabilitySemantics"
+        },
+        "candidateProbabilitySemantics": {
+          "$ref": "#/$defs/probabilitySemantics"
+        },
+        "assessment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contractId",
+            "decisionOutcomeMetrics",
+            "probabilityCalibrationMetrics",
+            "rawProbabilityValues",
+            "reason"
+          ],
+          "properties": {
+            "contractId": { "const": "probability-comparability.v1" },
+            "decisionOutcomeMetrics": {
+              "enum": ["comparable", "not_comparable"]
+            },
+            "probabilityCalibrationMetrics": {
+              "enum": ["comparable", "descriptive_only", "unavailable"]
+            },
+            "rawProbabilityValues": {
+              "enum": ["comparable", "not_comparable"]
+            },
+            "reason": {
+              "enum": [
+                "matched_probability_semantics",
+                "self_reported_probability",
+                "probability_semantics_differ",
+                "probability_unavailable",
+                "probability_semantics_unknown",
+                "probability_semantics_synthetic",
+                "evaluation_contract_mismatch",
+                "population_mismatch",
+                "metric_target_mismatch"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "probabilitySemantics": {
+      "enum": [
+        "none",
+        "native_calibrated",
+        "normalized_logits",
+        "self_reported",
+        "synthetic",
+        "unknown"
+      ]
     },
     "atomicMetricLedger": {
       "type": "object",

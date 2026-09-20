@@ -49,6 +49,22 @@ macro-F1, categorical Brier score, and top-label ECE are reported for the route,
 anomaly, evidence-quality, untrusted-influence, claim, and citation families
 that exist in the held-out cases.
 
+Every completed run also emits three machine-checked
+`probabilityComparisons`, one per track, for the host-only versus Jev-only
+atomic route question. Each comparison binds the dataset digest, held-out
+split, track, question-set hash, metric target, and both declared probability
+semantics. Accuracy and macro-F1 remain comparable when that evaluation
+contract matches. Brier/ECE differences are `descriptive_only`, and raw
+probability values are `not_comparable`, when a host's normalized or
+self-reported probabilities are compared with Jev's native calibrated
+distribution. Unknown, synthetic, or absent semantics make probability
+comparison unavailable. The runner and independent validator recompute this
+classification; changing the label in `run.json` invalidates the artifact.
+Matching semantics alone never overrides a dataset, population, question, or
+metric-target mismatch. The current comparison contract is intentionally
+limited to the common route question; it does not imply that dynamic claim or
+citation families contain identical sample populations.
+
 There is deliberately no final-route Brier score or ECE. A route-question
 distribution is scored only against the matching atomic gold label for
 `finance-route`, and the row declares

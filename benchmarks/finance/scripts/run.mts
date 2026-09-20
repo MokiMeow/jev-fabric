@@ -22,6 +22,7 @@ import {
 import {
   aggregateFinanceBenchmarkTraces,
   applyFinanceObserveGate,
+  assessProbabilityComparability,
   assertFinanceGoldRouteAlignment,
   combineFinanceObserveSupport,
   createFinanceObserveGatePolicyArtifact,
@@ -34,6 +35,8 @@ import {
   type FinanceRoute,
   type FinanceRouteProbabilities,
   type FinanceTrack,
+  type ProbabilityComparabilityAssessment,
+  type ProbabilitySemantics,
   financeArchitectures,
   financeAtomicEvidenceRoute,
   financeAtomicMetrics,
@@ -193,13 +196,7 @@ export interface ArchitectureRuntimeComponent {
   /** Exact model or route string returned by the provider. */
   readonly responseModel: string;
   readonly modelVersionEvidence: ArchitectureRuntimeModelVersionEvidence;
-  readonly probabilitySemantics:
-    | "none"
-    | "native_calibrated"
-    | "normalized_logits"
-    | "self_reported"
-    | "synthetic"
-    | "unknown";
+  readonly probabilitySemantics: ProbabilitySemantics;
   readonly pricing: ArchitectureRuntimePricing | null;
 }
 
@@ -262,6 +259,18 @@ export interface FinanceRunArtifacts {
   readonly counterfactualsJsonl: string;
   readonly dataset: LoadedFinanceDataset;
   readonly runtimeEvidence: readonly FinanceRuntimeEvidence[];
+}
+
+export interface FinanceProbabilityComparison {
+  readonly track: FinanceTrack;
+  readonly referenceArchitecture: "host_model_only";
+  readonly candidateArchitecture: "jev_advisory";
+  readonly evaluationContractId: string;
+  readonly populationId: string;
+  readonly metricTarget: "atomic_gold_finance_route";
+  readonly referenceProbabilitySemantics: ProbabilitySemantics;
+  readonly candidateProbabilitySemantics: ProbabilitySemantics;
+  readonly assessment: ProbabilityComparabilityAssessment;
 }
 
 export type FinanceCounterfactualKind =
@@ -498,6 +507,7 @@ export async function runFinanceBenchmark(options: {
       testTraceCount: testTraces.length,
       policies: recomputed.policies,
     },
+    probabilityComparisons: recomputed.probabilityComparisons,
     rows,
   };
   validateSchema(await readSchema("run.schema.jsonc"), run, "finance run");
@@ -717,6 +727,7 @@ export function recomputeFinanceBenchmarkEvidence(
   configuration: FinanceObserveGateConfiguration,
 ): Readonly<{
   policies: readonly FinanceObserveGatePolicyArtifact[];
+  probabilityComparisons: readonly FinanceProbabilityComparison[];
   rows: readonly Record<string, unknown>[];
 }> {
   validateObserveGateConfiguration(configuration);
@@ -778,8 +789,69 @@ export function recomputeFinanceBenchmarkEvidence(
   }
   return Object.freeze({
     policies: Object.freeze(orderedPolicies),
+    probabilityComparisons: createFinanceProbabilityComparisons(
+      dataset.manifest.caseSetHash,
+      runtime.questionSetHash,
+      runtime,
+    ),
     rows: recomputeFinanceBenchmarkRows(retained),
   });
+}
+
+export function createFinanceProbabilityComparisons(
+  datasetDigest: string,
+  questionSetHash: string,
+  runtime: FinanceRuntimeProvenance,
+): readonly FinanceProbabilityComparison[] {
+  const host = requiredModelComponent(runtime, "host_model_only", "host");
+  const jev = requiredModelComponent(runtime, "jev_advisory", "jev");
+  return Object.freeze(
+    financeTracks.map((track) => {
+      const evaluationContractId = `${questionSetHash}/finance-route`;
+      const populationId = `${datasetDigest}/test/${track}`;
+      const metricTarget = "atomic_gold_finance_route" as const;
+      return Object.freeze({
+        track,
+        referenceArchitecture: "host_model_only" as const,
+        candidateArchitecture: "jev_advisory" as const,
+        evaluationContractId,
+        populationId,
+        metricTarget,
+        referenceProbabilitySemantics: host.probabilitySemantics,
+        candidateProbabilitySemantics: jev.probabilitySemantics,
+        assessment: Object.freeze(
+          assessProbabilityComparability(
+            {
+              probabilitySemantics: host.probabilitySemantics,
+              evaluationContractId,
+              populationId,
+              metricTarget,
+            },
+            {
+              probabilitySemantics: jev.probabilitySemantics,
+              evaluationContractId,
+              populationId,
+              metricTarget,
+            },
+          ),
+        ),
+      });
+    }),
+  );
+}
+
+function requiredModelComponent(
+  runtime: FinanceRuntimeProvenance,
+  architecture: "host_model_only" | "jev_advisory",
+  role: "host" | "jev",
+): ArchitectureRuntimeComponent {
+  const components = runtime.architectures[architecture].components;
+  const component = components.find((candidate) => candidate.role === role);
+  invariant(
+    component !== undefined && components.length === 1,
+    `finance ${architecture} must contain one ${role} component`,
+  );
+  return component;
 }
 
 function atomicBindingsFromGold(

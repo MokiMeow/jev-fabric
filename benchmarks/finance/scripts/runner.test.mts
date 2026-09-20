@@ -753,7 +753,48 @@ test("runs, retains, and independently validates the complete finance matrix", a
             row.metrics.routeQuestionBrier === null,
       ),
     );
+    const probabilityComparisons = artifacts.run
+      .probabilityComparisons as Array<{
+      track: string;
+      referenceProbabilitySemantics: string;
+      candidateProbabilitySemantics: string;
+      assessment: {
+        decisionOutcomeMetrics: string;
+        probabilityCalibrationMetrics: string;
+        rawProbabilityValues: string;
+        reason: string;
+      };
+    }>;
+    assert.equal(probabilityComparisons.length, 3);
+    assert.deepEqual(
+      probabilityComparisons.map((comparison) => comparison.track),
+      ["market_surveillance", "visual_evidence", "financial_text_triage"],
+    );
+    assert.ok(
+      probabilityComparisons.every(
+        (comparison) =>
+          comparison.referenceProbabilitySemantics === "normalized_logits" &&
+          comparison.candidateProbabilitySemantics === "native_calibrated" &&
+          comparison.assessment.decisionOutcomeMetrics === "comparable" &&
+          comparison.assessment.probabilityCalibrationMetrics ===
+            "descriptive_only" &&
+          comparison.assessment.rawProbabilityValues === "not_comparable" &&
+          comparison.assessment.reason === "probability_semantics_differ",
+      ),
+    );
     assert.doesNotThrow(() => validateFinanceRun(artifacts.run));
+    const forgedComparability = structuredClone(artifacts.run);
+    const forgedComparison = (
+      forgedComparability.probabilityComparisons as Array<{
+        assessment: { probabilityCalibrationMetrics: string };
+      }>
+    )[0];
+    assert.ok(forgedComparison !== undefined);
+    forgedComparison.assessment.probabilityCalibrationMetrics = "comparable";
+    assert.throws(
+      () => validateFinanceRun(forgedComparability),
+      /probability comparisons do not match/u,
+    );
     const output = join(fixture.root, "artifacts");
     await writeFinanceArtifacts(output, artifacts);
     assert.equal(

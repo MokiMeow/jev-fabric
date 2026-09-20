@@ -246,6 +246,24 @@ serial-first cases by canonical retained-case index and binds execution ordinals
 into every trace. This controls one temporal confound without claiming that a
 single counterbalanced run proves a causal speed advantage.
 
+The official [confidence guide](https://docs.typesafe.ai/confidence) says
+Choice and Score confidence is derived from the returned probability
+distribution, while the current
+[AI primer](https://docs.typesafe.ai/introduction/machine-learning-primer)
+describes TypeSafe's RLCD output as decisions with calibrated probabilities.
+The primer's frequency interpretation applies to groups of predictions, not a
+single answer. A general model's prompted or normalized confidence therefore
+must not silently inherit Jev's native probability semantics. Fabric now
+exports a reusable `probability-comparability.v1` assessment and retains one
+host-versus-Jev route comparison per finance track. It permits outcome-metric
+comparison only for a matching question contract, held-out population, and
+metric target. Different probability semantics keep Brier/ECE deltas
+descriptive and prohibit direct raw-probability comparison; unknown,
+synthetic, or absent semantics make probability comparison unavailable. The
+offline validator recomputes this verdict from retained runtime and dataset
+evidence, so a report cannot promote `descriptive_only` to `comparable` by
+editing its JSON.
+
 The official model page also fixes a 32k budget for `state` plus the longest
 question and the jaggedness guide warns that irrelevant state reduces accuracy.
 The provider-facing visual bridge therefore caps its complete annotation JSON

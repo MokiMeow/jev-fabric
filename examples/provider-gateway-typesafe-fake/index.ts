@@ -1,13 +1,14 @@
 import {
   BudgetLedger,
   DecisionScheduler,
+  definePack,
   FabricRuntime,
   MemoryDecisionCache,
-  definePack,
 } from "@mokimeow/jev-fabric-core";
 import {
-  createVercelGatewayJevProvider,
+  TypeSafeProvider,
   VERCEL_GATEWAY_JEV_MODEL,
+  VERCEL_GATEWAY_JEV_PROVIDER_ID,
 } from "@mokimeow/jev-fabric-provider-typesafe";
 
 const gatewayRoutePack = definePack(
@@ -59,13 +60,16 @@ const gatewayRoutePack = definePack(
 );
 
 /**
- * A server-side Vercel Gateway composition with injected I/O. The example is
- * deliberately offline: the API key placeholder is never used by the fake
- * client and no network call is made.
+ * An offline simulation of the response-mapping and runtime shape used by the
+ * fixed Vercel Gateway factory. The production factory deliberately accepts no
+ * client or endpoint override; this generic provider uses injected I/O solely
+ * so the example makes no network call.
  */
 export async function example() {
-  const provider = createVercelGatewayJevProvider({
-    apiKey: "trusted-server-secret-reference",
+  const provider = new TypeSafeProvider({
+    id: VERCEL_GATEWAY_JEV_PROVIDER_ID,
+    model: VERCEL_GATEWAY_JEV_MODEL,
+    approvedModels: [VERCEL_GATEWAY_JEV_MODEL],
     client: {
       systemOne: async () => ({
         model: VERCEL_GATEWAY_JEV_MODEL,

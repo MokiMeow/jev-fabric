@@ -139,7 +139,7 @@ describe("public Markdown integrity", () => {
       const text = await readFile(path, "utf8");
       if (!quantified.test(text)) continue;
       expect(text).toMatch(/evidence class|evidence:|Evidence:/u);
-      expect(text).toMatch(/2026-09-(?:19|20)/u);
+      expect(text).toMatch(/2026-09-(?:19|20|21)/u);
       expect(text).toMatch(/version|versions/u);
       expect(text).toMatch(/cases|sample|denominator/u);
       expect(text).toMatch(/hardware|region|machine|redacted/u);

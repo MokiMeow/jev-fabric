@@ -110,8 +110,10 @@ if (
   throw new Error("installed WebMCP boundary is not advisory-only");
 
 const typeSafeProvider = installedModules.get("provider-typesafe");
-const gatewayProvider = typeSafeProvider.createVercelGatewayJevProvider({
-  apiKey: "offline-smoke-key",
+const gatewayProvider = new typeSafeProvider.TypeSafeProvider({
+  id: typeSafeProvider.VERCEL_GATEWAY_JEV_PROVIDER_ID,
+  model: typeSafeProvider.VERCEL_GATEWAY_JEV_MODEL,
+  approvedModels: [typeSafeProvider.VERCEL_GATEWAY_JEV_MODEL],
   client: {
     systemOne: async () => ({
       model: "typesafe-ai/jev",
@@ -141,7 +143,7 @@ const gatewayResult = await gatewayProvider.evaluate({
   ],
 });
 if (gatewayResult.model !== "typesafe-ai/jev")
-  throw new Error("installed Gateway factory did not preserve model identity");
+  throw new Error("installed Gateway mapping did not preserve model identity");
 
 function run(args) {
   const result = spawnSync(process.execPath, [cli, ...args], {

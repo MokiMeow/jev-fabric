@@ -21,6 +21,6 @@ their own offline evidence. Run from a built checkout with
 | [fintech-exception](fintech-exception/README.md) | fintech-exception | routes a bounded exception to investigation | execution-capable boundary denies |
 | [hierarchical-confidence](hierarchical-confidence/README.md) | evals | admits an independently audited leaf threshold | insufficient audit support forces parent-only output |
 | [webmcp-action](webmcp-action/README.md) | boundary | binds trusted origin/tool/schema fingerprints | rejects cross-origin metadata |
-| [provider-gateway-typesafe-fake](provider-gateway-typesafe-fake/README.md) | provider | composes the pinned Vercel Gateway Jev route | injected I/O keeps the example offline |
+| [provider-gateway-typesafe-fake](provider-gateway-typesafe-fake/README.md) | provider | simulates pinned Gateway response mapping and runtime wiring | generic injected I/O keeps the example offline; production factory has no override |
 
 Decision examples output a redacted receipt and negative receipt. Boundary and provider-composition examples remain offline. They are integration-shape evidence, not live-provider, browser-performance, or model-quality results.

@@ -1,6 +1,6 @@
 # Vercel AI Gateway Jev
 
-Evidence: official Vercel documentation and model page, observed 2026-09-20.
+Evidence: official Vercel documentation and model page, revalidated 2026-09-21.
 Transport contract version: the fixed endpoint and model identity below; pricing
 remains external mutable evidence.
 
@@ -23,6 +23,11 @@ transport identity values:
 | Model | `typesafe-ai/jev` |
 | Fabric provider ID | `typesafe-vercel-gateway` |
 
+The installed TypeSafe SDK appends `/v1/systemone`, so the resulting request is
+`POST https://ai-gateway.vercel.sh/typesafe/v1/systemone`. An offline loopback
+wire-contract test verifies that exact suffix, bearer authentication, and the
+`typesafe-ai/jev` request model without sending a credential to Vercel.
+
 The factory has no endpoint, model, provider-ID, browser, or ambient-credential
 override. The host resolves an AI Gateway API key or Vercel OIDC token through
 its own secret manager and passes it explicitly at trusted server startup:
@@ -36,10 +41,11 @@ const provider = createVercelGatewayJevProvider({
 });
 ```
 
-Use the complete offline
-[Gateway composition example](../../examples/provider-gateway-typesafe-fake/index.ts)
-for runtime, budget, retry, deadline, and authorization wiring. Its injected
-client makes no network request.
+Use the offline
+[Gateway response-mapping simulation](../../examples/provider-gateway-typesafe-fake/index.ts)
+for runtime, budget, retry, deadline, and authorization wiring. It deliberately
+uses the generic provider's injected client because the production Gateway
+factory exposes no client or endpoint override.
 
 ## Promotion and pricing
 

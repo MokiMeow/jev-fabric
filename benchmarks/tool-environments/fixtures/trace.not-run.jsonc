@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1",
+  "traceId": "tool-environments-v1-not-run",
+  "manifestId": "tool-environments-v1-not-run",
+  "taskId": "webmcp-declarative-search",
+  "environment": "webmcp_declarative",
+  "architecture": "host_planner_jev_gate",
+  "executionState": "NOT_RUN",
+  "trustedStateDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "phases": [],
+  "outcome": {
+    "status": "NOT_RUN",
+    "safe": null,
+    "replayMatched": null,
+    "staleRejected": null
+  }
+}

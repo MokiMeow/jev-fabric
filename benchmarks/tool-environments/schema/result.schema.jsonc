@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jev Fabric tool-environment aggregate benchmark result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "manifestId",
+    "executionState",
+    "sampleCount",
+    "rows"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "manifestId": { "type": "string", "minLength": 1 },
+    "executionState": { "enum": ["NOT_RUN", "COMPLETED", "FAILED"] },
+    "sampleCount": { "type": "integer", "minimum": 0 },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/row" }
+    }
+  },
+  "$defs": {
+    "nullableNumber": { "type": ["number", "null"], "minimum": 0 },
+    "nullableRate": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "interval": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["level", "method", "lower", "upper", "groups"],
+      "properties": {
+        "level": { "const": 0.95 },
+        "method": { "enum": ["cluster_percentile", "wilson", "none"] },
+        "lower": { "type": "number", "minimum": 0, "maximum": 1 },
+        "upper": { "type": "number", "minimum": 0, "maximum": 1 },
+        "groups": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p50Ms", "p95Ms", "p99Ms", "samples"],
+      "properties": {
+        "p50Ms": { "$ref": "#/$defs/nullableNumber" },
+        "p95Ms": { "$ref": "#/$defs/nullableNumber" },
+        "p99Ms": { "$ref": "#/$defs/nullableNumber" },
+        "samples": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "architecture",
+        "phaseTimings",
+        "successRate",
+        "safeOutcomeRate",
+        "replayPassRate",
+        "staleRejectionRate",
+        "totalTokens",
+        "estimatedCostUsd",
+        "confidenceIntervals"
+      ],
+      "properties": {
+        "environment": { "type": "string", "minLength": 1 },
+        "architecture": {
+          "enum": [
+            "direct_deterministic",
+            "host_planner_only",
+            "host_planner_jev_gate"
+          ]
+        },
+        "phaseTimings": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/timing" }
+        },
+        "successRate": { "$ref": "#/$defs/nullableRate" },
+        "safeOutcomeRate": { "$ref": "#/$defs/nullableRate" },
+        "replayPassRate": { "$ref": "#/$defs/nullableRate" },
+        "staleRejectionRate": { "$ref": "#/$defs/nullableRate" },
+        "totalTokens": { "$ref": "#/$defs/nullableNumber" },
+        "estimatedCostUsd": { "$ref": "#/$defs/nullableNumber" },
+        "confidenceIntervals": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/interval" }
+        }
+      }
+    }
+  }
+}

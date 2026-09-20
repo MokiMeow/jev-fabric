@@ -18,12 +18,14 @@ npx --no-install jev-fabric doctor --json
 npx --no-install jev-fabric evaluate --json
 ```
 
-See [Quickstart](docs/quickstart/offline.md) for both routes and [Examples](examples/README.md) for eight executable decisions.
+See [Quickstart](docs/quickstart/offline.md) for both routes and [Examples](examples/README.md) for executable, offline decisions and boundary demonstrations.
 
 Native TypeSafe live use is deliberately opt-in and local-stdio only. An operator
 must directly supply `--live`, the pinned native provider/model, a credential
 environment name, fixed tenant/action, call/token/dollar/deadline bounds, and a
 conservative input-price ceiling. See [the live operator guide](docs/providers/typesafe-native.md). Never place a key in source, a config file, a receipt, generated host artifact, or client-side code.
+
+Server applications can also use the pinned [Vercel AI Gateway route](docs/providers/vercel-ai-gateway.md) through the same strict TypeSafe response mapping. The current free promotion ends September 25, 2026; pricing is external, mutable state and is never embedded in Fabric policy. The Gateway factory accepts an explicit server-side credential and fixes the endpoint, provider ID, and `typesafe-ai/jev` model. It is not exposed as a browser or general CLI escape hatch.
 
 ## Choose a path
 
@@ -33,6 +35,8 @@ conservative input-price ceiling. See [the live operator guide](docs/providers/t
 | Use a terminal | [CLI reference](docs/reference/cli.md) | Offline doctor, evaluate, benchmark, replay, and bounded serve configuration. |
 | Connect an agent | [MCP reference](docs/reference/mcp.md) | Five read-only advisory tools; no tool executes or authorizes. |
 | Configure an agent host | [Adapters](docs/adapters/hosts.md) | Generated layouts for Codex, Claude Code, Gemini CLI, Qwen Code, and Kimi Code. |
+| Assist an instrumented website | [WebMCP recipe](docs/recipes/webmcp-browser.md) | Bind origin, frame, tool, schema, policy epoch, and page state; the host still executes. |
+| Route work in Blender, Unreal, Unity, Godot, or CAD | [Tool environments](docs/integrations/tool-environments.md) | Select only from adapter-declared native actions; revalidate and execute in the trusted plugin. |
 
 ## Decision boundary
 
@@ -69,7 +73,7 @@ Read [pack selection](docs/packs/selection.md) before using a pack. Candidate co
 
 ## Evidence snapshot
 
-The only committed historical provider record is [historical-v0](benchmarks/historical/v0/manifest.json): evidence class `local_exploratory`, imported 2026-09-19, zero retained cases, redacted environment, and no held-out claim. Its old ECE calculation was invalid because it used TypeSafe confidence rather than maximum distribution probability; no corrected ECE is available. It is context, not a performance claim. See [Evidence](docs/evidence/README.md).
+The only committed historical provider record is [historical-v0](benchmarks/historical/v0/manifest.json): evidence class `local_exploratory`, imported 2026-09-19, zero retained cases, redacted environment, and no held-out claim. Its old ECE calculation was invalid because it used TypeSafe confidence rather than maximum distribution probability; no corrected ECE is available. The [tool-environment benchmark contract](benchmarks/tool-environments/README.md) is explicitly `NOT_RUN` and prevents null fixtures from becoming performance claims. See [Evidence](docs/evidence/README.md).
 
 ## When not to use Jev Fabric
 

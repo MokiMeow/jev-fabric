@@ -31,9 +31,23 @@ export interface TypeSafeProviderOptions {
 /** The only native Jev model admitted by the alpha CLI integration. */
 export const NATIVE_JEV_MODEL = "jev-1.13.0" as const;
 export const NATIVE_JEV_PROVIDER_ID = "typesafe-native" as const;
+/** Official TypeSafe SDK endpoint for Vercel AI Gateway's Jev route. */
+export const VERCEL_GATEWAY_TYPESAFE_BASE_URL =
+  "https://ai-gateway.vercel.sh/typesafe" as const;
+/** Gateway model IDs are transport-specific and deliberately not aliases. */
+export const VERCEL_GATEWAY_JEV_MODEL = "typesafe-ai/jev" as const;
+export const VERCEL_GATEWAY_JEV_PROVIDER_ID =
+  "typesafe-vercel-gateway" as const;
 
 export interface NativeJevProviderOptions {
   /** Resolved by a trusted server process after CLI gates have passed. */
+  readonly apiKey: string;
+  /** Injection seam for offline tests; no network client is constructed when supplied. */
+  readonly client?: TypeSafeClientLike;
+}
+
+export interface VercelGatewayJevProviderOptions {
+  /** Resolved by trusted server startup after explicit live-use gates pass. */
   readonly apiKey: string;
   /** Injection seam for offline tests; no network client is constructed when supplied. */
   readonly client?: TypeSafeClientLike;
@@ -53,6 +67,40 @@ export function createNativeJevProvider(
     apiKey: options.apiKey,
     ...(options.client === undefined ? {} : { client: options.client }),
   });
+}
+
+/**
+ * Creates the fixed Vercel AI Gateway Jev integration. It never reads ambient
+ * credentials and has no caller-controlled endpoint, model, or provider ID.
+ */
+export function createVercelGatewayJevProvider(
+  options: VercelGatewayJevProviderOptions,
+): TypeSafeProvider {
+  if (!options.apiKey) throw new TypeSafeProviderError("configuration", false);
+  return new TypeSafeProvider({
+    id: VERCEL_GATEWAY_JEV_PROVIDER_ID,
+    model: VERCEL_GATEWAY_JEV_MODEL,
+    approvedModels: [VERCEL_GATEWAY_JEV_MODEL],
+    ...(options.client === undefined
+      ? { client: createVercelGatewayJevClient(options.apiKey) }
+      : { client: options.client }),
+  });
+}
+
+/** Internal transport construction; callers cannot bypass the pinned provider. */
+function createVercelGatewayJevClient(apiKey: string): TypeSafeClient {
+  if (!apiKey) throw new TypeSafeProviderError("configuration", false);
+  try {
+    return new TypeSafeClient({
+      apiKey,
+      baseURL: VERCEL_GATEWAY_TYPESAFE_BASE_URL,
+      defaultModel: VERCEL_GATEWAY_JEV_MODEL,
+      logLevel: "off",
+      retry: { maxRetries: 0 },
+    });
+  } catch (error) {
+    throw sanitizeTypeSafeError(error);
+  }
 }
 
 export class TypeSafeProvider implements DecisionProvider {

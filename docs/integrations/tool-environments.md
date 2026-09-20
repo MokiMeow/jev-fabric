@@ -63,7 +63,11 @@ The resulting state declares `inputModality: "extractor_text_only"`,
 `execution: "NOT_SUPPORTED"`. It binds the exact trusted environment snapshot,
 capture, artifact, annotation, extractor profile, finding vocabulary, and
 expiry. Annotation values containing credential-shaped data or URL schemes are
-rejected. Revalidate retained state with
+rejected. Annotations must also be unique, NFC-normalized, and no more than
+8,192 UTF-8 bytes as encoded JSON; the bridge records that byte count. This is
+a deliberately smaller sub-budget beneath Jev's current 32k state-plus-longest-
+question limit, leaving room for the trusted envelope and focused questions.
+Revalidate retained state with
 `validateToolEnvironmentVisualTextBridgeState` immediately before provider use.
 
 This bridge proves provenance and conformance, not that the extractor correctly

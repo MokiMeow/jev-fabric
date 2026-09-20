@@ -105,6 +105,10 @@ an execution channel. Measure bridge validation in the projection/policy phase
 and measure image capture, OCR, or vision extraction as a separate phase. A
 passing bridge is not evidence of visual correctness, multimodal Jev support,
 extractor accuracy, browser performance, or a Jev latency/cost advantage.
+The bridge's 8,192-byte annotation-JSON ceiling is a conformance and resource
+bound, not a measured token count. Retained live evidence must record the
+provider-reported input tokens and cost rather than converting bytes into a
+claimed token total.
 
 ## WebMCP maturity and security
 

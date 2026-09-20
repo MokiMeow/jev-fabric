@@ -36,6 +36,7 @@ export {
   bindToolEnvironmentProfiledVisualFindings,
   bindToolEnvironmentProfiledVisualObservation,
   bindToolEnvironmentVisualTextBridgeState,
+  TOOL_ENVIRONMENT_VISUAL_ANNOTATION_JSON_BYTE_LIMIT,
   toolEnvironmentProfiledVisualCaptureBindingHash,
   toolEnvironmentProfiledVisualFindingsBindingHash,
   toolEnvironmentVisualExtractorProfileHash,

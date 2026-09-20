@@ -213,6 +213,23 @@ Gateway comparisons must also retain the transport route separately. If a
 gateway exposes only `typesafe-ai/jev` and not the concrete upstream version,
 the artifact is route-bound and cannot claim immutable model reproduction.
 
+The same-day [JevBench v1.2.5](https://github.com/fstandhartinger/jevbench)
+release adds a useful independent evidence pattern: frozen public and held-out
+decisions, paraphrase pairs, majority-class baselines, native-versus-verbalized
+probability labels, and separate intelligence, calibration, raw latency, and
+cost axes. Its v1.2.3 correction is especially relevant: several systems had
+decisions double-counted or metered malformed responses omitted from cost.
+Fabric adopts the accounting lesson, not the composite ranking or headline
+scores—every request, including malformed paid output, must be counted exactly
+once and a service that routes to Jev must not be treated as a second model.
+
+The official model page also fixes a 32k budget for `state` plus the longest
+question and the jaggedness guide warns that irrelevant state reduces accuracy.
+The provider-facing visual bridge therefore caps its complete annotation JSON
+at 8,192 UTF-8 bytes, rejects duplicates and non-NFC text, and retains the byte
+count. This is a resource ceiling rather than a token estimate; live runs must
+still retain provider-reported usage.
+
 ## Official finance-adjacent recipes checked the same day
 
 TypeSafe's current

@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { z } from "zod";
  * image, connect to a browser or DCC host, or invoke an operation.
  */
 export const VISUAL_EXTRACTOR_PROFILE_VERSION = "1" as const;
+export const TOOL_ENVIRONMENT_VISUAL_ANNOTATION_JSON_BYTE_LIMIT = 8_192;
 
 const hashSchema = z
   .string()
@@ -19,6 +21,7 @@ const annotationSchema = z
   .string()
   .min(1)
   .max(240)
+  .refine((value) => value.normalize("NFC") === value, "must be NFC normalized")
   .refine(
     (value) =>
       !Array.from(value).some((character) => {
@@ -44,6 +47,25 @@ const annotationSchema = z
     (value) => !/(?:https?:\/\/|file:|data:|blob:|javascript:)/iu.test(value),
     "must not contain URL-shaped values",
   );
+const annotationListSchema = z
+  .array(annotationSchema)
+  .min(1)
+  .max(32)
+  .superRefine((annotations, context) => {
+    if (new Set(annotations).size !== annotations.length)
+      context.addIssue({
+        code: "custom",
+        message: "annotations must be unique",
+      });
+    if (
+      Buffer.byteLength(JSON.stringify(annotations), "utf8") >
+      TOOL_ENVIRONMENT_VISUAL_ANNOTATION_JSON_BYTE_LIMIT
+    )
+      context.addIssue({
+        code: "custom",
+        message: `annotation JSON exceeds the ${TOOL_ENVIRONMENT_VISUAL_ANNOTATION_JSON_BYTE_LIMIT}-byte limit`,
+      });
+  });
 const findingDispositionSchema = z.enum([
   "visual_ambiguity",
   "requires_structured_state",
@@ -61,7 +83,7 @@ const visualObservationSchema = z
     maxAgeMs: z.number().int().nonnegative().max(86_400_000),
     captureBindingHash: hashSchema,
     annotationHash: hashSchema,
-    annotations: z.array(annotationSchema).min(1).max(32),
+    annotations: annotationListSchema,
     trust: z.literal("untrusted_data_only"),
   })
   .strict();
@@ -148,7 +170,7 @@ const profiledVisualObservationSchema = profiledVisualCaptureSchema
   .extend({
     captureBindingHash: hashSchema,
     annotationHash: hashSchema,
-    annotations: z.array(annotationSchema).min(1).max(32),
+    annotations: annotationListSchema,
     trust: z.literal("untrusted_data_only"),
   })
   .strict();
@@ -199,7 +221,12 @@ const visualTextBridgeEvidenceSchema = z
     extractorVersion: z.string().min(1).max(128),
     extractorProfileHash: hashSchema,
     findingBindingHash: hashSchema,
-    annotations: z.array(annotationSchema).min(1).max(32),
+    annotations: annotationListSchema,
+    annotationJsonBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(TOOL_ENVIRONMENT_VISUAL_ANNOTATION_JSON_BYTE_LIMIT),
     findings: z.array(visualExtractorFindingSchema).min(1).max(32),
     trust: z.literal("untrusted_data_only"),
   })
@@ -545,6 +572,10 @@ export function bindToolEnvironmentVisualTextBridgeState(
     extractorProfileHash: observation.extractorProfileHash,
     findingBindingHash: findings.findingBindingHash,
     annotations: [...observation.annotations],
+    annotationJsonBytes: Buffer.byteLength(
+      JSON.stringify(observation.annotations),
+      "utf8",
+    ),
     findings: findings.findingIds.map((id) => {
       const disposition = dispositionById.get(id);
       if (disposition === undefined)
@@ -639,16 +670,12 @@ function parseUntrustedAnnotations(
     fail("untrusted profiled visual evidence must contain only annotations");
   if (!Array.isArray(evidence.annotations))
     fail("untrusted profiled visual annotations must be an array");
-  const annotations = z
-    .array(annotationSchema)
-    .min(1)
-    .max(32)
-    .parse(
-      copyPlainData(
-        evidence.annotations,
-        "untrusted profiled visual annotations",
-      ),
-    );
+  const annotations = annotationListSchema.parse(
+    copyPlainData(
+      evidence.annotations,
+      "untrusted profiled visual annotations",
+    ),
+  );
   return Object.freeze(annotations);
 }
 

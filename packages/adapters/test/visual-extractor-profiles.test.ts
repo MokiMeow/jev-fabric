@@ -5,6 +5,7 @@ import {
   bindToolEnvironmentProfiledVisualFindings,
   bindToolEnvironmentProfiledVisualObservation,
   bindToolEnvironmentVisualTextBridgeState,
+  TOOL_ENVIRONMENT_VISUAL_ANNOTATION_JSON_BYTE_LIMIT,
   toolEnvironmentProfiledVisualCaptureBindingHash,
   toolEnvironmentProfiledVisualFindingsBindingHash,
   toolEnvironmentVisualExtractorProfileHash,
@@ -216,6 +217,12 @@ describe("offline visual extractor profile binder", () => {
       providerReceivesImage: false,
       evidence: {
         trust: "untrusted_data_only",
+        annotationJsonBytes: Buffer.byteLength(
+          JSON.stringify([
+            "A small viewport detail remains visually ambiguous",
+          ]),
+          "utf8",
+        ),
         findings: [
           {
             id: "request-structured-state",
@@ -262,6 +269,17 @@ describe("offline visual extractor profile binder", () => {
         now,
       ),
     ).toThrow(/bridge state binding/u);
+    const miscounted = structuredClone(state);
+    miscounted.evidence.annotationJsonBytes += 1;
+    expect(() =>
+      validateToolEnvironmentVisualTextBridgeState(
+        miscounted,
+        binding,
+        capture(),
+        profile,
+        now,
+      ),
+    ).toThrow(/bridge state binding/u);
     expect(() =>
       validateToolEnvironmentVisualTextBridgeState(
         state,
@@ -300,5 +318,44 @@ describe("offline visual extractor profile binder", () => {
         now,
       ),
     ).toThrow(/URL-shaped/u);
+  });
+
+  it("bounds provider-visible annotation bytes and rejects duplicate or noncanonical text", () => {
+    expect(TOOL_ENVIRONMENT_VISUAL_ANNOTATION_JSON_BYTE_LIMIT).toBe(8_192);
+    expect(() =>
+      bindToolEnvironmentVisualTextBridgeState(
+        binding,
+        capture(),
+        profile,
+        {
+          annotations: Array.from(
+            { length: 32 },
+            (_, index) => `${"é".repeat(230)}${String(index).padStart(2, "0")}`,
+          ),
+        },
+        { findingIds: ["request-structured-state"] },
+        now,
+      ),
+    ).toThrow(/annotation JSON exceeds.*byte limit/u);
+    expect(() =>
+      bindToolEnvironmentVisualTextBridgeState(
+        binding,
+        capture(),
+        profile,
+        { annotations: ["Repeated detail", "Repeated detail"] },
+        { findingIds: ["request-structured-state"] },
+        now,
+      ),
+    ).toThrow(/annotations must be unique/u);
+    expect(() =>
+      bindToolEnvironmentVisualTextBridgeState(
+        binding,
+        capture(),
+        profile,
+        { annotations: ["Cafe\u0301 label is ambiguous"] },
+        { findingIds: ["request-structured-state"] },
+        now,
+      ),
+    ).toThrow(/NFC normalized/u);
   });
 });

@@ -40,6 +40,15 @@ hidden behind a TypeScript cast. Its `native_calibrated` receipt label is
 provider-declared semantics, not individual correctness or permission;
 validate locally on held-out data before operational thresholds.
 
+When the official SDK exposes `x-typesafe-request-id`,
+`evaluateWithMetadata` returns a domain-separated SHA-256 digest as
+`providerRequestIdHash`. Fabric never returns or logs the raw upstream ID. The
+adapter obtains the parsed result and request ID through the SDK's single
+`withResponse()` promise; it does not issue or await a second provider call.
+Missing request IDs remain absent, while empty, oversized, control-character,
+or non-string IDs fail closed as `invalid_response`. This digest is correlation
+evidence only: it does not prove provider identity, success, latency, or billing.
+
 ## OpenAI-compatible provider
 
 Copy [the compatible injected-transport example](../../examples/provider-compatible-fake/index.ts).

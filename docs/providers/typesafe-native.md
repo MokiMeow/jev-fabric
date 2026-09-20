@@ -63,6 +63,16 @@ validating timestamps, hashes, identities, counts, candidate coverage, and
 authorization deterministically. Custom packs remain responsible for the same
 decomposition and require held-out domain evidence before operational use.
 
+## Upstream request correlation
+
+The official JavaScript SDK can expose `x-typesafe-request-id` alongside a
+parsed response. `evaluateWithMetadata` retains only a domain-separated SHA-256
+digest in `providerRequestIdHash`; it never exposes the raw identifier. The
+response and identifier come from one `withResponse()` API promise, so
+correlation does not add a provider attempt. An absent header stays absent and
+a malformed identifier fails closed. The digest supports internal trace
+correlation only and is not proof of model quality, latency, cost, or billing.
+
 ## Offline integration proof
 
 The repository tests this composition with an injected native-shaped fake

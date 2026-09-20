@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { TypeSafeClient, type RequestOptions } from "@typesafe-ai/sdk";
 import type {
   DecisionProvider,
@@ -15,8 +17,17 @@ import {
   type TypeSafeResult,
 } from "./mapping.js";
 
+export interface TypeSafeClientResponse {
+  readonly data: unknown;
+  readonly requestId: string | undefined;
+}
+
+export interface TypeSafeClientPromise extends PromiseLike<unknown> {
+  readonly withResponse?: () => Promise<TypeSafeClientResponse>;
+}
+
 export interface TypeSafeClientLike {
-  systemOne(request: unknown, options?: RequestOptions): Promise<unknown>;
+  systemOne(request: unknown, options?: RequestOptions): TypeSafeClientPromise;
 }
 export interface TypeSafeProviderOptions {
   readonly id: string;
@@ -159,15 +170,67 @@ export class TypeSafeProvider implements DecisionProvider {
         // Fabric owns retry/accounting; never let the SDK make hidden attempts.
         retry: { maxRetries: 0 },
       };
-      const result = await this.#client.systemOne(compiled, callOptions);
-      return mapTypeSafeResult(request, this.id, result as TypeSafeResult, {
-        requestedModel: this.#model,
-        approvedModels: this.#approvedModels,
-      });
+      const pending = this.#client.systemOne(compiled, callOptions);
+      const withResponse = pending.withResponse;
+      const envelope =
+        typeof withResponse === "function"
+          ? validateClientResponse(await withResponse.call(pending))
+          : { data: await pending, requestId: undefined };
+      const mapped = mapTypeSafeResult(
+        request,
+        this.id,
+        envelope.data as TypeSafeResult,
+        {
+          requestedModel: this.#model,
+          approvedModels: this.#approvedModels,
+        },
+      );
+      const providerRequestIdHash = hashProviderRequestId(envelope.requestId);
+      return providerRequestIdHash === undefined
+        ? mapped
+        : { ...mapped, providerRequestIdHash };
     } catch (error) {
       throw sanitizeTypeSafeError(error);
     }
   }
+}
+
+const MAX_PROVIDER_REQUEST_ID_BYTES = 1_024;
+const REQUEST_ID_HASH_DOMAIN = "jev-fabric/typesafe-request-id/v1\u0000";
+
+function validateClientResponse(value: unknown): TypeSafeClientResponse {
+  if (!value || typeof value !== "object" || !("data" in value))
+    throw new TypeError("invalid TypeSafe response envelope");
+  const requestId = (value as { readonly requestId?: unknown }).requestId;
+  if (requestId !== undefined && typeof requestId !== "string")
+    throw new TypeError("invalid TypeSafe request ID");
+  return { data: (value as { readonly data: unknown }).data, requestId };
+}
+
+function hashProviderRequestId(
+  requestId: string | undefined,
+): `sha256:${string}` | undefined {
+  if (requestId === undefined) return undefined;
+  if (
+    requestId.length === 0 ||
+    Buffer.byteLength(requestId, "utf8") > MAX_PROVIDER_REQUEST_ID_BYTES ||
+    containsControlCharacter(requestId)
+  )
+    throw new TypeError("invalid TypeSafe request ID");
+  return `sha256:${createHash("sha256")
+    .update(REQUEST_ID_HASH_DOMAIN, "utf8")
+    .update(requestId, "utf8")
+    .digest("hex")}`;
+}
+
+function containsControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint !== undefined &&
+      (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f))
+    );
+  });
 }
 
 function createClient(

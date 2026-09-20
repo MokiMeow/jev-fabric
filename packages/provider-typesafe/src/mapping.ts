@@ -27,6 +27,8 @@ export interface TypeSafeResult {
 export interface TypeSafeMappedResult {
   readonly response: DecisionResponse;
   readonly usage: DecisionUsage;
+  /** Domain-separated digest of the upstream request ID; the raw ID is never retained. */
+  readonly providerRequestIdHash?: `sha256:${string}`;
 }
 export interface NativeModelPolicy {
   readonly requestedModel: string;

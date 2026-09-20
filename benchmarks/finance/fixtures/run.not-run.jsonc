@@ -115,6 +115,13 @@
       }
     }
   },
+  "uncertaintyConfiguration": {
+    "method": "cluster_percentile",
+    "confidenceLevel": 0.95,
+    "replicates": 2000,
+    "seed": 20260920,
+    "clusterUnit": "groupId"
+  },
   "observeGate": {
     "status": "NOT_RUN",
     "policyId": "finance.observe-gate.v1",

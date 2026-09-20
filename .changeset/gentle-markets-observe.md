@@ -81,3 +81,9 @@ route comparisons to the same dataset population, question contract, metric
 target, and declared probability semantics; mismatched native, normalized, or
 self-reported probabilities remain descriptive rather than becoming a false
 calibration-equivalence claim.
+
+Completed finance rows now retain reproducible 95% group-clustered bootstrap
+intervals for selective accuracy and coverage. Sparse or zero coverage cannot
+be converted into a zero-valued accuracy replicate; the artifact instead
+retains an explicit unavailable reason, and the offline validator independently
+recomputes every interval.

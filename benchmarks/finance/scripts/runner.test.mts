@@ -44,6 +44,7 @@ import {
   writeFinanceArtifacts,
 } from "./run.mjs";
 import {
+  validateAgainstSchema,
   validateFinanceArtifactDirectory,
   validateFinanceRun,
 } from "./validate.mjs";
@@ -617,6 +618,61 @@ const runtime: FinanceRuntimeProvenance = {
   },
 };
 
+test("NOT_RUN schema and runtime reject uncertainty claims", async () => {
+  const [schema, fixture] = await Promise.all([
+    readFile(
+      join(
+        process.cwd(),
+        "benchmarks",
+        "finance",
+        "schema",
+        "run.schema.jsonc",
+      ),
+      "utf8",
+    ).then(JSON.parse),
+    readFile(
+      join(
+        process.cwd(),
+        "benchmarks",
+        "finance",
+        "fixtures",
+        "run.not-run.jsonc",
+      ),
+      "utf8",
+    ).then(JSON.parse),
+  ]);
+  const forged = structuredClone(fixture) as {
+    rows: Array<Record<string, unknown>>;
+  };
+  assert.ok(forged.rows[0] !== undefined);
+  forged.rows[0].intervals = {
+    accuracy: {
+      status: "measured",
+      estimate: 1,
+      lower: 1,
+      upper: 1,
+      groups: 1,
+      reason: null,
+    },
+    coverage: {
+      status: "measured",
+      estimate: 1,
+      lower: 1,
+      upper: 1,
+      groups: 1,
+      reason: null,
+    },
+  };
+  assert.throws(
+    () => validateAgainstSchema(schema, forged, "forged NOT_RUN finance run"),
+    /does not match its schema/u,
+  );
+  assert.throws(
+    () => validateFinanceRun(forged),
+    /cannot claim uncertainty intervals/u,
+  );
+});
+
 test("runs, retains, and independently validates the complete finance matrix", async () => {
   const fixture = await datasetDirectory();
   try {
@@ -633,6 +689,13 @@ test("runs, retains, and independently validates the complete finance matrix", a
     assert.equal(artifacts.run.sampleCount, 9);
     assert.equal(artifacts.run.calibrationSampleCount, 3);
     assert.equal(artifacts.run.traceCount, 48);
+    assert.deepEqual(artifacts.run.uncertaintyConfiguration, {
+      method: "cluster_percentile",
+      confidenceLevel: 0.95,
+      replicates: 2_000,
+      seed: 20_260_920,
+      clusterUnit: "groupId",
+    });
     assert.equal(artifacts.counterfactuals.length, 12);
     assert.equal(
       artifacts.counterfactualsJsonl.split("\n").filter(Boolean).length,
@@ -737,6 +800,61 @@ test("runs, retains, and independently validates the complete finance matrix", a
         (row) => row.sampleCount === 3,
       ),
     );
+    const intervalRows = artifacts.run.rows as Array<{
+      architecture: string;
+      intervals: {
+        accuracy: {
+          status: string;
+          estimate: number | null;
+          lower: number | null;
+          upper: number | null;
+          groups: number;
+          reason: string | null;
+        };
+        coverage: {
+          status: string;
+          estimate: number | null;
+          lower: number | null;
+          upper: number | null;
+          groups: number;
+          reason: string | null;
+        };
+      };
+    }>;
+    assert.ok(
+      intervalRows.every(
+        (row) =>
+          row.intervals.coverage.status === "measured" &&
+          row.intervals.coverage.estimate !== null &&
+          row.intervals.coverage.lower !== null &&
+          row.intervals.coverage.upper !== null &&
+          row.intervals.coverage.groups === 2,
+      ),
+    );
+    assert.ok(
+      intervalRows
+        .filter((row) => row.architecture === "deterministic_only")
+        .every(
+          (row) =>
+            row.intervals.accuracy.status === "unavailable" &&
+            row.intervals.accuracy.estimate === null &&
+            row.intervals.accuracy.lower === null &&
+            row.intervals.accuracy.upper === null &&
+            row.intervals.accuracy.reason === "zero_coverage",
+        ),
+    );
+    assert.ok(
+      intervalRows
+        .filter((row) => row.architecture !== "deterministic_only")
+        .every(
+          (row) =>
+            row.intervals.accuracy.status === "measured" &&
+            row.intervals.accuracy.estimate === 1 &&
+            row.intervals.accuracy.lower === 1 &&
+            row.intervals.accuracy.upper === 1 &&
+            row.intervals.accuracy.reason === null,
+        ),
+    );
     assert.ok(
       (
         artifacts.run.rows as Array<{
@@ -795,6 +913,18 @@ test("runs, retains, and independently validates the complete finance matrix", a
       () => validateFinanceRun(forgedComparability),
       /probability comparisons do not match/u,
     );
+    const outOfRangeInterval = structuredClone(artifacts.run);
+    const firstIntervalRow = (
+      outOfRangeInterval.rows as Array<{
+        intervals: { coverage: { lower: number } };
+      }>
+    )[0];
+    assert.ok(firstIntervalRow !== undefined);
+    firstIntervalRow.intervals.coverage.lower = -0.01;
+    assert.throws(
+      () => validateFinanceRun(outOfRangeInterval),
+      /coverage interval is invalid/u,
+    );
     const output = join(fixture.root, "artifacts");
     await writeFinanceArtifacts(output, artifacts);
     assert.equal(
@@ -813,6 +943,86 @@ test("runs, retains, and independently validates the complete finance matrix", a
         .sort(),
     );
     await assert.doesNotReject(validateFinanceArtifactDirectory(output));
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("does not fabricate a selective-accuracy interval when a cluster can have zero coverage", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    const sparseCoverageDrivers: FinanceBenchmarkDrivers = {
+      ...drivers,
+      host_model_only: (state, context) => {
+        const ledger = fixtureAtomicEvidence(
+          "host",
+          state,
+          context.questionSetHash,
+        );
+        const atomicEvidence = state.instrumentRef.endsWith(".secondary")
+          ? [
+              {
+                ...ledger,
+                questions: ledger.questions.map((question) =>
+                  question.questionId === "finance-evidence-quality"
+                    ? {
+                        ...question,
+                        probabilities: {
+                          sufficient: 0.5,
+                          conflicted: 0.25,
+                          insufficient: 0.25,
+                        },
+                      }
+                    : question,
+                ),
+              },
+            ]
+          : [ledger];
+        return {
+          ...predicted,
+          atomicEvidence,
+        };
+      },
+    };
+    const artifacts = await runFinanceBenchmark({
+      runId: "finance-sparse-coverage",
+      dataset,
+      drivers: sparseCoverageDrivers,
+      runtime,
+      runtimeEvidence,
+      observeGate,
+      now: () => 100,
+    });
+    const hostRows = artifacts.run.rows as Array<{
+      architecture: string;
+      intervals: {
+        accuracy: {
+          status: string;
+          estimate: number | null;
+          lower: number | null;
+          upper: number | null;
+          groups: number;
+          reason: string | null;
+        };
+        coverage: { estimate: number | null };
+      };
+    }>;
+    assert.ok(
+      hostRows
+        .filter((row) => row.architecture === "host_model_only")
+        .every(
+          (row) =>
+            row.intervals.accuracy.status === "unavailable" &&
+            row.intervals.accuracy.estimate === 1 &&
+            row.intervals.accuracy.lower === null &&
+            row.intervals.accuracy.upper === null &&
+            row.intervals.accuracy.groups === 2 &&
+            row.intervals.accuracy.reason === "cluster_zero_coverage_risk" &&
+            row.intervals.coverage.estimate === 0.5,
+        ),
+    );
+    assert.doesNotThrow(() => validateFinanceRun(artifacts.run));
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }

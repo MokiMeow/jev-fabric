@@ -36,6 +36,16 @@
           "traceSetHash": { "$ref": "#/$defs/hash" },
           "counterfactuals": { "$ref": "#/$defs/counterfactualsCompleted" },
           "observeGate": { "$ref": "#/$defs/observeGateCompleted" },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["intervals"],
+              "properties": {
+                "intervals": { "$ref": "#/$defs/financeIntervals" }
+              }
+            }
+          },
           "probabilityComparisons": {
             "type": "array",
             "minItems": 3,
@@ -56,6 +66,7 @@
     "counterfactuals",
     "dataset",
     "runtime",
+    "uncertaintyConfiguration",
     "observeGate",
     "probabilityComparisons",
     "rows"
@@ -174,6 +185,24 @@
         }
       }
     },
+    "uncertaintyConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "confidenceLevel",
+        "replicates",
+        "seed",
+        "clusterUnit"
+      ],
+      "properties": {
+        "method": { "const": "cluster_percentile" },
+        "confidenceLevel": { "const": 0.95 },
+        "replicates": { "const": 2000 },
+        "seed": { "const": 20260920 },
+        "clusterUnit": { "const": "groupId" }
+      }
+    },
     "observeGate": {
       "oneOf": [
         { "$ref": "#/$defs/observeGateNotRun" },
@@ -238,6 +267,7 @@
             "maxItems": 2,
             "items": { "$ref": "#/$defs/atomicMetricLedger" }
           },
+          "intervals": { "$ref": "#/$defs/financeIntervals" },
           "calibrationStatus": {
             "enum": ["NOT_RUN", "measured", "unavailable"]
           },
@@ -597,6 +627,7 @@
         "testTraceCount": { "const": 0 },
         "routeQuestionMetricTarget": { "type": "null" },
         "atomicMetrics": { "type": "array", "maxItems": 0 },
+        "intervals": false,
         "calibrationStatus": { "const": "NOT_RUN" },
         "calibrationReason": { "type": "null" },
         "tokenAccountingStatus": { "const": "NOT_RUN" },
@@ -931,6 +962,65 @@
           }
         }
       }
+    },
+    "financeIntervals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accuracy", "coverage"],
+      "properties": {
+        "accuracy": { "$ref": "#/$defs/financeMetricInterval" },
+        "coverage": { "$ref": "#/$defs/financeMetricInterval" }
+      }
+    },
+    "financeMetricInterval": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "estimate",
+            "lower",
+            "upper",
+            "groups",
+            "reason"
+          ],
+          "properties": {
+            "status": { "const": "measured" },
+            "estimate": { "$ref": "#/$defs/unit" },
+            "lower": { "$ref": "#/$defs/unit" },
+            "upper": { "$ref": "#/$defs/unit" },
+            "groups": { "type": "integer", "minimum": 1 },
+            "reason": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "estimate",
+            "lower",
+            "upper",
+            "groups",
+            "reason"
+          ],
+          "properties": {
+            "status": { "const": "unavailable" },
+            "estimate": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "lower": { "type": "null" },
+            "upper": { "type": "null" },
+            "groups": { "type": "integer", "minimum": 1 },
+            "reason": {
+              "enum": ["zero_coverage", "cluster_zero_coverage_risk"]
+            }
+          }
+        }
+      ]
     },
     "probabilitySemantics": {
       "enum": [

@@ -25,6 +25,7 @@ import {
   type FinanceRuntimeEvidence,
   type FinanceRuntimeProvenance,
   createFinanceProbabilityComparisons,
+  financeUncertaintyConfiguration,
   financeCaseStateDigest,
   loadFinanceDataset,
   recomputeFinanceBenchmarkEvidence,
@@ -63,7 +64,20 @@ interface FinanceRunRow {
   readonly tokenAccountingReason: "unmetered_attempt" | null;
   readonly costAccountingStatus: "NOT_RUN" | "MEASURED" | "UNMETERED";
   readonly costAccountingReason: "unmetered_attempt" | null;
+  readonly intervals?: Readonly<{
+    accuracy: FinanceMetricInterval;
+    coverage: FinanceMetricInterval;
+  }>;
   readonly metrics: Readonly<Record<string, number | null>>;
+}
+
+interface FinanceMetricInterval {
+  readonly status: "measured" | "unavailable";
+  readonly estimate: number | null;
+  readonly lower: number | null;
+  readonly upper: number | null;
+  readonly groups: number;
+  readonly reason: "zero_coverage" | "cluster_zero_coverage_risk" | null;
 }
 
 interface FinanceRunDocument {
@@ -95,6 +109,7 @@ interface FinanceRunDocument {
   }>;
   readonly dataset: FinanceRunDataset;
   readonly runtime: FinanceRuntimeProvenance;
+  readonly uncertaintyConfiguration: typeof financeUncertaintyConfiguration;
   readonly observeGate: Readonly<{
     status: "NOT_RUN" | "COMPLETED";
     policyId: "finance.observe-gate.v1";
@@ -124,6 +139,11 @@ export function validateFinanceRun(value: unknown): void {
     ),
   );
   const actual = new Set<string>();
+  invariant(
+    stableJson(run.uncertaintyConfiguration) ===
+      stableJson(financeUncertaintyConfiguration),
+    "finance uncertainty configuration is invalid",
+  );
   invariant(
     Array.isArray(run.probabilityComparisons),
     "finance probability comparisons must be an array",
@@ -157,6 +177,10 @@ export function validateFinanceRun(value: unknown): void {
         Object.values(row.metrics).every((value) => value === null),
         `NOT_RUN row ${key} cannot claim metrics`,
       );
+      invariant(
+        !Object.hasOwn(row, "intervals"),
+        `NOT_RUN row ${key} cannot claim uncertainty intervals`,
+      );
       continue;
     }
     invariant(row.sampleCount > 0, `completed row ${key} has no samples`);
@@ -174,9 +198,7 @@ export function validateFinanceRun(value: unknown): void {
         `completed row ${key} has no finite ${name}`,
       );
     invariant(
-      row.metrics.accuracy === null ||
-        (typeof row.metrics.accuracy === "number" &&
-          Number.isFinite(row.metrics.accuracy)),
+      row.metrics.accuracy === null || unit(row.metrics.accuracy),
       `completed row ${key} has invalid accuracy`,
     );
     const p50Ms = row.metrics.p50Ms;
@@ -189,6 +211,7 @@ export function validateFinanceRun(value: unknown): void {
       row.metrics.unsafeExecutionAttemptRate === 0,
       `completed row ${key} attempted financial execution`,
     );
+    validateFinanceIntervals(row, key);
     if (row.calibrationStatus === "measured")
       invariant(
         row.calibrationReason === null &&
@@ -378,6 +401,61 @@ export function validateFinanceRun(value: unknown): void {
       run.observeGate.policies.length ===
         financeTracks.length * financeArchitectures.length,
     "completed finance run has invalid observe-gate evidence",
+  );
+}
+
+function validateFinanceIntervals(row: FinanceRunRow, key: string): void {
+  invariant(
+    row.intervals !== undefined,
+    `completed row ${key} has no uncertainty intervals`,
+  );
+  const accuracy = row.intervals.accuracy;
+  const coverage = row.intervals.coverage;
+  validateMeasuredFinanceInterval(coverage, `${key} coverage`);
+  invariant(
+    coverage.estimate === row.metrics.coverage,
+    `completed row ${key} coverage interval estimate drifted`,
+  );
+  if (accuracy.status === "measured") {
+    validateMeasuredFinanceInterval(accuracy, `${key} accuracy`);
+    invariant(
+      accuracy.estimate === row.metrics.accuracy,
+      `completed row ${key} accuracy interval estimate drifted`,
+    );
+  } else
+    invariant(
+      accuracy.lower === null &&
+        accuracy.upper === null &&
+        Number.isSafeInteger(accuracy.groups) &&
+        accuracy.groups >= 1 &&
+        ((row.metrics.accuracy === null &&
+          accuracy.estimate === null &&
+          accuracy.reason === "zero_coverage") ||
+          (finite(row.metrics.accuracy) &&
+            accuracy.estimate === row.metrics.accuracy &&
+            accuracy.reason === "cluster_zero_coverage_risk")),
+      `completed row ${key} has invalid unavailable accuracy interval`,
+    );
+  invariant(
+    coverage.groups <= row.sampleCount && accuracy.groups === coverage.groups,
+    `completed row ${key} interval group counts are invalid`,
+  );
+}
+
+function validateMeasuredFinanceInterval(
+  interval: FinanceMetricInterval,
+  label: string,
+): void {
+  invariant(
+    interval.status === "measured" &&
+      interval.reason === null &&
+      unit(interval.estimate) &&
+      unit(interval.lower) &&
+      unit(interval.upper) &&
+      (interval.lower ?? 1) <= (interval.upper ?? 0) &&
+      Number.isSafeInteger(interval.groups) &&
+      interval.groups >= 1,
+    `finance ${label} interval is invalid`,
   );
 }
 
@@ -1350,6 +1428,10 @@ function sha256(value: Uint8Array): string {
 
 function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function unit(value: unknown): value is number {
+  return finite(value) && value >= 0 && value <= 1;
 }
 
 function invariant(condition: unknown, message: string): asserts condition {

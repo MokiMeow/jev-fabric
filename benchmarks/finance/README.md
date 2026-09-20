@@ -65,6 +65,21 @@ metric-target mismatch. The current comparison contract is intentionally
 limited to the common route question; it does not imply that dynamic claim or
 citation families contain identical sample populations.
 
+Completed rows retain deterministic 95% cluster-percentile intervals for
+selective accuracy and coverage. The preregistered configuration uses 2,000
+replicates, seed `20260920`, and `groupId` as the resampling unit; the committed
+`NOT_RUN` scaffold retains this method configuration but no interval values.
+Accuracy is conditional on non-abstained predictions. If coverage is zero, or
+if any independent group has zero covered predictions and could therefore
+produce an undefined cluster resample, the accuracy interval is explicitly
+`unavailable` with the corresponding reason. The evaluator never substitutes
+zero for an undefined selective-accuracy replicate. Coverage remains directly
+estimable from every populated cluster sample. These intervals describe
+sampling uncertainty under the retained grouping and percentile method; they
+are not model confidence, a correctness guarantee, or evidence of market or
+trading performance. Other row metrics remain point estimates unless their
+own interval is explicitly retained.
+
 There is deliberately no final-route Brier score or ECE. A route-question
 distribution is scored only against the matching atomic gold label for
 `finance-route`, and the row declares

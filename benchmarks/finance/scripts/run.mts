@@ -24,6 +24,7 @@ import {
   applyFinanceObserveGate,
   assessProbabilityComparability,
   assertFinanceGoldRouteAlignment,
+  clusterBootstrap,
   combineFinanceObserveSupport,
   createFinanceObserveGatePolicyArtifact,
   type FinanceArchitecture,
@@ -273,6 +274,32 @@ export interface FinanceProbabilityComparison {
   readonly assessment: ProbabilityComparabilityAssessment;
 }
 
+export const financeUncertaintyConfiguration = Object.freeze({
+  method: "cluster_percentile" as const,
+  confidenceLevel: 0.95,
+  replicates: 2_000,
+  seed: 20_260_920,
+  clusterUnit: "groupId" as const,
+});
+
+export type FinanceMetricInterval =
+  | Readonly<{
+      status: "measured";
+      estimate: number;
+      lower: number;
+      upper: number;
+      groups: number;
+      reason: null;
+    }>
+  | Readonly<{
+      status: "unavailable";
+      estimate: number | null;
+      lower: null;
+      upper: null;
+      groups: number;
+      reason: "zero_coverage" | "cluster_zero_coverage_risk";
+    }>;
+
 export type FinanceCounterfactualKind =
   | "temporal_scramble"
   | "wrong_instrument";
@@ -493,6 +520,7 @@ export async function runFinanceBenchmark(options: {
       testStart: options.dataset.manifest.testStart,
     },
     runtime: structuredClone(options.runtime),
+    uncertaintyConfiguration: financeUncertaintyConfiguration,
     observeGate: {
       status: "COMPLETED",
       policyId: financeObserveGatePolicyId,
@@ -1173,6 +1201,7 @@ function enrichFinanceRows(
       .find(({ role }) => role === soleRole)
       ?.metrics.find(({ family }) => family === "route");
     const accounting = aggregateRetainedAccounting(allCell);
+    const intervals = financeMetricIntervals(testPredicted);
     return {
       ...row,
       calibrationTraceCount: allCell.filter(
@@ -1184,6 +1213,7 @@ function enrichFinanceRows(
       routeQuestionMetricTarget:
         routeMetric === undefined ? null : "atomic_gold_finance_route",
       atomicMetrics,
+      intervals,
       metrics: {
         ...row.metrics,
         routeQuestionBrier: routeMetric?.categoricalBrier ?? null,
@@ -1211,6 +1241,111 @@ function enrichFinanceRows(
         ? null
         : "unmetered_attempt",
     };
+  });
+}
+
+function financeMetricIntervals(rows: readonly RetainedTrace[]): Readonly<{
+  accuracy: FinanceMetricInterval;
+  coverage: FinanceMetricInterval;
+}> {
+  const observations = rows.map((row) => ({
+    caseId: row.caseId,
+    groupId: row.groupId,
+    outcome:
+      row.abstained === true
+        ? ("abstained" as const)
+        : row.predictedRoute === row.goldRoute
+          ? ("correct" as const)
+          : ("incorrect" as const),
+  }));
+  const options = {
+    confidenceLevel: financeUncertaintyConfiguration.confidenceLevel,
+    replicates: financeUncertaintyConfiguration.replicates,
+    seed: financeUncertaintyConfiguration.seed,
+  };
+  const coverage = clusterBootstrap(
+    observations,
+    (row) => row.groupId,
+    (sample) =>
+      sample.filter((row) => row.outcome !== "abstained").length /
+      sample.length,
+    options,
+  );
+  const covered = observations.filter((row) => row.outcome !== "abstained");
+  const groups = new Map<string, typeof observations>();
+  for (const row of observations) {
+    const group = groups.get(row.groupId) ?? [];
+    group.push(row);
+    groups.set(row.groupId, group);
+  }
+  const accuracy =
+    covered.length === 0
+      ? unavailableFinanceInterval(null, groups.size, "zero_coverage")
+      : [...groups.values()].some((group) =>
+            group.every((row) => row.outcome === "abstained"),
+          )
+        ? unavailableFinanceInterval(
+            covered.filter((row) => row.outcome === "correct").length /
+              covered.length,
+            groups.size,
+            "cluster_zero_coverage_risk",
+          )
+        : measuredFinanceInterval(
+            clusterBootstrap(
+              observations,
+              (row) => row.groupId,
+              (sample) => {
+                const usable = sample.filter(
+                  (row) => row.outcome !== "abstained",
+                );
+                return (
+                  usable.filter((row) => row.outcome === "correct").length /
+                  usable.length
+                );
+              },
+              options,
+            ),
+          );
+  return Object.freeze({
+    accuracy,
+    coverage: measuredFinanceInterval(coverage),
+  });
+}
+
+function measuredFinanceInterval(interval: {
+  readonly estimate: number | null;
+  readonly lower: number | null;
+  readonly upper: number | null;
+  readonly groups: number;
+}): FinanceMetricInterval {
+  invariant(
+    interval.estimate !== null &&
+      interval.lower !== null &&
+      interval.upper !== null,
+    "finance measured interval is incomplete",
+  );
+  return Object.freeze({
+    status: "measured",
+    estimate: interval.estimate,
+    lower: interval.lower,
+    upper: interval.upper,
+    groups: interval.groups,
+    reason: null,
+  });
+}
+
+function unavailableFinanceInterval(
+  estimate: number | null,
+  groups: number,
+  reason: "zero_coverage" | "cluster_zero_coverage_risk",
+): FinanceMetricInterval {
+  return Object.freeze({
+    status: "unavailable",
+    estimate,
+    lower: null,
+    upper: null,
+    groups,
+    reason,
   });
 }
 

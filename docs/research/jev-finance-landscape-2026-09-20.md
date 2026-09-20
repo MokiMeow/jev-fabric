@@ -264,6 +264,20 @@ offline validator recomputes this verdict from retained runtime and dataset
 evidence, so a report cannot promote `descriptive_only` to `comparable` by
 editing its JSON.
 
+The finance report now also follows the repository's existing group-aware
+evaluation rule instead of publishing bare accuracy and coverage points. Each
+completed row retains a deterministic 95% cluster-percentile interval with
+2,000 replicates, a fixed seed, and `groupId` as the resampling unit. The
+[NIST bootstrap guidance](https://itl.nist.gov/div898/software/dataplot/refman1/auxillar/bootplot.htm)
+describes percentile bootstrap intervals as first-order accurate and notes
+that more refined methods may have better coverage. Fabric therefore records
+the estimator rather than presenting “95%” as a property of the model. It also
+refuses to fabricate a selective-accuracy interval when a cluster resample can
+have zero covered decisions; that sparse-coverage condition is retained as an
+explicit unavailable reason. This guards the common failure mode where
+abstention makes a small apparent accuracy gain look more precise than the
+evidence permits.
+
 The official model page also fixes a 32k budget for `state` plus the longest
 question and the jaggedness guide warns that irrelevant state reduces accuracy.
 The provider-facing visual bridge therefore caps its complete annotation JSON

@@ -291,9 +291,6 @@ export const financeAdvisoryStateSchema = z
         sourceBindingHash: hashSchema,
         schemaVersion: z.literal("1"),
         renderer: financeVisualRendererSchema,
-        mutationId: financeVisualMutationSchema,
-        expectedRoute: financeVisualRouteSchema,
-        artifactBindingHash: hashSchema,
         annotationHash: hashSchema,
         annotations: z.array(oneLineSchema).max(32),
         trust: z.literal("untrusted_data_only"),
@@ -630,7 +627,14 @@ function bindVisual(
     .update(JSON.stringify(annotations))
     .digest("hex")}`;
   return {
-    ...trusted,
+    mode: trusted.mode,
+    extractorId: trusted.extractorId,
+    extractorVersion: trusted.extractorVersion,
+    imageHash: trusted.imageHash,
+    axesVerified: trusted.axesVerified,
+    sourceBindingHash: trusted.sourceBindingHash,
+    schemaVersion: trusted.schemaVersion,
+    renderer: trusted.renderer,
     annotationHash,
     annotations,
     trust: "untrusted_data_only" as const,

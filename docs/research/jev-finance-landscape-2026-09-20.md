@@ -366,3 +366,32 @@ alpha evidence. The very small
 [jev-tick-lab](https://github.com/shunta-furukawa/jev-tick-lab) suggests an
 append-only forward ledger but publishes no usable result. Fabric adopts the
 replay and forward-only mechanics, not either project's performance claim.
+
+## Pinned-source second pass
+
+A second source audit inspected finance projects at fixed commits and treated
+their code as design evidence, not proof of returns or forecasting accuracy.
+The strongest live-system separation found was
+[`prism-liquidity-agent@22c67bd`](https://github.com/irfndi/prism-liquidity-agent/tree/22c67bdbe30bab608226832256a5013ad826b707):
+capital-protecting exits execute before advisory calls, Jev observations are
+shadow-only, transport failure becomes unknown, and the sole sizing influence
+is restricted to paper mode. Fabric adopts the separation principle, not that
+project's performance comments or its `fail-open` terminology.
+
+The most useful evaluation idea came from
+[`jev-alpha-bench@ce40f7a`](https://github.com/Gaurav-Gosain/jev-alpha-bench/tree/ce40f7a1c4148c26af99268122be3643bb277440):
+compare correctly identified, identity-blind, wrong-identity, shuffled, and
+temporal-placebo arms. A future Fabric case should hold evidence constant while
+removing or deliberately misbinding instrument identity. The trusted host must
+reject the wrong-subject arm before the provider or constrain it to
+`investigate`/`escalate`; scoring must record binding rejection, provider-call
+count, route disagreement, and the unsafe-action sink, never P&L.
+
+The audit also reinforced recurring anti-patterns: typed model output wired to
+broker authority; malformed, missing, or low-confidence results that broaden
+permission; moving model aliases; historical prompts evaluated by a current
+model; and credentials that silently switch a simulator into a live path. None
+belongs in Fabric. A public third-party repository also exposed an apparent
+TypeSafe credential; its value was not copied or used. This is additional
+evidence for secret scanning and server-side credential isolation, not a test
+fixture.

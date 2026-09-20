@@ -73,7 +73,11 @@ Visual cases carry a unique SVG path, the complete canonical compiler input,
 code-verified axis/source bindings, and bounded untrusted annotations. Loading a
 dataset reruns the compiler, bounded-reads the SVG, requires exact byte and hash
 agreement, and rejects missing, extra, reused, or internally consistent forged
-artifacts. Text cases carry only source-bound, bounded untrusted
+artifacts. Mutation ids, expected routes, gold routes, and the digest sealing
+that small target domain remain evaluator-side: the trusted adapter checks the
+binding and removes all target-bearing fields, the pack rejects their
+reintroduction, and a driver regression asserts that the exact provider request
+contains none of them. Text cases carry only source-bound, bounded untrusted
 excerpts: one to eight ordered candidate ids and per-excerpt SHA-256 bindings
 must match the retained strings exactly. The adapter rejects stale, future,
 post-cutoff, reordered, inserted, or hash-mismatched evidence before any driver

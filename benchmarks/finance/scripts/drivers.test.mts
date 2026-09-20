@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import type { FinanceAdvisoryState } from "../../../packages/adapters/src/index.js";
 import type {
@@ -366,6 +367,78 @@ test("provider driver bypasses caches, records one attempt, and keeps raw route 
     requests: 2,
     tokens: 2_000,
   });
+});
+
+test("provider-visible visual state excludes evaluator-owned target labels", async () => {
+  let capturedState: DecisionRequest["state"] | undefined;
+  const host = testInvoker({
+    providerId: "host-provider",
+    modelVersion: "host-2026-09-01",
+    evaluate: (request) => {
+      capturedState = request.state;
+      return measuredResponse(request, {
+        providerId: "host-provider",
+        modelVersion: "host-2026-09-01",
+        probabilitySemantics: "self_reported",
+      });
+    },
+  });
+  const state: FinanceAdvisoryState = {
+    ...financeState(),
+    visual: {
+      mode: "structured_extraction",
+      extractorId: "chart-parser",
+      extractorVersion: "1.0.0",
+      imageHash: hash("5"),
+      axesVerified: true,
+      sourceBindingHash: hash("6"),
+      schemaVersion: "1",
+      renderer: {
+        id: "finance.canonical-svg",
+        version: "1",
+        schemaVersion: "1",
+        mutationPolicyId: "finance.visual-mutations.v1",
+      },
+      annotationHash: `sha256:${createHash("sha256")
+        .update(JSON.stringify(["routine"]))
+        .digest("hex")}`,
+      annotations: ["routine"],
+      trust: "untrusted_data_only",
+    },
+  };
+
+  await bundle(host).drivers.host_model_only(state, context("host_model_only"));
+
+  assert.ok(capturedState);
+  const serialized = JSON.stringify(capturedState);
+  assert.equal(serialized.includes("mutationId"), false);
+  assert.equal(serialized.includes("expectedRoute"), false);
+  assert.equal(serialized.includes("artifactBindingHash"), false);
+  assert.equal(serialized.includes("faithful_render"), false);
+  const publicMutationRoutes = {
+    faithful_render: "observe",
+    missing_source_date: "investigate",
+    missing_units: "investigate",
+    swapped_series_legend: "escalate",
+    truncated_zero_baseline: "escalate",
+  } as const;
+  for (const [mutationId, expectedRoute] of Object.entries(
+    publicMutationRoutes,
+  )) {
+    const enumerableTargetSeal = `sha256:${createHash("sha256")
+      .update(
+        JSON.stringify({
+          expectedRoute,
+          imageHash: state.visual?.imageHash,
+          mutationId,
+          renderer: state.visual?.renderer,
+          schemaVersion: state.visual?.schemaVersion,
+          sourceBindingHash: state.visual?.sourceBindingHash,
+        }),
+      )
+      .digest("hex")}`;
+    assert.equal(serialized.includes(enumerableTargetSeal), false);
+  }
 });
 
 test("finite shared provider budgets fail closed before an extra invocation", async () => {

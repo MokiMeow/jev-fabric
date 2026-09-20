@@ -21,10 +21,16 @@ provisional claim taxonomy; non-empty claims remain investigation-only. The
 benchmark builder also includes a deterministic, inert SVG compiler with
 reviewed source, image, and versioned artifact seals for five visual mutations.
 Those seals now govern the retained benchmark label and are revalidated by the
-adapter and pack instead of remaining an authoring-only utility. Every visual
-benchmark case retains a unique canonical SVG and compiler input; both builder
-and runtime verification rerender it and compare the exact bytes and all bound
-metadata before accepting the case.
+trusted adapter and offline benchmark verifier instead of remaining an
+authoring-only utility. Every visual benchmark case retains a unique canonical
+SVG and compiler input; both builder and runtime verification rerender it and
+compare the exact bytes and all bound metadata before accepting the case.
+
+Evaluator-owned visual mutation ids, expected routes, and their enumerable
+target seal are now validated at the trusted adapter boundary and removed
+before provider projection. The pack rejects their reintroduction, and an
+end-to-end driver regression inspects the exact provider request so benchmark
+targets cannot inflate a live result.
 
 Finance state is snapshotted without invoking accessors, rejects C1 and
 bidirectional/isolate controls, revalidates direct-pack text and annotation

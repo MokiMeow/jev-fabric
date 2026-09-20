@@ -49,7 +49,9 @@ malformed annotations or excerpts. The emitted state carries a code-derived
 expiry bound to `observedAt + maxAgeMs`; the runtime supplies a trusted
 evaluation-start clock to the pack before any cache lookup or provider call.
 The pack rejects expired or tampered expiry data and independently recomputes
-all excerpt, ordered-candidate, annotation, and visual-artifact hashes. Stable
+all excerpt, ordered-candidate, and annotation hashes. The trusted adapter and
+offline verifier validate target-bearing visual-artifact seals before those
+seals are removed from provider-visible state. Stable
 `FinanceAdvisoryBoundaryError` codes let callers distinguish look-ahead, stale,
 window, binding, and general input failures without matching error text.
 
@@ -136,10 +138,15 @@ extractor version, not the image itself, in the advisory state.
 
 The benchmark's canonical SVG compiler emits a versioned renderer identity,
 mutation id, expected route, image hash, source-binding hash, and one artifact
-hash over that complete tuple. The adapter and pack revalidate the tuple. The
-offline builder also requires the case `goldRoute` to equal the compiler-owned
-route, so a case author cannot relabel a compiled deceptive-chart mutation
-without invalidating the dataset.
+hash over that complete tuple. The offline verifier and trusted adapter validate
+that tuple and require the case `goldRoute` to equal the compiler-owned route,
+so a case author cannot relabel a compiled deceptive-chart mutation without
+invalidating the dataset. The adapter then removes `mutationId`,
+`expectedRoute`, and the target-bearing artifact digest before constructing
+advisory state. The pack rejects any of those fields if they reappear, and the
+provider receives only source/image bindings, renderer identity, and bounded
+untrusted annotations. Evaluator-owned target labels and enumerable target
+seals never enter model-visible state.
 
 Treat extracted labels as untrusted data. They may be wrong, omit context, or
 contain prompt injection. The finance pack asks a separate influence question
@@ -157,6 +164,8 @@ pixels and not Jev.
    coverage, latency, token use, cost, and rejection of stale/look-ahead cases.
 6. Run in shadow mode. Review errors by market regime, source, asset class, and
    visual extractor version.
+   Keep deterministic exposure controls and capital-protecting exits outside
+   the advisory latency path; join advisory outcomes to them only for analysis.
 7. Promote a question, threshold, or feature only when it improves a held-out
    time window and preserves zero execution attempts.
 8. Version the dataset digest, feature definitions, model, provider, policy,

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 import {
-  canonicalize,
   type DecisionCandidate,
   definePack,
   type PackSemanticResult,
@@ -73,13 +72,6 @@ const financeSignalBuckets = new Set([
 ]);
 const portableSignalId = /^[A-Za-z][A-Za-z0-9._:-]{0,127}$/u;
 const sha256Hash = /^sha256:[a-f0-9]{64}$/u;
-const financeVisualMutationRoutes = {
-  faithful_render: "observe",
-  missing_source_date: "investigate",
-  missing_units: "investigate",
-  swapped_series_legend: "escalate",
-  truncated_zero_baseline: "escalate",
-} as const;
 const financeVisualRenderer = {
   id: "finance.canonical-svg",
   mutationPolicyId: "finance.visual-mutations.v1",
@@ -131,9 +123,6 @@ const financeVisualStateKeys = new Set([
   "sourceBindingHash",
   "schemaVersion",
   "renderer",
-  "mutationId",
-  "expectedRoute",
-  "artifactBindingHash",
   "annotationHash",
   "annotations",
   "trust",
@@ -937,11 +926,6 @@ function projectFinanceState(
             "annotationHash",
             "finance visual state",
           );
-          const artifactBindingHash = requiredHash(
-            visualRecord,
-            "artifactBindingHash",
-            "finance visual state",
-          );
           if (dataProperty(visualRecord, "schemaVersion") !== "1")
             throw new TypeError("finance visual schema version is invalid");
           const renderer = plainRecord(
@@ -956,30 +940,6 @@ function projectFinanceState(
           for (const [key, expected] of Object.entries(financeVisualRenderer))
             if (dataProperty(renderer, key) !== expected)
               throw new TypeError("finance visual renderer is invalid");
-          const mutationId = dataProperty(visualRecord, "mutationId");
-          if (
-            typeof mutationId !== "string" ||
-            !(mutationId in financeVisualMutationRoutes)
-          )
-            throw new TypeError("finance visual mutation is invalid");
-          const expectedRoute =
-            financeVisualMutationRoutes[
-              mutationId as keyof typeof financeVisualMutationRoutes
-            ];
-          if (dataProperty(visualRecord, "expectedRoute") !== expectedRoute)
-            throw new TypeError("finance visual route binding is invalid");
-          const expectedArtifactBindingHash = sha256Text(
-            canonicalize({
-              expectedRoute,
-              imageHash,
-              mutationId,
-              renderer: financeVisualRenderer,
-              schemaVersion: "1",
-              sourceBindingHash,
-            }),
-          );
-          if (artifactBindingHash !== expectedArtifactBindingHash)
-            throw new TypeError("finance visual artifact binding is invalid");
           const annotations = plainStringArray(
             dataProperty(visualRecord, "annotations"),
             "finance visual annotations",
@@ -1005,11 +965,8 @@ function projectFinanceState(
             imageHash,
             sourceBindingHash,
             annotationHash,
-            artifactBindingHash,
             schemaVersion: "1" as const,
             renderer: financeVisualRenderer,
-            mutationId,
-            expectedRoute,
             annotations,
             trust,
           };

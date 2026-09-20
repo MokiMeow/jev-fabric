@@ -215,6 +215,113 @@ describe("built-in decision packs", () => {
     expect(safe.proposedOutcome).not.toBe("allow");
   });
 
+  it("projects provider-visible finance visuals without evaluator target labels", () => {
+    const implementation = financeSurveillancePack.implementations;
+    if (!implementation)
+      throw new Error("finance surveillance implementation missing");
+    const at = "2026-09-20T10:00:00.000Z";
+    const state = {
+      contractVersion: "1",
+      advisoryOnly: true,
+      execution: "NOT_SUPPORTED",
+      instrumentRef: "ref:instrument-1",
+      assetClass: "equity",
+      venue: "test-venue",
+      sourceId: "chart-source",
+      sourceHash: `sha256:${"1".repeat(64)}`,
+      featureSetId: "finance-features",
+      featureSetVersion: "1.0.0",
+      featureSetHash: `sha256:${"2".repeat(64)}`,
+      observedAt: at,
+      expiresAt: "2026-09-20T10:01:00.000Z",
+      maxAgeMs: 60_000,
+      cutoffAt: at,
+      windowStart: "2026-09-20T09:55:00.000Z",
+      windowEnd: at,
+      temporalIntegrity: "verified_no_lookahead",
+      signals: [
+        {
+          id: "spread-regime",
+          bucket: "normal",
+          definitionHash: `sha256:${"3".repeat(64)}`,
+          evidenceHash: `sha256:${"4".repeat(64)}`,
+          asOf: at,
+        },
+      ],
+      visual: {
+        mode: "structured_extraction",
+        extractorId: "chart-parser",
+        extractorVersion: "1.0.0",
+        imageHash: `sha256:${"5".repeat(64)}`,
+        axesVerified: true,
+        sourceBindingHash: `sha256:${"6".repeat(64)}`,
+        schemaVersion: "1",
+        renderer: {
+          id: "finance.canonical-svg",
+          version: "1",
+          schemaVersion: "1",
+          mutationPolicyId: "finance.visual-mutations.v1",
+        },
+        annotationHash: sha256(JSON.stringify(["routine"])),
+        annotations: ["routine"],
+        trust: "untrusted_data_only",
+      },
+      candidates: [
+        {
+          id: "observe",
+          description: "Record the advisory observation only",
+          available: true,
+          freshness: "current",
+        },
+        {
+          id: "investigate",
+          description: "Route to bounded analyst investigation",
+          available: true,
+          freshness: "current",
+        },
+        {
+          id: "escalate",
+          description: "Escalate to an authorized human reviewer",
+          available: true,
+          freshness: "current",
+        },
+      ],
+    } as const;
+    const projected = implementation.projector.project(state, {
+      nowEpochMs: Date.parse(at),
+    }) as Record<string, unknown>;
+
+    expect(projected.visual).not.toHaveProperty("mutationId");
+    expect(projected.visual).not.toHaveProperty("expectedRoute");
+    expect(projected.visual).not.toHaveProperty("artifactBindingHash");
+
+    expect(() =>
+      implementation.projector.project(
+        {
+          ...state,
+          visual: {
+            ...state.visual,
+            mutationId: "faithful_render",
+            expectedRoute: "observe",
+          },
+        },
+        { nowEpochMs: Date.parse(at) },
+      ),
+    ).toThrow(/unsupported field/u);
+    expect(() =>
+      implementation.projector.project(
+        {
+          ...state,
+          visual: {
+            ...state.visual,
+            artifactBindingHash: `sha256:${"7".repeat(64)}`,
+          },
+        },
+        { nowEpochMs: Date.parse(at) },
+      ),
+    ).toThrow(/unsupported field/u);
+  });
+
   it("classifies source-bound finance text candidates without claiming calibrated tiers", async () => {
     const implementation = financeSurveillancePack.implementations;
     if (!implementation)
@@ -326,23 +433,6 @@ describe("built-in decision packs", () => {
         schemaVersion: "1",
         mutationPolicyId: "finance.visual-mutations.v1",
       },
-      mutationId: "faithful_render",
-      expectedRoute: "observe",
-      artifactBindingHash: sha256(
-        JSON.stringify({
-          expectedRoute: "observe",
-          imageHash: `sha256:${"2".repeat(64)}`,
-          mutationId: "faithful_render",
-          renderer: {
-            id: "finance.canonical-svg",
-            mutationPolicyId: "finance.visual-mutations.v1",
-            schemaVersion: "1",
-            version: "1",
-          },
-          schemaVersion: "1",
-          sourceBindingHash: `sha256:${"3".repeat(64)}`,
-        }),
-      ),
       annotationHash: sha256(JSON.stringify(["routine"])),
       annotations: ["routine"],
       trust: "untrusted_data_only",

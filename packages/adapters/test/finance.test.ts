@@ -143,6 +143,20 @@ describe("finance advisory evidence boundary", () => {
     expect(JSON.stringify(result)).not.toContain("price");
   });
 
+  it("keeps evaluator-owned visual targets out of provider-visible state", () => {
+    const result = bindFinanceAdvisoryEvidence(
+      trusted,
+      { annotations: ["Series remains inside the declared axis"] },
+      Date.parse(at) + 500,
+    );
+
+    expect(result.visual).toBeDefined();
+    expect(result.visual).not.toHaveProperty("mutationId");
+    expect(result.visual).not.toHaveProperty("expectedRoute");
+    expect(result.visual).not.toHaveProperty("artifactBindingHash");
+    expect(JSON.stringify(result)).not.toContain("faithful_render");
+  });
+
   it("rejects stale, future, and look-ahead observations before provider use", () => {
     expect(() =>
       bindFinanceAdvisoryEvidence(

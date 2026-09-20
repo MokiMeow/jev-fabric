@@ -54,6 +54,73 @@ describe("TypeSafe mapping", () => {
     });
   });
 
+  it("rejects malformed Noul criteria before provider dispatch", () => {
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "malformed-noul",
+          state: {},
+          questions: [
+            {
+              id: "urgent",
+              type: "noul",
+              instructions: "Is this urgent?",
+              criteria: { yes: "Urgent", no: "Not urgent" },
+            },
+          ],
+        } as unknown as DecisionRequest,
+        "jev-1.13.0",
+      ),
+    ).toThrow();
+  });
+
+  it("enforces native Choice and Score cardinality limits", () => {
+    const options = Array.from(
+      { length: 256 },
+      (_, index) => `option-${index}`,
+    );
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "choice-too-wide",
+          state: {},
+          questions: [
+            {
+              id: "route",
+              type: "choice",
+              instructions: "Choose one.",
+              options,
+              criteria: Object.fromEntries(
+                options.map((option) => [option, null]),
+              ),
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ),
+    ).toThrow(/at most 255/u);
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "score-too-wide",
+          state: {},
+          questions: [
+            {
+              id: "severity",
+              type: "score",
+              instructions: "Rate severity.",
+              criteria: Array.from(
+                { length: 11 },
+                (_, index) => `level-${index}`,
+              ),
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ),
+    ).toThrow(/at most 10/u);
+  });
+
   it("preserves distributions and keeps confidence separate from selected probability", () => {
     const mapped = mapTypeSafeResult(
       request,

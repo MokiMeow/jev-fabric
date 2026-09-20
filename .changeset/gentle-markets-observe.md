@@ -4,6 +4,7 @@
 "@mokimeow/jev-fabric-evals": minor
 "@mokimeow/jev-fabric-packs": patch
 "@mokimeow/jev-fabric-provider-openai-compatible": patch
+"@mokimeow/jev-fabric-provider-typesafe": patch
 "@mokimeow/jev-fabric-protocol": patch
 ---
 
@@ -122,3 +123,11 @@ offline-only pack cannot silently ship with a Jev-incompatible question shape.
 The shared protocol now rejects every Choice whose criteria keys are not the
 exact declared options and every Score with fewer than two ordered levels,
 moving both failures ahead of cache or provider dispatch for custom packs too.
+
+The fintech exception question contract moves to `0.2.0` because its Noul
+criteria now use the native TypeSafe `true` / `false` keys instead of the
+non-wire `yes` / `no` aliases. Its question-set digest and benchmark seals are
+regenerated, and old cache or evaluation evidence is intentionally invalid.
+The shared protocol rejects unknown Noul criteria keys, while the native
+adapter validates the complete request and enforces the documented limit of
+255 Choice options and 2–10 Score levels before provider dispatch.

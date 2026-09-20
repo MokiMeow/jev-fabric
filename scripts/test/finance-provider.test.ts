@@ -1,6 +1,7 @@
 import { compileTypeSafeRequest } from "../../packages/provider-typesafe/src/mapping.js";
 import { builtinPacks } from "../../packs/index.js";
 import { financeSurveillancePack } from "../../packs/finance-surveillance/pack.js";
+import { fintechExceptionPack } from "../../packs/fintech-exception/pack.js";
 import { describe, expect, it } from "vitest";
 
 describe("finance pack native TypeSafe compatibility", () => {
@@ -31,6 +32,26 @@ describe("finance pack native TypeSafe compatibility", () => {
         expect(Object.keys(question.criteria).sort()).toEqual(
           [...question.options].sort(),
         );
+    }
+  });
+
+  it("compiles the fintech pack with exact native Noul criteria", () => {
+    const implementation = fintechExceptionPack.implementations;
+    if (!implementation) throw new Error("fintech implementation missing");
+    const questions = implementation.questions({}, []);
+    expect(() =>
+      compileTypeSafeRequest(
+        { id: "fintech-native-compile", state: {}, questions },
+        "jev-1.13.0",
+      ),
+    ).not.toThrow();
+    for (const question of questions) {
+      expect(question.type).toBe("noul");
+      if (question.type === "noul")
+        expect(Object.keys(question.criteria ?? {}).sort()).toEqual([
+          "false",
+          "true",
+        ]);
     }
   });
 

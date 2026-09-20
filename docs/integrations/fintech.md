@@ -6,6 +6,11 @@ independent Noul questions. Deterministic code validates the complete answer
 set and derives one of three advisory routes: `observe`, `investigate`, or
 `escalate`.
 
+Version `0.2.0` uses the current native TypeSafe Noul wire contract exactly:
+optional descriptions are keyed by `true` and `false`. Fabric rejects legacy
+or improvised keys before cache access or provider dispatch, so an offline-only
+question shape cannot silently reach Jev.
+
 It does not approve or reject payments, establish fraud, validate identity or
 authority, make AML/KYC/sanctions decisions, alter an account, or execute a
 financial action. Those responsibilities stay in authenticated systems and

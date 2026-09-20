@@ -81,7 +81,7 @@ interface FintechState {
 export const fintechExceptionPack = definePack(
   {
     id: "fintech-exception",
-    version: "0.1.0",
+    version: "0.2.0",
     riskTier: "critical",
     limits: {
       maxStateBytes: 16_384,
@@ -154,13 +154,13 @@ function fintechQuestions(): readonly DecisionQuestion[] {
   const question = (
     id: QuestionId,
     condition: string,
-    yes: string,
-    no: string,
+    trueDescription: string,
+    falseDescription: string,
   ): DecisionQuestion => ({
     id,
     type: "noul",
     instructions: { ...common, condition },
-    criteria: { yes, no },
+    criteria: { true: trueDescription, false: falseDescription },
   });
   return [
     question(

@@ -13,8 +13,8 @@
   },
   "pack": {
     "id": "fintech-exception",
-    "version": "0.1.0",
-    "questionSetHash": "sha256:d7a365c89a67ac413c99c450be8a4fd41583111d5fdac05e92fa2fd39dc795b4"
+    "version": "0.2.0",
+    "questionSetHash": "sha256:dd48486ae4cf69972d839b537eae48564ea5f9df6248ca850d05f0205992c00e"
   },
   "baseline": {
     "id": "always-investigate",

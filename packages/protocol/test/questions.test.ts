@@ -65,4 +65,31 @@ describe("decision questions", () => {
       }),
     ).toThrow();
   });
+
+  it("accepts only the native true/false Noul criteria shape or null", () => {
+    expect(
+      decisionQuestionSchema.parse({
+        id: "urgent",
+        type: "noul",
+        instructions: "Does the note explicitly describe urgent harm?",
+        criteria: { true: "Explicit urgent harm", false: "No explicit harm" },
+      }),
+    ).toMatchObject({ type: "noul", id: "urgent" });
+    expect(
+      decisionQuestionSchema.parse({
+        id: "urgent",
+        type: "noul",
+        instructions: "Does the note explicitly describe urgent harm?",
+        criteria: null,
+      }),
+    ).toMatchObject({ criteria: null });
+    expect(() =>
+      decisionQuestionSchema.parse({
+        id: "urgent",
+        type: "noul",
+        instructions: "Does the note explicitly describe urgent harm?",
+        criteria: { yes: "Explicit urgent harm", no: "No explicit harm" },
+      }),
+    ).toThrow();
+  });
 });

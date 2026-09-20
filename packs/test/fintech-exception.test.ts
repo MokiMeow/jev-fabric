@@ -103,7 +103,7 @@ describe("fintech exception pack", () => {
   it("registers one critical Noul-only pack with a versioned question contract", () => {
     expect(fintechExceptionPack.manifest).toMatchObject({
       id: "fintech-exception",
-      version: "0.1.0",
+      version: "0.2.0",
       riskTier: "critical",
       requiredCapabilities: { questionTypes: ["noul"] },
     });
@@ -125,6 +125,13 @@ describe("fintech exception pack", () => {
     );
     expect(questions.map((question) => question.id)).toEqual(questionIds);
     expect(questions.every((question) => question.type === "noul")).toBe(true);
+    for (const question of questions) {
+      expect(question.criteria).not.toBeNull();
+      expect(Object.keys(question.criteria ?? {}).sort()).toEqual([
+        "false",
+        "true",
+      ]);
+    }
     expect(JSON.stringify(questions)).toContain("`evidence.note`");
     expect(JSON.stringify(questions)).not.toContain(note);
   });

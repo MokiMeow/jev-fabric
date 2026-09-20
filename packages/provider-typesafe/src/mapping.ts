@@ -6,6 +6,7 @@ import {
   type Questions,
 } from "@typesafe-ai/sdk";
 import {
+  decisionRequestSchema,
   validateDecisionResponse,
   type DecisionAnswer,
   type DecisionRequest,
@@ -33,16 +34,19 @@ export interface NativeModelPolicy {
 
 /** Converts protocol questions through the SDK's official primitive builders. */
 export function compileTypeSafeRequest(
-  request: DecisionRequest,
+  inputRequest: DecisionRequest,
   model: string,
 ): {
   readonly state: EntryType;
   readonly questions: Questions;
   readonly model: string;
 } {
+  const request = decisionRequestSchema.parse(inputRequest) as DecisionRequest;
   const questions: Questions = {};
   for (const question of request.questions) {
     if (question.type === "choice") {
+      if (question.options.length > 255)
+        throw new RangeError("TypeSafe Choice accepts at most 255 options");
       const keys = Object.keys(question.criteria);
       if (
         keys.length !== question.options.length ||
@@ -63,6 +67,8 @@ export function compileTypeSafeRequest(
     } else {
       if (question.criteria.length < 2)
         throw new RangeError("TypeSafe score requires at least two criteria");
+      if (question.criteria.length > 10)
+        throw new RangeError("TypeSafe Score accepts at most 10 criteria");
       questions[question.id] = score(
         question.instructions as EntryType,
         question.criteria as readonly [EntryType, EntryType, ...EntryType[]],

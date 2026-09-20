@@ -5,7 +5,7 @@ token, or cost measurements. Passing the tests proves the evaluator contract;
 it does not prove Jev model quality.
 
 This benchmark is the evidence gate for the critical
-`fintech-exception@0.1.0` pack. It compares the same frozen cases across three
+`fintech-exception@0.2.0` pack. It compares the same frozen cases across three
 arms:
 
 | Arm | Contract |

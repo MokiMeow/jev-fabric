@@ -15,7 +15,10 @@ export interface NoulQuestion {
   readonly id: string;
   readonly type: "noul";
   readonly instructions: import("./json.js").JsonValue;
-  readonly criteria: import("./json.js").JsonValue;
+  readonly criteria: Readonly<{
+    readonly true?: import("./json.js").JsonValue;
+    readonly false?: import("./json.js").JsonValue;
+  }> | null;
 }
 
 export interface ScoreQuestion {
@@ -67,7 +70,13 @@ export const noulQuestionSchema = z
     id: portableIdentifierSchema,
     type: z.literal("noul"),
     instructions: jsonValueSchema,
-    criteria: jsonValueSchema,
+    criteria: z
+      .object({
+        true: jsonValueSchema.optional(),
+        false: jsonValueSchema.optional(),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 

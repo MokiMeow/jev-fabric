@@ -285,7 +285,7 @@ export async function runFintechBenchmark(
     },
     pack: {
       id: "fintech-exception",
-      version: "0.1.0",
+      version: "0.2.0",
       questionSetHash: fintechExceptionQuestionSetHash,
     },
     baseline: fintechBaseline,
@@ -626,7 +626,7 @@ function trace(
       model: jev ? value.evaluator.model : null,
       transport: jev ? value.evaluator.transport : null,
       packId: "fintech-exception",
-      packVersion: "0.1.0",
+      packVersion: "0.2.0",
       questionSetHash: fintechExceptionQuestionSetHash,
     },
     boundary: {

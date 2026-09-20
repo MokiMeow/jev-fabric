@@ -122,7 +122,7 @@ function traceFor(
       model: jev ? "jev-1.13.0" : null,
       transport: jev ? "typesafe-rest-v1" : null,
       packId: "fintech-exception",
-      packVersion: "0.1.0",
+      packVersion: "0.2.0",
       questionSetHash: fintechExceptionQuestionSetHash,
     },
     boundary: {
@@ -154,7 +154,7 @@ function completedEvidence() {
     },
     pack: {
       id: "fintech-exception",
-      version: "0.1.0",
+      version: "0.2.0",
       questionSetHash: fintechExceptionQuestionSetHash,
     },
     baseline: {

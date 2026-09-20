@@ -99,7 +99,7 @@ export interface FintechEvidence {
   };
   readonly pack: {
     readonly id: "fintech-exception";
-    readonly version: "0.1.0";
+    readonly version: "0.2.0";
     readonly questionSetHash: string;
   };
   readonly baseline: {
@@ -775,7 +775,7 @@ function validatePack(value: unknown): void {
   const pack = record(value, "pack");
   exactKeys(pack, ["id", "version", "questionSetHash"], "pack");
   invariant(pack.id === "fintech-exception", "pack id is invalid");
-  invariant(pack.version === "0.1.0", "pack version is invalid");
+  invariant(pack.version === "0.2.0", "pack version is invalid");
   invariant(
     pack.questionSetHash === fintechExceptionQuestionSetHash,
     "pack question set does not match the current contract",

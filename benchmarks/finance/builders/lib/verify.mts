@@ -12,6 +12,11 @@ import {
   readSafeRelativeFile,
   sha256,
 } from "./canonical.mjs";
+import {
+  FINANCE_CHART_RENDERER,
+  FINANCE_VISUAL_MUTATION_ROUTES,
+  renderFinanceChart,
+} from "../visual/render.mjs";
 
 const tracks = [
   "market_surveillance",
@@ -232,7 +237,13 @@ async function verifyOne(
     artifactBytes.provenance,
     "provenance.jsonl",
   ).map(parseCaseProvenance);
-  verifyCasesAndProvenance(cases, provenanceRecords, sourceLock, manifest);
+  verifyCasesAndProvenance(
+    cases,
+    provenanceRecords,
+    sourceLock,
+    manifest,
+    artifactBytes.assets,
+  );
   verifyArtifactRetention(cases, provenanceRecords, sourceLock, manifest);
 
   const expectedDigest = computeRebuildDigest(manifest);
@@ -353,7 +364,11 @@ async function verifyArtifactsAndInputs(
   manifest: BuildManifest,
   datasetDirectory: string,
   sourceLock: SourceLock,
-): Promise<{ readonly cases: Uint8Array; readonly provenance: Uint8Array }> {
+): Promise<{
+  readonly cases: Uint8Array;
+  readonly provenance: Uint8Array;
+  readonly assets: ReadonlyMap<string, Uint8Array>;
+}> {
   const artifacts = [
     manifest.artifacts.cases,
     manifest.artifacts.provenance,
@@ -368,6 +383,10 @@ async function verifyArtifactsAndInputs(
   const hashes = new Set<string>();
   let cases: Uint8Array | undefined;
   let provenance: Uint8Array | undefined;
+  const assetDeclarations = new Set<ArtifactDeclaration>(
+    manifest.artifacts.assets,
+  );
+  const assetBytes = new Map<string, Uint8Array>();
   for (const declaration of [...inputs, ...artifacts]) {
     if (paths.has(declaration.path))
       throw new TypeError(`duplicate artifact path: ${declaration.path}`);
@@ -386,6 +405,8 @@ async function verifyArtifactsAndInputs(
       throw new TypeError(`artifact hash mismatch: ${declaration.path}`);
     if (declaration === manifest.artifacts.cases) cases = bytes;
     if (declaration === manifest.artifacts.provenance) provenance = bytes;
+    if (assetDeclarations.has(declaration))
+      assetBytes.set(declaration.path, bytes);
   }
   if (
     manifest.generator.configHash !== manifest.inputs.config.sha256 ||
@@ -410,7 +431,7 @@ async function verifyArtifactsAndInputs(
   }
   if (cases === undefined || provenance === undefined)
     throw new TypeError("required builder artifacts were not verified");
-  return { cases, provenance };
+  return { cases, provenance, assets: assetBytes };
 }
 
 function verifyEmbargo(manifest: BuildManifest): void {
@@ -542,6 +563,7 @@ function verifyCasesAndProvenance(
   provenanceRecords: readonly CaseProvenance[],
   sourceLock: SourceLock,
   manifest: BuildManifest,
+  assetBytes: ReadonlyMap<string, Uint8Array>,
 ): void {
   if (caseRecords.length !== provenanceRecords.length)
     throw new TypeError("cases and provenance must have one-to-one coverage");
@@ -553,6 +575,7 @@ function verifyCasesAndProvenance(
     sourceLock.sources.map((source) => [source.id, source.track]),
   );
   const coverage = new Set<string>();
+  const visualAssetPaths = new Set<string>();
 
   assertSortedUnique(
     caseRecords.map((record) => requiredString(record.id, "case.id")),
@@ -622,6 +645,24 @@ function verifyCasesAndProvenance(
       benchmarkCase.trustedProjection,
       "case.trustedProjection",
     );
+    if (caseTrack === "financial_text_triage")
+      verifyTextCandidateBindings(
+        benchmarkCase,
+        trustedProjection,
+        record.caseId,
+      );
+    if (caseTrack === "visual_evidence")
+      verifyVisualArtifactBinding(
+        benchmarkCase,
+        trustedProjection,
+        record.caseId,
+        assetBytes,
+        visualAssetPaths,
+      );
+    else if (benchmarkCase.visualArtifact !== undefined)
+      throw new TypeError(
+        `non-visual case has a visual artifact: ${record.caseId}`,
+      );
     const cutoffAt = requiredString(
       trustedProjection.cutoffAt,
       "trustedProjection.cutoffAt",
@@ -716,6 +757,17 @@ function verifyCasesAndProvenance(
       );
   }
 
+  if (visualAssetPaths.size !== assetBytes.size)
+    throw new TypeError(
+      "retained visual assets must have one-to-one visual case coverage",
+    );
+  for (const path of assetBytes.keys()) {
+    if (!visualAssetPaths.has(path))
+      throw new TypeError(
+        `retained asset is not bound to a visual case: ${path}`,
+      );
+  }
+
   const trainEnd = parseTimestamp(manifest.split.trainEnd, "split.trainEnd");
   const testStart = parseTimestamp(manifest.split.testStart, "split.testStart");
   for (const record of provenanceRecords) {
@@ -727,6 +779,144 @@ function verifyCasesAndProvenance(
     if (record.split === "test" && cutoff < testStart)
       throw new TypeError(`test case is before testStart: ${record.caseId}`);
   }
+}
+
+function verifyTextCandidateBindings(
+  benchmarkCase: Record<string, unknown>,
+  trustedProjection: Record<string, unknown>,
+  caseId: string,
+): void {
+  const text = requiredRecord(trustedProjection.text, "trustedProjection.text");
+  const bindings = requiredArray(
+    text.candidateBindings,
+    "trustedProjection.text.candidateBindings",
+  ).map((value, index) =>
+    requiredRecord(value, `trustedProjection.text.candidateBindings[${index}]`),
+  );
+  const untrusted = requiredRecord(
+    benchmarkCase.untrustedEvidence,
+    "case.untrustedEvidence",
+  );
+  const untrustedText = requiredRecord(
+    untrusted.text,
+    "case.untrustedEvidence.text",
+  );
+  const excerpts = requiredArray(
+    untrustedText.excerpts,
+    "case.untrustedEvidence.text.excerpts",
+  );
+  if (bindings.length !== excerpts.length)
+    throw new TypeError(`text candidate count mismatch for ${caseId}`);
+  const ids = new Set<string>();
+  for (const [index, binding] of bindings.entries()) {
+    const id = requiredString(binding.id, `text candidate ${index}.id`);
+    const excerptHash = requiredString(
+      binding.excerptHash,
+      `text candidate ${index}.excerptHash`,
+    );
+    const excerpt = excerpts[index];
+    if (ids.has(id)) throw new TypeError(`duplicate text candidate id: ${id}`);
+    ids.add(id);
+    if (typeof excerpt !== "string" || excerptHash !== sha256(excerpt))
+      throw new TypeError(`text candidate hash mismatch for ${caseId}: ${id}`);
+  }
+}
+
+function verifyVisualArtifactBinding(
+  benchmarkCase: Record<string, unknown>,
+  trustedProjection: Record<string, unknown>,
+  caseId: string,
+  assetBytes: ReadonlyMap<string, Uint8Array>,
+  visualAssetPaths: Set<string>,
+): void {
+  const visual = requiredRecord(
+    trustedProjection.visual,
+    "trustedProjection.visual",
+  );
+  const mutationId = requiredString(
+    visual.mutationId,
+    "trustedProjection.visual.mutationId",
+  );
+  if (!(mutationId in FINANCE_VISUAL_MUTATION_ROUTES))
+    throw new TypeError(`unknown visual mutation for ${caseId}`);
+  const expectedRoute =
+    FINANCE_VISUAL_MUTATION_ROUTES[
+      mutationId as keyof typeof FINANCE_VISUAL_MUTATION_ROUTES
+    ];
+  if (
+    visual.schemaVersion !== "1" ||
+    visual.expectedRoute !== expectedRoute ||
+    benchmarkCase.goldRoute !== expectedRoute
+  )
+    throw new TypeError(`visual route binding mismatch for ${caseId}`);
+  const renderer = requiredRecord(
+    visual.renderer,
+    "trustedProjection.visual.renderer",
+  );
+  if (canonicalJson(renderer) !== canonicalJson(FINANCE_CHART_RENDERER))
+    throw new TypeError(`visual renderer binding mismatch for ${caseId}`);
+  const imageHash = digest(
+    visual.imageHash,
+    "trustedProjection.visual.imageHash",
+  );
+  const sourceBindingHash = digest(
+    visual.sourceBindingHash,
+    "trustedProjection.visual.sourceBindingHash",
+  );
+  const artifactBindingHash = digest(
+    visual.artifactBindingHash,
+    "trustedProjection.visual.artifactBindingHash",
+  );
+  const expectedArtifactBindingHash = sha256(
+    canonicalJson({
+      schemaVersion: "1",
+      renderer: FINANCE_CHART_RENDERER,
+      sourceBindingHash,
+      imageHash,
+      mutationId,
+      expectedRoute,
+    }),
+  );
+  if (artifactBindingHash !== expectedArtifactBindingHash)
+    throw new TypeError(`visual artifact binding mismatch for ${caseId}`);
+
+  const retained = requiredRecord(
+    benchmarkCase.visualArtifact,
+    "case.visualArtifact",
+  );
+  const svgPath = requiredString(
+    retained.svgPath,
+    "case.visualArtifact.svgPath",
+  );
+  if (visualAssetPaths.has(svgPath))
+    throw new TypeError(`visual artifact path is reused: ${svgPath}`);
+  const bytes = assetBytes.get(svgPath);
+  if (bytes === undefined)
+    throw new TypeError(`visual artifact is not retained: ${svgPath}`);
+  visualAssetPaths.add(svgPath);
+
+  const rendered = renderFinanceChart(retained.compilerInput);
+  if (
+    rendered.schemaVersion !== visual.schemaVersion ||
+    canonicalJson(rendered.renderer) !== canonicalJson(renderer) ||
+    rendered.mutationId !== mutationId ||
+    rendered.expectedRoute !== expectedRoute ||
+    rendered.imageHash !== imageHash ||
+    rendered.sourceBindingHash !== sourceBindingHash ||
+    rendered.artifactBindingHash !== artifactBindingHash
+  )
+    throw new TypeError(`visual compiler output mismatch for ${caseId}`);
+
+  let svg: string;
+  try {
+    svg = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    throw new TypeError(`visual artifact is not valid UTF-8: ${caseId}`, {
+      cause: error,
+    });
+  }
+  if (svg !== rendered.svg || sha256(bytes) !== rendered.imageHash)
+    throw new TypeError(`visual artifact bytes mismatch for ${caseId}`);
 }
 
 function verifyLookaheadBinding(

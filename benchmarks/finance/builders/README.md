@@ -61,6 +61,25 @@ tests construct a complete three-track dataset around those bytes:
 tsx --test benchmarks/finance/builders/test/verify.test.mts
 ```
 
+## Deterministic visual compiler
+
+`visual/render.mts` compiles strict structured finance series into inert,
+canonical SVG and returns exact image, source-binding, and versioned artifact
+binding hashes. The artifact binding seals the image and source to the declared
+mutation and expected route. All date, number, scale, axis, legend, mutation,
+and routing work is deterministic code; there is no network or model call. It
+implements the five mutations declared by
+`policies/visual-mutations.v1.json` and keeps annotations bounded and explicitly
+untrusted. See [the visual compiler contract](visual/README.md) for the accepted
+shape, limits, hash meanings, mutation semantics, and focused test command.
+
+Every visual case must also retain its complete versioned compiler input and a
+unique `assets/*.svg` path. The manifest must declare that SVG as a generated
+asset. Verification bounded-reads the exact bytes, reruns the compiler, and
+compares the SVG, image hash, source-binding hash, renderer, mutation, expected
+route, and artifact seal. Undeclared, reused, missing, or consistently forged
+hash tuples therefore cannot support a visual label.
+
 ## Policies
 
 The versioned policies are inputs to a future generator. Their byte hashes must

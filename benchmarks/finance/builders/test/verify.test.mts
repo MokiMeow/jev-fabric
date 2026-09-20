@@ -24,6 +24,10 @@ import {
   computeRebuildDigest,
   verifyFinanceBuilderDirectory,
 } from "../lib/verify.mjs";
+import {
+  FINANCE_CHART_RENDERER,
+  renderFinanceChart,
+} from "../visual/render.mjs";
 
 const fixtureRoot = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -108,7 +112,7 @@ test("accepts multiple immutable sources for one track", async () => {
   const manifest = await readJson(join(fixture.dataset, "build-manifest.json"));
   manifest.artifacts.cases.sourceUses.push({
     sourceId: "sec.edgar.extra",
-    retention: "metadata_only",
+    retention: "source_excerpt",
   });
   manifest.artifacts.provenance.sourceUses.push({
     sourceId: "sec.edgar.extra",
@@ -368,29 +372,6 @@ test("allows generated-output-only rights only for generated or metadata retenti
     join(excerptFixture.dataset, "source-lock.json"),
     excerptLock,
   );
-  const cases = await readJsonLines(
-    join(excerptFixture.dataset, "cases.jsonl"),
-  );
-  for (const benchmarkCase of cases) {
-    if (benchmarkCase.track === "financial_text_triage")
-      benchmarkCase.untrustedEvidence = {
-        text: { excerpts: ["Invented public-filing fixture excerpt."] },
-      };
-  }
-  await writeCanonicalJsonLines(
-    join(excerptFixture.dataset, "cases.jsonl"),
-    cases,
-  );
-  const manifest = await readJson(
-    join(excerptFixture.dataset, "build-manifest.json"),
-  );
-  manifest.artifacts.cases.sourceUses.find(
-    (use: { sourceId: string }) => use.sourceId === "sec.edgar",
-  ).retention = "source_excerpt";
-  await writeJson(
-    join(excerptFixture.dataset, "build-manifest.json"),
-    manifest,
-  );
   await refreshManifest(excerptFixture.dataset);
   await assert.rejects(
     () => verify(excerptFixture),
@@ -400,18 +381,125 @@ test("allows generated-output-only rights only for generated or metadata retenti
 
 test("rejects a source-retention declaration that hides retained excerpts", async () => {
   const fixture = await createFixture();
-  const cases = await readJsonLines(join(fixture.dataset, "cases.jsonl"));
-  for (const benchmarkCase of cases) {
-    if (benchmarkCase.track === "financial_text_triage")
-      benchmarkCase.untrustedEvidence = {
-        text: { excerpts: ["Invented public-filing fixture excerpt."] },
-      };
-  }
-  await writeCanonicalJsonLines(join(fixture.dataset, "cases.jsonl"), cases);
+  const manifest = await readJson(join(fixture.dataset, "build-manifest.json"));
+  manifest.artifacts.cases.sourceUses.find(
+    (use: { sourceId: string }) => use.sourceId === "sec.edgar",
+  ).retention = "metadata_only";
+  await writeJson(join(fixture.dataset, "build-manifest.json"), manifest);
   await refreshManifest(fixture.dataset);
   await assert.rejects(
     () => verify(fixture),
     /retention for sec.edgar does not match retained content/u,
+  );
+});
+
+test("rejects mismatched and duplicate financial-text candidate bindings", async () => {
+  const mismatched = await createFixture();
+  const mismatchedCases = await readJsonLines(
+    join(mismatched.dataset, "cases.jsonl"),
+  );
+  const mismatchedCase = mismatchedCases.find(
+    (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
+  );
+  mismatchedCase.trustedProjection.text.candidateBindings[0].excerptHash =
+    hash("9");
+  await writeCanonicalJsonLines(
+    join(mismatched.dataset, "cases.jsonl"),
+    mismatchedCases,
+  );
+  await refreshManifest(mismatched.dataset);
+  await assert.rejects(
+    () => verify(mismatched),
+    /text candidate hash mismatch/u,
+  );
+
+  const duplicate = await createFixture();
+  const duplicateCases = await readJsonLines(
+    join(duplicate.dataset, "cases.jsonl"),
+  );
+  const duplicateCase = duplicateCases.find(
+    (benchmarkCase) => benchmarkCase.track === "financial_text_triage",
+  );
+  duplicateCase.trustedProjection.text.candidateBindings.push({
+    id: "fixture.claim.1",
+    excerptHash: sha256("Second invented public-filing fixture excerpt."),
+  });
+  duplicateCase.untrustedEvidence.text.excerpts.push(
+    "Second invented public-filing fixture excerpt.",
+  );
+  await writeCanonicalJsonLines(
+    join(duplicate.dataset, "cases.jsonl"),
+    duplicateCases,
+  );
+  await refreshManifest(duplicate.dataset);
+  await assert.rejects(() => verify(duplicate), /duplicate text candidate id/u);
+});
+
+test("binds compiled visual mutations to their artifact and gold route", async () => {
+  const wrongRoute = await createFixture();
+  const wrongRouteCases = await readJsonLines(
+    join(wrongRoute.dataset, "cases.jsonl"),
+  );
+  const wrongRouteCase = wrongRouteCases.find(
+    (benchmarkCase) => benchmarkCase.track === "visual_evidence",
+  );
+  wrongRouteCase.goldRoute = "escalate";
+  await writeCanonicalJsonLines(
+    join(wrongRoute.dataset, "cases.jsonl"),
+    wrongRouteCases,
+  );
+  await refreshManifest(wrongRoute.dataset);
+  await assert.rejects(
+    () => verify(wrongRoute),
+    /visual route binding mismatch/u,
+  );
+
+  const wrongArtifact = await createFixture();
+  const wrongArtifactCases = await readJsonLines(
+    join(wrongArtifact.dataset, "cases.jsonl"),
+  );
+  const wrongArtifactCase = wrongArtifactCases.find(
+    (benchmarkCase) => benchmarkCase.track === "visual_evidence",
+  );
+  wrongArtifactCase.trustedProjection.visual.artifactBindingHash = hash("9");
+  await writeCanonicalJsonLines(
+    join(wrongArtifact.dataset, "cases.jsonl"),
+    wrongArtifactCases,
+  );
+  await refreshManifest(wrongArtifact.dataset);
+  await assert.rejects(
+    () => verify(wrongArtifact),
+    /visual artifact binding mismatch/u,
+  );
+
+  const forgedHashes = await createFixture();
+  const forgedCases = await readJsonLines(
+    join(forgedHashes.dataset, "cases.jsonl"),
+  );
+  const forgedCase = forgedCases.find(
+    (benchmarkCase) => benchmarkCase.track === "visual_evidence",
+  );
+  const forgedVisual = forgedCase.trustedProjection.visual;
+  forgedVisual.imageHash = hash("8");
+  forgedVisual.sourceBindingHash = hash("7");
+  forgedVisual.artifactBindingHash = sha256(
+    canonicalJson({
+      schemaVersion: "1",
+      renderer: FINANCE_CHART_RENDERER,
+      sourceBindingHash: forgedVisual.sourceBindingHash,
+      imageHash: forgedVisual.imageHash,
+      mutationId: forgedVisual.mutationId,
+      expectedRoute: forgedVisual.expectedRoute,
+    }),
+  );
+  await writeCanonicalJsonLines(
+    join(forgedHashes.dataset, "cases.jsonl"),
+    forgedCases,
+  );
+  await refreshManifest(forgedHashes.dataset);
+  await assert.rejects(
+    () => verify(forgedHashes),
+    /visual compiler output mismatch/u,
   );
 });
 
@@ -676,6 +764,25 @@ async function createFixture(): Promise<Fixture> {
 
   const cases = createCases();
   const provenance = createProvenance(cases);
+  const assetDeclarations: Record<string, unknown>[] = [];
+  for (const benchmarkCase of cases) {
+    if (benchmarkCase.track !== "visual_evidence") continue;
+    const retained = benchmarkCase.visualArtifact as {
+      readonly svgPath: string;
+      readonly compilerInput: unknown;
+    };
+    const rendered = renderFinanceChart(retained.compilerInput);
+    const destination = join(dataset, retained.svgPath);
+    await mkdir(dirname(destination), { recursive: true });
+    await writeFile(destination, rendered.svg);
+    const bytes = await readFile(destination);
+    assetDeclarations.push({
+      path: retained.svgPath,
+      sha256: sha256(bytes),
+      bytes: bytes.byteLength,
+      sourceUses: [{ sourceId: "sec.xbrl", retention: "generated_output" }],
+    });
+  }
   await writeCanonicalJsonLines(join(dataset, "cases.jsonl"), cases);
   await writeCanonicalJsonLines(join(dataset, "provenance.jsonl"), provenance);
   await writeJson(join(dataset, "builder-config.json"), {
@@ -741,7 +848,7 @@ async function createFixture(): Promise<Fixture> {
         bytes: caseBytes.byteLength,
         sourceUses: [
           { sourceId: "abides.source", retention: "generated_output" },
-          { sourceId: "sec.edgar", retention: "metadata_only" },
+          { sourceId: "sec.edgar", retention: "source_excerpt" },
           { sourceId: "sec.xbrl", retention: "generated_output" },
         ],
       },
@@ -755,7 +862,7 @@ async function createFixture(): Promise<Fixture> {
           { sourceId: "sec.xbrl", retention: "metadata_only" },
         ],
       },
-      assets: [],
+      assets: assetDeclarations,
     },
     rebuildDigest: hash("0"),
   };
@@ -822,16 +929,39 @@ function caseRecord(
       extractorVersion: "1",
       documentHash: evidenceHash,
       sourceBindingHash: hash("b"),
+      candidateBindings: [
+        {
+          id: "fixture.claim.1",
+          excerptHash: sha256("Invented public-filing fixture excerpt."),
+        },
+      ],
     };
   if (track === "visual_evidence")
-    trustedProjection.visual = {
-      mode: "structured_extraction",
-      extractorId: "fixture.extractor",
-      extractorVersion: "1",
-      imageHash: evidenceHash,
-      axesVerified: true,
-      sourceBindingHash: hash("b"),
-    };
+    trustedProjection.visual = (() => {
+      const rendered = renderFinanceChart(
+        visualCompilerInput(id, date, evidenceHash),
+      );
+      return {
+        mode: "structured_extraction",
+        extractorId: "fixture.extractor",
+        extractorVersion: "1",
+        imageHash: rendered.imageHash,
+        axesVerified: true,
+        sourceBindingHash: rendered.sourceBindingHash,
+        schemaVersion: rendered.schemaVersion,
+        renderer: rendered.renderer,
+        mutationId: rendered.mutationId,
+        expectedRoute: rendered.expectedRoute,
+        artifactBindingHash: rendered.artifactBindingHash,
+      };
+    })();
+  if (track === "visual_evidence") {
+    const signal = (trustedProjection.signals as Record<string, unknown>[])[0];
+    if (signal === undefined) throw new TypeError("fixture signal is missing");
+    signal.evidenceHash = (
+      trustedProjection.visual as Record<string, unknown>
+    ).imageHash;
+  }
   return {
     schemaVersion: "1",
     id,
@@ -841,13 +971,58 @@ function caseRecord(
     goldRoute: "observe",
     lookaheadProbe: probe,
     evaluationNow: `${date}T12:02:00.000Z`,
+    ...(track === "visual_evidence"
+      ? {
+          visualArtifact: {
+            svgPath: `assets/${id}.svg`,
+            compilerInput: visualCompilerInput(id, date, evidenceHash),
+          },
+        }
+      : {}),
     trustedProjection,
     untrustedEvidence:
       track === "financial_text_triage"
-        ? { text: { excerpts: [] } }
+        ? { text: { excerpts: ["Invented public-filing fixture excerpt."] } }
         : track === "visual_evidence"
           ? { visual: { annotations: [] } }
           : {},
+  };
+}
+
+function visualCompilerInput(
+  id: string,
+  date: string,
+  evidenceHash: string,
+): Record<string, unknown> {
+  return {
+    schemaVersion: "1",
+    title: `Synthetic revenue trend ${id}`,
+    axis: {
+      xLabel: "Date",
+      yLabel: "Revenue",
+      units: "USD millions",
+      zeroBaseline: true,
+    },
+    source: {
+      id: `chart.${id}`,
+      title: `Synthetic XBRL fixture ${id}`,
+      publisher: "SEC",
+      url: "https://www.sec.gov/dera/data/financial-statement-data-sets",
+      date,
+      sha256: evidenceHash,
+    },
+    series: [
+      {
+        id: "revenue",
+        label: "Revenue",
+        points: [
+          { timestamp: `${date}T09:00:00.000Z`, value: 100 },
+          { timestamp: `${date}T10:00:00.000Z`, value: 110 },
+        ],
+      },
+    ],
+    mutationId: "faithful_render",
+    annotations: [],
   };
 }
 
@@ -875,6 +1050,17 @@ function createProvenance(
         : track === "financial_text_triage"
           ? "sec.edgar"
           : "sec.xbrl";
+    const modalityHash =
+      track === "market_surveillance"
+        ? projection.sourceHash
+        : track === "financial_text_triage"
+          ? (projection.text as Record<string, unknown>).documentHash
+          : (projection.visual as Record<string, unknown>).imageHash;
+    const availableAt = probe
+      ? "2025-03-15T12:01:00.000Z"
+      : split === "calibration"
+        ? "2025-01-01T11:59:00.000Z"
+        : "2025-03-15T11:59:00.000Z";
     return {
       schemaVersion: "1",
       caseId: benchmarkCase.id,
@@ -888,15 +1074,10 @@ function createProvenance(
       sourceIds: [sourceId],
       cutoffAt: projection.cutoffAt,
       evidence: [
-        {
-          modality,
-          hash: signal.evidenceHash,
-          availableAt: probe
-            ? "2025-03-15T12:01:00.000Z"
-            : split === "calibration"
-              ? "2025-01-01T11:59:00.000Z"
-              : "2025-03-15T11:59:00.000Z",
-        },
+        { modality, hash: modalityHash, availableAt },
+        ...(probe && modalityHash !== signal.evidenceHash
+          ? [{ modality, hash: signal.evidenceHash, availableAt }]
+          : []),
       ],
       lookahead: probe
         ? {

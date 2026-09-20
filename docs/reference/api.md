@@ -15,6 +15,22 @@ Public packages:
 
 The core entry point is `new FabricRuntime(options).evaluate(input)`. Inputs require a trusted `pack`, `tenantId`, `action`, `knownActions`, state, and optionally trusted authorization/risk/policy/signal/deadline. Outputs include semantic data, a redacted receipt, and accounting. `createNativeJevProvider` exports the pinned native model factory. `createVercelGatewayJevProvider` fixes the official TypeSafe-compatible Gateway URL and `typesafe-ai/jev` identity. Both require an explicit server-side key or injected test client and do not read ambient credentials. The compatible adapter remains a trusted-host programmatic integration, not a CLI live option. `bindWebMcpAdvisory` emits fingerprints only and cannot invoke a browser tool. Read the TypeScript declarations as the exact alpha API; semver pre-1.0 changes may occur.
 
+A pack's `interpret` callback receives an optional third
+`PackInterpretContext` argument containing the validated response's actual
+`providerId`, `model`, and `probabilitySemantics`. The runtime supplies it for
+both live and cached responses. Packs that use confidence thresholds must
+check this context and fail closed when it is absent or the semantics do not
+match their versioned calibration evidence; a threshold calibrated for native
+Jev confidence must not be reused for normalized logits, self-reported values,
+synthetic fixtures, or another model/route.
+
+Every `StateProjector.project` call receives a frozen `StateProjectContext`
+with the runtime's trusted evaluation-start `nowEpochMs`. Projectors must use
+this clock, not provider-visible state, for freshness decisions. Projection
+happens before cache lookup; the finance pack therefore rejects an expired
+advisory state without reading or populating the cache and without dispatching
+a provider request.
+
 Tool-environment schemas are structural validators, not authority. Use
 `validateToolEnvironmentSnapshot(input, trustedCatalogue)` and
 `validateToolEnvironmentProposal(proposal, snapshot, trustedCatalogue,
@@ -26,10 +42,15 @@ state, capability-manifest, freshness, and positive-catalogue checks pass.
 validates source/feature hashes, time ordering, age, per-signal cutoff, and an
 optional structured visual-extractor binding.
 `bindFinanceAdvisoryEvidenceWithText(trustedProjection, visualEvidence,
-textEvidence, observedNowMs)` adds source-bound bounded text excerpts.
+textEvidence, observedNowMs)` adds one to eight source-bound text candidates;
+trusted ids and per-excerpt hashes must match the untrusted strings exactly.
 `FinanceAdvisoryBoundaryError.code` exposes stable failure categories. Both
 binders emit only opaque references, semantic buckets, bounded untrusted data,
 and the three advisory finance candidates. They have no order or execution API.
+The emitted state binds `expiresAt` to `observedAt + maxAgeMs`; its visual state
+also requires the canonical renderer/mutation/route artifact seal. The finance
+pack rechecks those bindings and every text-candidate hash at its direct public
+projector boundary.
 Pass the result to `financeSurveillancePack`; preserve the separate host
 authorization and execution boundary described in the
 [finance guide](../integrations/finance.md).

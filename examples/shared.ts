@@ -20,6 +20,8 @@ export interface OfflineExample {
   readonly expectedOutcome: string;
   readonly expectedSelectedId?: string;
   readonly negativeOutcome: string;
+  /** Optional deterministic clock for time-sensitive examples. */
+  readonly nowEpochMs?: number;
 }
 
 /** Runs one bounded, offline decision and proves its fail-closed companion path. */
@@ -33,7 +35,7 @@ export async function runOfflineExample(example: OfflineExample) {
       positiveCalls += 1;
     },
   });
-  const runtime = runtimeFor(provider);
+  const runtime = runtimeFor(provider, example.nowEpochMs);
   const result = await runtime.evaluate({
     pack: example.pack,
     state: example.state,
@@ -69,7 +71,10 @@ export async function runOfflineExample(example: OfflineExample) {
       calls += 1;
     },
   });
-  const negative = await runtimeFor(negativeProvider).evaluate({
+  const negative = await runtimeFor(
+    negativeProvider,
+    example.nowEpochMs,
+  ).evaluate({
     pack: example.pack,
     state: example.negativeState,
     tenantId: "example",
@@ -103,7 +108,10 @@ function authorization() {
   } as const;
 }
 
-function runtimeFor(provider: ScriptedProvider): FabricRuntime {
+function runtimeFor(
+  provider: ScriptedProvider,
+  nowEpochMs?: number,
+): FabricRuntime {
   return new FabricRuntime({
     provider,
     model: "example-scripted-v1",
@@ -114,6 +122,7 @@ function runtimeFor(provider: ScriptedProvider): FabricRuntime {
       maxQueue: 4,
       budget: new BudgetLedger({ requests: 8, tokens: 1000 }),
     }),
+    ...(nowEpochMs === undefined ? {} : { now: () => nowEpochMs }),
   });
 }
 

@@ -54,6 +54,11 @@ export interface DeterministicBypass {
     | "retry";
   readonly reasonCode: string;
 }
+export interface PackInterpretContext {
+  readonly providerId: string;
+  readonly model: string;
+  readonly probabilitySemantics: import("@mokimeow/jev-fabric-protocol").ProbabilitySemantics;
+}
 export interface PackImplementations {
   readonly projector: StateProjector;
   readonly candidates: CandidateProvider;
@@ -71,6 +76,7 @@ export interface PackImplementations {
       readonly id: string;
       readonly description: string;
     }[],
+    context?: PackInterpretContext,
   ) => PackSemanticResult;
 }
 export interface PackSemanticResult {

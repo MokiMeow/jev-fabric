@@ -53,6 +53,20 @@ or investigator-routing questions. That separation is incorporated as a
 design constraint; the community examples and their reported numbers have not
 been reproduced here.
 
+Two newer stock examples make the boundary more concrete. The
+[Jevinik/jevocks project](https://github.com/unicodeveloper/jevocks) uses a
+retrieval provider for market, news, analyst, and macro evidence, a generative
+model for the written investment thesis, and Jev for a bounded decision through
+Vercel AI Gateway. The architecture is useful; its thirty-day price target is
+not a validated result. The updated
+[jev_stock experiment](https://github.com/sosopop/jev_stock) is more explicit:
+Python owns retrieval, aligned trading dates, features, leakage checks, labels,
+and scoring while Jev supplies an `up` / `flat` / `down` classification. Its
+reported 54/120 result is a small retrospective community run, can be affected
+by information learned by the later model, and is not evidence of predictive
+edge. Fabric adopts the separation of responsibilities and prospective,
+checkpointed evaluation pattern, not the forecasting claim or trade route.
+
 Visual projects such as [jev-visual](https://github.com/hr98w/jev-visual) and
 [OpenJev](https://github.com/razorback16/openjev) explore local or
 Jev-compatible visual decision models. They are not evidence that the official
@@ -77,12 +91,19 @@ use signal, not an accuracy, calibration, latency, or safety result. See the
 [Gateway announcement](https://vercel.com/changelog/typesafe-ai-jev-now-available-on-ai-gateway)
 and [adoption report](https://vercel.com/blog/ai-gateway-jev-model-launch).
 
-The independent [Made with Jev index](https://madewithjev.com/) exposed 186
-build entries and 101 linked X posts during this scan. Its strongest recurring
+The independent [Made with Jev index](https://madewithjev.com/) exposed 239
+build entries and 130 linked X posts during the latest scan. Its strongest recurring
 patterns were bounded browser action spaces, many questions over one subject,
 and a smaller cluster of live trading demos. The index republishes author
 claims; counts establish ecosystem activity only, and its quoted speed, cost,
 or success figures are not benchmark evidence.
+
+The same index linked same-day distribution announcements for OpenRouter and
+Cloudflare AI Gateway. They broaden transport availability but do not make a
+moving model alias reproducible, preserve identical probability semantics, or
+establish equivalent latency and cost. Fabric therefore treats transport,
+provider route, concrete upstream model identity, and price evidence as
+separate retained fields instead of assuming gateway interchangeability.
 
 A later 20 September search found a second independent directory claiming 410
 entries and 10,093 stars. The disagreement between rapidly refreshed indexes is
@@ -152,6 +173,42 @@ of Jev. See [models](https://docs.typesafe.ai/models),
 Gateway comparisons must also retain the transport route separately. If a
 gateway exposes only `typesafe-ai/jev` and not the concrete upstream version,
 the artifact is route-bound and cannot claim immutable model reproduction.
+
+## Official finance-adjacent recipes checked the same day
+
+TypeSafe's current
+[confidence classification cookbook](https://docs.typesafe.ai/cookbooks/classification_using_confidence)
+classifies 60 selected SEC annual reports into SIC groups and falls back to a
+broader division below a confidence cutoff. The reusable mechanism is a
+code-owned taxonomy with a coarser safe fallback. Its published `0.9` cutoff
+and percentages came from `jev-1.12` on a small, filtered sample with
+self-reported labels; they are not a production threshold for `jev-1.13`, a
+correctness probability, or Fabric benchmark evidence. Fabric will calibrate
+each primitive, dataset, model, and route separately and may send uncertain
+finance cases to a person instead of forcing a broad label.
+
+The official
+[pre-parsed extraction cookbook](https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook)
+matches Fabric's intended document path: a regex, parser, roster, or generative
+extractor proposes literal spans; Jev selects among those candidates; code
+copies the selected span verbatim and parses money, dates, identifiers, and
+signs. Candidate count, normalization, locale, and arithmetic therefore remain
+testable code. Jev never invents an account number or monetary amount.
+
+The official
+[Jev 1.13 jaggedness note](https://docs.typesafe.ai/model-jaggedness/jev-1.13)
+also rules out several unsafe finance shortcuts. It directs arithmetic,
+counting, date comparison, and structural invariants to code; recommends
+filtering irrelevant state; warns that state is not automatically treated as
+hostile; and reserves generation for a generative model. These are now treated
+as implementation constraints, not merely prompting advice.
+
+Community work on [jev-align](https://github.com/sutro-sh/jev-align) suggests a
+useful future evaluation loop: retain disagreements and ambiguous examples,
+label them, and test revised instructions on a frozen holdout. Fabric will not
+allow an optimizer to rewrite authority, no-trade policy, evidence validation,
+or the final holdout. That turns error discovery into reviewable data without
+turning recursive improvement into unbounded self-modification.
 
 ## Ideas incorporated
 

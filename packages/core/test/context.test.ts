@@ -27,9 +27,9 @@ describe("decision-state credential boundary", () => {
 
   it("requires a narrow explicit reviewed opt-out for a trusted custom projector", () => {
     const input = { note: "Bearer credential-123456789" };
-    expect(() => projectState({ project: () => input }, input, limits)).toThrow(
-      /credentials/i,
-    );
+    expect(() =>
+      projectState({ project: () => input }, input, limits, { nowEpochMs: 0 }),
+    ).toThrow(/credentials/i);
     expect(
       projectState(
         {
@@ -40,6 +40,7 @@ describe("decision-state credential boundary", () => {
         },
         input,
         limits,
+        { nowEpochMs: 0 },
       ),
     ).toEqual(input);
   });

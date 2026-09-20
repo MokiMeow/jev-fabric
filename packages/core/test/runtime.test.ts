@@ -1,14 +1,14 @@
+import { validateDecisionResponse } from "@mokimeow/jev-fabric-protocol";
 import { describe, expect, it } from "vitest";
-import { MemoryDecisionCache } from "../src/cache.js";
 import { BudgetLedger } from "../src/budget.js";
+import { MemoryDecisionCache } from "../src/cache.js";
 import { definePack } from "../src/pack.js";
 import {
   FabricRuntime,
-  ProviderOutageError,
   type FabricRuntimeOptions,
+  ProviderOutageError,
 } from "../src/runtime.js";
 import { DecisionScheduler } from "../src/scheduler.js";
-import { validateDecisionResponse } from "@mokimeow/jev-fabric-protocol";
 
 const limits = {
   maxStateBytes: 1024,
@@ -339,6 +339,77 @@ describe("FabricRuntime", () => {
     const unfunded = await make(1, ["fail", "ok"]).evaluate(input());
     expect(calls).toBe(1);
     expect(unfunded.accounting.transportAttemptCount).toBe(1);
+  });
+
+  it("passes immutable provider semantics to pack interpretation on live and cached responses", async () => {
+    const contexts: import("../src/pack.js").PackInterpretContext[] = [];
+    const implementations = pack.implementations;
+    if (!implementations) throw new Error("test pack implementations missing");
+    const contextPack = definePack(
+      { ...pack.manifest, id: "interpret-context" },
+      {
+        ...implementations,
+        bypass: () => undefined,
+        questions: () => [
+          {
+            id: "q",
+            type: "choice",
+            instructions: {},
+            criteria: {},
+            options: ["go", "stay"],
+          },
+        ],
+        interpret: (_answers, _candidates, context) => {
+          if (!context) throw new Error("interpret context missing");
+          contexts.push(context);
+          return {
+            status: "decision",
+            proposedOutcome: "allow",
+            metadata: {},
+          };
+        },
+      },
+    );
+    const cache = new MemoryDecisionCache<{
+      readonly response: import("@mokimeow/jev-fabric-protocol").DecisionResponse;
+    }>({ maxEntries: 2 });
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => response(request.id),
+      },
+      model: "synthetic-model",
+      cache,
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 1 }),
+      }),
+    });
+    const request = { ...input(), pack: contextPack };
+
+    await runtime.evaluate(request);
+    await runtime.evaluate(request);
+
+    expect(contexts).toHaveLength(2);
+    expect(contexts).toEqual([
+      {
+        providerId: "test",
+        model: "synthetic-model",
+        probabilitySemantics: "synthetic",
+      },
+      {
+        providerId: "test",
+        model: "synthetic-model",
+        probabilitySemantics: "synthetic",
+      },
+    ]);
+    expect(Object.isFrozen(contexts[0])).toBe(true);
   });
 
   it("keeps a validated result when persistence fails and reports caller cancellation/deadline separately", async () => {

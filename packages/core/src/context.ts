@@ -9,8 +9,13 @@ export interface StateLimits {
   readonly maxStringBytes: number;
 }
 
+export interface StateProjectContext {
+  /** Trusted evaluation-start time supplied by the runtime. */
+  readonly nowEpochMs: number;
+}
+
 export interface StateProjector<Input = unknown> {
-  project(input: Input): unknown;
+  project(input: Input, context: StateProjectContext): unknown;
   /**
    * Deliberate, reviewed escape hatch for a trusted in-process projection.
    * Built-in packs never enable this: callers must never use it for MCP,
@@ -108,10 +113,14 @@ export function projectState<Input>(
   projector: StateProjector<Input>,
   input: Input,
   limits: StateLimits,
+  context: StateProjectContext,
 ): JsonValue {
   if (!projector || typeof projector.project !== "function")
     throw new TypeError("a trusted state projector is required");
-  return compileState(projector.project(input), limits, {
+  if (!Number.isFinite(context.nowEpochMs))
+    throw new TypeError("state projection time must be finite");
+  const trustedContext = Object.freeze({ nowEpochMs: context.nowEpochMs });
+  return compileState(projector.project(input, trustedContext), limits, {
     ...(projector.unsafeAllowSecretState === undefined
       ? {}
       : { unsafeAllowSecretState: projector.unsafeAllowSecretState }),

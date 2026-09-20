@@ -3,14 +3,24 @@ import {
   lstat,
   mkdir,
   open,
+  realpath,
+  readdir,
   readFile,
   rename,
-  rm,
-  writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
+import {
+  assertSafeRelativePath,
+  canonicalJson,
+  readSafeRelativeFile,
+} from "../builders/lib/canonical.mjs";
+import {
+  FINANCE_CHART_RENDERER,
+  FINANCE_VISUAL_MUTATION_ROUTES,
+  renderFinanceChart,
+} from "../builders/visual/render.mjs";
 import {
   bindFinanceAdvisoryEvidenceWithText,
   FinanceAdvisoryBoundaryError,
@@ -51,6 +61,10 @@ export interface FinanceBenchmarkCase {
   readonly untrustedEvidence: {
     readonly visual?: UntrustedVisualFinanceEvidence;
     readonly text?: UntrustedTextFinanceEvidence;
+  };
+  readonly visualArtifact?: {
+    readonly svgPath: string;
+    readonly compilerInput: unknown;
   };
 }
 
@@ -108,6 +122,8 @@ export interface FinanceDriverContext {
   readonly signal: AbortSignal;
   readonly architecture: FinanceArchitecture;
   readonly track: FinanceTrack;
+  /** Trusted case evaluation time; never sourced from provider-visible state. */
+  readonly evaluationNowEpochMs: number;
 }
 
 export type FinanceBenchmarkDriver = (
@@ -203,6 +219,10 @@ export interface LoadedFinanceDataset {
   readonly manifest: FinanceDatasetManifest;
   readonly cases: readonly FinanceBenchmarkCase[];
   readonly casesBytes: Uint8Array;
+  readonly visualArtifacts: readonly Readonly<{
+    path: string;
+    bytes: Uint8Array;
+  }>[];
 }
 
 export interface FinanceRunArtifacts {
@@ -252,10 +272,15 @@ export async function loadFinanceDataset(
     return value;
   });
   validateDatasetSemantics(manifest, cases);
+  const visualArtifacts = await validateRetainedVisualArtifacts(
+    directory,
+    cases,
+  );
   return {
     manifest: deepFreeze(structuredClone(manifest)),
     cases: deepFreeze(structuredClone(cases)),
     casesBytes,
+    visualArtifacts,
   };
 }
 
@@ -344,54 +369,318 @@ export async function runFinanceBenchmark(options: {
   };
 }
 
-/** Atomically publishes a local retained artifact directory. */
+/**
+ * Atomically publishes a local retained artifact directory.
+ *
+ * The output parent is a trusted, single-writer boundary. Node does not expose
+ * portable directory-relative open/rename primitives, so this function does
+ * not claim safety against another same-privilege process replacing entries in
+ * that parent while publication is in progress. Failed staging directories are
+ * intentionally retained instead of being recursively removed through a path.
+ */
 export async function writeFinanceArtifacts(
   directory: string,
   artifacts: FinanceRunArtifacts,
 ): Promise<void> {
+  const run = structuredClone(artifacts.run);
+  const manifest = structuredClone(artifacts.dataset.manifest);
+  const casesBytes = Uint8Array.from(artifacts.dataset.casesBytes);
+  const tracesJsonl = String(artifacts.tracesJsonl);
+  const visualArtifacts = validateVisualArtifactsForWrite(artifacts.dataset);
+  const runtimeEvidence = validateAndBindRuntimeEvidence(
+    run.runtime as FinanceRuntimeProvenance,
+    structuredClone(artifacts.runtimeEvidence),
+  );
+  invariant(
+    sha256(casesBytes) === manifest.caseSetHash,
+    "finance cases bytes do not match the retained manifest",
+  );
+  invariant(
+    run.traceSetHash === sha256(tracesJsonl),
+    "finance traces bytes do not match the retained run",
+  );
+  const runJson = stableJson(run);
+  const manifestJson = stableJson(manifest);
+  const evidenceFiles = runtimeEvidence.map((evidence) => ({
+    name: evidenceFileName(evidence),
+    bytes: stableJson(evidence),
+  }));
   try {
     await lstat(directory);
     throw new TypeError("finance artifact directory already exists");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const staging = `${directory}.tmp-${process.pid}-${randomUUID()}`;
-  await mkdir(staging, { recursive: false });
-  try {
-    const runtimeEvidence = validateAndBindRuntimeEvidence(
-      artifacts.run.runtime as FinanceRuntimeProvenance,
-      artifacts.runtimeEvidence,
+  const outputParent = dirname(resolve(directory));
+  const outputParentInfo = await lstat(outputParent);
+  invariant(
+    outputParentInfo.isDirectory() && !outputParentInfo.isSymbolicLink(),
+    "finance artifact output parent must be a regular directory",
+  );
+  const canonicalOutputParent = await realpath(outputParent);
+  const pinnedOutputParent = Object.freeze({
+    path: outputParent,
+    canonicalPath: canonicalOutputParent,
+    dev: outputParentInfo.dev,
+    ino: outputParentInfo.ino,
+  });
+  const stagingPath = `${resolve(directory)}.tmp-${process.pid}-${randomUUID()}`;
+  await verifyPinnedDirectory(pinnedOutputParent);
+  await mkdir(stagingPath, { recursive: false, mode: 0o700 });
+  const staging = await pinNewDirectory(
+    stagingPath,
+    canonicalOutputParent,
+    "finance staging directory",
+  );
+  const evidenceDirectory = await createPinnedChildDirectory(
+    staging,
+    "evidence",
+  );
+  if (visualArtifacts.length > 0)
+    await createPinnedChildDirectory(staging, "assets");
+  await Promise.all([
+    writePinnedFile(staging, "run.json", runJson),
+    writePinnedFile(staging, "dataset-manifest.json", manifestJson),
+    writePinnedFile(staging, "cases.jsonl", casesBytes),
+    writePinnedFile(staging, "traces.jsonl", tracesJsonl),
+    ...visualArtifacts.map((artifact) =>
+      writePinnedFile(staging, artifact.path, artifact.bytes),
+    ),
+    ...evidenceFiles.map((evidence) =>
+      writePinnedFile(staging, `evidence/${evidence.name}`, evidence.bytes),
+    ),
+  ]);
+  await verifyPinnedDirectory(evidenceDirectory);
+  await verifyPinnedDirectory(staging);
+  await verifyPinnedDirectory(pinnedOutputParent);
+  await rename(staging.path, directory);
+  await verifyPublishedDirectory(
+    staging,
+    resolve(directory),
+    canonicalOutputParent,
+  );
+}
+
+function validateVisualArtifactsForWrite(
+  dataset: LoadedFinanceDataset,
+): readonly Readonly<{ path: string; bytes: Uint8Array }>[] {
+  invariant(
+    Array.isArray(dataset.cases) && Array.isArray(dataset.visualArtifacts),
+    "finance dataset visual artifacts must be arrays",
+  );
+  const expected = new Map<string, string>();
+  for (const benchmarkCase of dataset.cases) {
+    if (benchmarkCase.track !== "visual_evidence") {
+      invariant(
+        benchmarkCase.visualArtifact === undefined,
+        `non-visual finance case ${benchmarkCase.id} has a visual artifact`,
+      );
+      continue;
+    }
+    const retained = benchmarkCase.visualArtifact;
+    invariant(
+      retained !== undefined,
+      `finance visual case ${benchmarkCase.id} has no retained artifact`,
     );
-    const evidenceDirectory = join(staging, "evidence");
-    await mkdir(evidenceDirectory, { recursive: false });
-    await Promise.all([
-      writeFile(join(staging, "run.json"), stableJson(artifacts.run), {
-        flag: "wx",
-      }),
-      writeFile(
-        join(staging, "dataset-manifest.json"),
-        stableJson(artifacts.dataset.manifest),
-        { flag: "wx" },
-      ),
-      writeFile(join(staging, "cases.jsonl"), artifacts.dataset.casesBytes, {
-        flag: "wx",
-      }),
-      writeFile(join(staging, "traces.jsonl"), artifacts.tracesJsonl, {
-        flag: "wx",
-      }),
-      ...runtimeEvidence.map((evidence) =>
-        writeFile(
-          join(evidenceDirectory, evidenceFileName(evidence)),
-          stableJson(evidence),
-          { flag: "wx" },
-        ),
-      ),
-    ]);
-    await rename(staging, directory);
-  } catch (error) {
-    await rm(staging, { recursive: true, force: true });
-    throw error;
+    assertFinanceVisualArtifactPath(retained.svgPath);
+    invariant(
+      !expected.has(retained.svgPath),
+      `finance visual artifact path is reused: ${retained.svgPath}`,
+    );
+    const rendered = renderFinanceChart(retained.compilerInput);
+    const visual = benchmarkCase.trustedProjection.visual;
+    invariant(
+      visual !== undefined &&
+        rendered.imageHash === visual.imageHash &&
+        rendered.sourceBindingHash === visual.sourceBindingHash &&
+        rendered.artifactBindingHash === visual.artifactBindingHash &&
+        rendered.mutationId === visual.mutationId &&
+        rendered.expectedRoute === benchmarkCase.goldRoute,
+      `finance visual case ${benchmarkCase.id} compiler output mismatch`,
+    );
+    expected.set(retained.svgPath, rendered.svg);
   }
+
+  invariant(
+    dataset.visualArtifacts.length === expected.size,
+    "finance visual artifact set does not match visual cases",
+  );
+  const actualPaths = new Set<string>();
+  const validated: Array<Readonly<{ path: string; bytes: Uint8Array }>> = [];
+  for (const artifact of dataset.visualArtifacts) {
+    assertFinanceVisualArtifactPath(artifact.path);
+    invariant(
+      !actualPaths.has(artifact.path),
+      `finance visual artifact path is duplicated: ${artifact.path}`,
+    );
+    actualPaths.add(artifact.path);
+    invariant(
+      artifact.bytes instanceof Uint8Array,
+      `finance visual artifact ${artifact.path} bytes are invalid`,
+    );
+    const expectedSvg = expected.get(artifact.path);
+    invariant(
+      expectedSvg !== undefined &&
+        Buffer.from(artifact.bytes).equals(Buffer.from(expectedSvg, "utf8")),
+      `finance visual artifact ${artifact.path} does not match its case`,
+    );
+    validated.push(
+      Object.freeze({
+        path: artifact.path,
+        bytes: new TextEncoder().encode(expectedSvg),
+      }),
+    );
+  }
+  return Object.freeze(validated);
+}
+
+function assertFinanceVisualArtifactPath(path: string): void {
+  assertSafeRelativePath(path, "finance visual artifact path");
+  invariant(
+    /^assets\/[A-Za-z0-9._-]+\.svg$/u.test(path),
+    "finance visual artifact path must be a flat assets/*.svg path",
+  );
+}
+
+interface PinnedDirectory {
+  readonly path: string;
+  readonly canonicalPath: string;
+  readonly dev: number;
+  readonly ino: number;
+}
+
+async function pinNewDirectory(
+  path: string,
+  canonicalParent: string,
+  label: string,
+): Promise<PinnedDirectory> {
+  const [info, canonicalPath] = await Promise.all([
+    lstat(path),
+    realpath(path),
+  ]);
+  invariant(
+    info.isDirectory() &&
+      !info.isSymbolicLink() &&
+      dirname(canonicalPath) === canonicalParent,
+    `${label} is not a new directory under its pinned parent`,
+  );
+  return Object.freeze({
+    path,
+    canonicalPath,
+    dev: info.dev,
+    ino: info.ino,
+  });
+}
+
+async function createPinnedChildDirectory(
+  root: PinnedDirectory,
+  name: "assets" | "evidence",
+): Promise<PinnedDirectory> {
+  await verifyPinnedDirectory(root);
+  const path = join(root.path, name);
+  await mkdir(path, { recursive: false, mode: 0o700 });
+  return pinNewDirectory(path, root.canonicalPath, `finance ${name} directory`);
+}
+
+async function verifyPinnedDirectory(
+  directory: PinnedDirectory,
+): Promise<void> {
+  const [info, canonicalPath] = await Promise.all([
+    lstat(directory.path),
+    realpath(directory.path),
+  ]);
+  invariant(
+    info.isDirectory() &&
+      !info.isSymbolicLink() &&
+      info.dev === directory.dev &&
+      info.ino === directory.ino &&
+      canonicalPath === directory.canonicalPath,
+    `finance artifact directory identity changed: ${directory.path}`,
+  );
+}
+
+async function writePinnedFile(
+  root: PinnedDirectory,
+  relativePath: string,
+  bytes: string | Uint8Array,
+): Promise<void> {
+  assertSafeRelativePath(relativePath, "finance artifact output path");
+  await verifyPinnedDirectory(root);
+  const target = resolve(root.path, ...relativePath.split("/"));
+  const parentPath = dirname(target);
+  const [parentBefore, canonicalParent] = await Promise.all([
+    lstat(parentPath),
+    realpath(parentPath),
+  ]);
+  const fromRoot = relative(root.canonicalPath, canonicalParent);
+  invariant(
+    parentBefore.isDirectory() &&
+      !parentBefore.isSymbolicLink() &&
+      fromRoot !== ".." &&
+      !fromRoot.startsWith(`..${sep}`) &&
+      !isAbsolute(fromRoot),
+    "finance artifact output parent escapes staging",
+  );
+  const handle = await open(target, "wx", 0o600);
+  try {
+    const [opened, pathInfo, canonicalTarget, parentAfter] = await Promise.all([
+      handle.stat(),
+      lstat(target),
+      realpath(target),
+      lstat(parentPath),
+    ]);
+    const targetFromRoot = relative(root.canonicalPath, canonicalTarget);
+    invariant(
+      opened.isFile() &&
+        pathInfo.isFile() &&
+        !pathInfo.isSymbolicLink() &&
+        opened.dev === pathInfo.dev &&
+        opened.ino === pathInfo.ino &&
+        parentBefore.dev === parentAfter.dev &&
+        parentBefore.ino === parentAfter.ino &&
+        targetFromRoot !== ".." &&
+        !targetFromRoot.startsWith(`..${sep}`) &&
+        !isAbsolute(targetFromRoot),
+      "finance artifact output path changed before write",
+    );
+    await handle.writeFile(bytes);
+    await handle.sync();
+    const [written, finalPathInfo, finalParentInfo] = await Promise.all([
+      handle.stat(),
+      lstat(target),
+      lstat(parentPath),
+      verifyPinnedDirectory(root),
+    ]);
+    invariant(
+      written.dev === finalPathInfo.dev &&
+        written.ino === finalPathInfo.ino &&
+        !finalPathInfo.isSymbolicLink() &&
+        parentBefore.dev === finalParentInfo.dev &&
+        parentBefore.ino === finalParentInfo.ino,
+      "finance artifact output path changed during write",
+    );
+  } finally {
+    await handle.close();
+  }
+}
+
+async function verifyPublishedDirectory(
+  staged: PinnedDirectory,
+  publishedPath: string,
+  canonicalParent: string,
+): Promise<void> {
+  const [info, canonicalPath] = await Promise.all([
+    lstat(publishedPath),
+    realpath(publishedPath),
+  ]);
+  invariant(
+    info.isDirectory() &&
+      !info.isSymbolicLink() &&
+      info.dev === staged.dev &&
+      info.ino === staged.ino &&
+      dirname(canonicalPath) === canonicalParent,
+    "published finance artifact directory identity changed",
+  );
 }
 
 async function executeTask(
@@ -447,6 +736,10 @@ async function executeTask(
           signal: controller.signal,
           architecture,
           track: benchmarkCase.track,
+          evaluationNowEpochMs: timestamp(
+            benchmarkCase.evaluationNow,
+            "evaluationNow",
+          ),
         }),
       ),
       new Promise<never>((_resolve, reject) => {
@@ -823,30 +1116,156 @@ function validateDatasetSemantics(
 function validateTrackEvidence(entry: FinanceBenchmarkCase): void {
   const trusted = entry.trustedProjection;
   const untrusted = entry.untrustedEvidence;
-  if (entry.track === "visual_evidence")
+  if (entry.track === "visual_evidence") {
     invariant(
       trusted.visual !== undefined &&
         untrusted.visual !== undefined &&
+        entry.visualArtifact !== undefined &&
         trusted.text === undefined &&
         untrusted.text === undefined,
       `finance visual case ${entry.id} has mismatched evidence`,
     );
-  else if (entry.track === "financial_text_triage")
+    const visual = trusted.visual;
+    if (visual === undefined)
+      throw new TypeError(
+        `finance visual case ${entry.id} has no visual state`,
+      );
+    const expectedRoute = FINANCE_VISUAL_MUTATION_ROUTES[visual.mutationId];
+    invariant(
+      visual.schemaVersion === "1" &&
+        canonicalJson(visual.renderer) ===
+          canonicalJson(FINANCE_CHART_RENDERER) &&
+        visual.expectedRoute === expectedRoute &&
+        entry.goldRoute === expectedRoute,
+      `finance visual case ${entry.id} has an invalid compiler route binding`,
+    );
+    invariant(
+      visual.artifactBindingHash ===
+        sha256(
+          canonicalJson({
+            schemaVersion: "1",
+            renderer: FINANCE_CHART_RENDERER,
+            sourceBindingHash: visual.sourceBindingHash,
+            imageHash: visual.imageHash,
+            mutationId: visual.mutationId,
+            expectedRoute,
+          }),
+        ),
+      `finance visual case ${entry.id} has an invalid artifact binding`,
+    );
+  } else if (entry.track === "financial_text_triage") {
     invariant(
       trusted.text !== undefined &&
         untrusted.text !== undefined &&
+        entry.visualArtifact === undefined &&
         trusted.visual === undefined &&
         untrusted.visual === undefined,
       `finance text case ${entry.id} has mismatched evidence`,
     );
-  else
+    const bindings = trusted.text.candidateBindings;
+    const excerpts = untrusted.text.excerpts;
+    invariant(
+      Array.isArray(excerpts) &&
+        excerpts.length === bindings.length &&
+        excerpts.every((excerpt) => typeof excerpt === "string"),
+      `finance text case ${entry.id} has mismatched candidate bindings`,
+    );
+    invariant(
+      new Set(bindings.map((binding) => binding.id)).size === bindings.length,
+      `finance text case ${entry.id} has duplicate candidate ids`,
+    );
+    for (const [index, binding] of bindings.entries())
+      invariant(
+        binding.excerptHash ===
+          `sha256:${createHash("sha256")
+            .update(excerpts[index] as string)
+            .digest("hex")}`,
+        `finance text case ${entry.id} candidate ${binding.id} hash mismatch`,
+      );
+  } else
     invariant(
       trusted.visual === undefined &&
         trusted.text === undefined &&
         untrusted.visual === undefined &&
-        untrusted.text === undefined,
+        untrusted.text === undefined &&
+        entry.visualArtifact === undefined,
       `finance market case ${entry.id} must not carry extracted evidence`,
     );
+}
+
+async function validateRetainedVisualArtifacts(
+  directory: string,
+  cases: readonly FinanceBenchmarkCase[],
+): Promise<readonly Readonly<{ path: string; bytes: Uint8Array }>[]> {
+  const paths = new Set<string>();
+  const retainedArtifacts: Array<
+    Readonly<{ path: string; bytes: Uint8Array }>
+  > = [];
+  for (const entry of cases) {
+    if (entry.track !== "visual_evidence") continue;
+    const retained = entry.visualArtifact;
+    invariant(
+      retained !== undefined,
+      `finance visual case ${entry.id} has no retained artifact`,
+    );
+    invariant(
+      !paths.has(retained.svgPath),
+      `finance visual artifact path is reused: ${retained.svgPath}`,
+    );
+    paths.add(retained.svgPath);
+
+    const rendered = renderFinanceChart(retained.compilerInput);
+    const visual = entry.trustedProjection.visual;
+    invariant(
+      visual !== undefined &&
+        rendered.schemaVersion === visual.schemaVersion &&
+        canonicalJson(rendered.renderer) === canonicalJson(visual.renderer) &&
+        rendered.mutationId === visual.mutationId &&
+        rendered.expectedRoute === visual.expectedRoute &&
+        rendered.expectedRoute === entry.goldRoute &&
+        rendered.imageHash === visual.imageHash &&
+        rendered.sourceBindingHash === visual.sourceBindingHash &&
+        rendered.artifactBindingHash === visual.artifactBindingHash,
+      `finance visual case ${entry.id} compiler output mismatch`,
+    );
+
+    const bytes = await readSafeRelativeFile(
+      directory,
+      retained.svgPath,
+      2 * 1024 * 1024,
+    );
+    let svg: string;
+    try {
+      svg = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch (error) {
+      throw new TypeError(
+        `finance visual artifact ${entry.id} is not valid UTF-8`,
+        { cause: error },
+      );
+    }
+    invariant(
+      svg === rendered.svg && sha256(bytes) === rendered.imageHash,
+      `finance visual case ${entry.id} retained SVG mismatch`,
+    );
+    retainedArtifacts.push(Object.freeze({ path: retained.svgPath, bytes }));
+  }
+  const assetEntries = await readdir(join(directory, "assets"), {
+    withFileTypes: true,
+  });
+  const expectedNames = new Set(
+    [...paths].map((path) => path.slice("assets/".length)),
+  );
+  invariant(
+    assetEntries.length === expectedNames.size &&
+      assetEntries.every(
+        (entry) =>
+          expectedNames.has(entry.name) &&
+          entry.isFile() &&
+          !entry.isSymbolicLink(),
+      ),
+    "finance visual artifact file set does not match visual cases",
+  );
+  return Object.freeze(retainedArtifacts);
 }
 
 function validateDrivers(drivers: FinanceBenchmarkDrivers): void {

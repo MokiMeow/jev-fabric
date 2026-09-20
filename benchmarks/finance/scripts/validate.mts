@@ -319,6 +319,7 @@ async function validateArtifactLayout(directory: string): Promise<void> {
   const expected = new Map<string, "file" | "directory">([
     ["cases.jsonl", "file"],
     ["dataset-manifest.json", "file"],
+    ["assets", "directory"],
     ["evidence", "directory"],
     ["run.json", "file"],
     ["traces.jsonl", "file"],

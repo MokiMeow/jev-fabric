@@ -16,8 +16,8 @@ which says arithmetic and date comparison belong in code.
 ```mermaid
 flowchart LR
   F[Licensed feeds and documents] --> C[Deterministic calculations and cutoff checks]
-  I[Chart or document image] --> V[OCR or vision extractor]
-  V --> B[Bounded structured annotations]
+  I[Chart or financial document] --> V[Versioned extractor]
+  V --> B[Bounded annotations or claim candidates]
   C --> P[Finance advisory projection]
   B --> P
   P --> J[Jev typed surveillance questions]
@@ -31,14 +31,21 @@ never an order, authorization, approval, or strategy signal.
 
 Use `bindFinanceAdvisoryEvidence` for structured visual evidence or
 `bindFinanceAdvisoryEvidenceWithText` when a filing, news, or case-note
-extractor also supplies bounded excerpts. Both accept only opaque instrument
-references, source and feature hashes, code-derived semantic buckets, and
-code-checked timestamps. The text-aware binder limits excerpts to 16 items,
-1,000 characters each, and 16 KiB total; binds them to a trusted document and
-extractor identity; hashes the exact accepted excerpts; and marks them as
+extractor also supplies bounded claim-candidate excerpts. Both accept only
+opaque instrument references, source and feature hashes, code-derived semantic
+buckets, and code-checked timestamps. The text-aware binder limits excerpts to eight items,
+1,000 characters each, and 16 KiB total. Trusted code must supply an ordered,
+unique candidate id and SHA-256 excerpt hash for every item. The binder requires
+an exact count, order, and hash match, then emits source-bound candidates with
+the trusted document, source, and extractor identities and marks their text as
 `untrusted_data_only`. The binders reject stale or future observations,
 post-cutoff signals, raw order fields, unbound evidence, proxy/accessor input,
-control characters, and malformed annotations or excerpts. Stable
+control characters (including C1 and bidirectional/isolate controls), and
+malformed annotations or excerpts. The emitted state carries a code-derived
+expiry bound to `observedAt + maxAgeMs`; the runtime supplies a trusted
+evaluation-start clock to the pack before any cache lookup or provider call.
+The pack rejects expired or tampered expiry data and independently recomputes
+all excerpt, ordered-candidate, annotation, and visual-artifact hashes. Stable
 `FinanceAdvisoryBoundaryError` codes let callers distinguish look-ahead, stale,
 window, binding, and general input failures without matching error text.
 
@@ -52,6 +59,23 @@ Then use `financeSurveillancePack`. Its finite output vocabulary is:
 
 The pack never returns `allow`. Restrictive independent questions can upgrade
 the route, but they cannot downgrade an escalation.
+
+For each bound text candidate, the pack asks one focused Choice question that
+references the exact `text.candidates[index].excerpt` path. Its vocabulary is
+fixed in code: reported-performance change, guidance/outlook change,
+liquidity/going-concern risk, accounting/control issue, legal/regulatory
+contingency, or none. Code maps those fine labels to broader parent families.
+The semantic result retains only the candidate id and fixed labels, explicitly
+named `provisionalFine` and `provisionalParent`; it never copies or generates a
+financial fact.
+
+No finance-specific confidence threshold has been calibrated yet. Therefore a
+non-`none` claim only upgrades the case to `investigate`, while malformed claim
+answers escalate. Native confidence is retained only when the provider declares
+`native_calibrated`; confidence from normalized, self-reported, synthetic, or
+unknown semantics is ignored. Even native confidence is marked unthresholded
+and does not produce a high/medium/low tier until a trusted, versioned policy is
+validated on held-out finance evidence.
 
 ## High-value uses
 
@@ -86,6 +110,13 @@ must verify chart axes, units, timezone, source binding, crop identity, and
 cutoff before the annotations reach Jev. Preserve the image digest and
 extractor version, not the image itself, in the advisory state.
 
+The benchmark's canonical SVG compiler emits a versioned renderer identity,
+mutation id, expected route, image hash, source-binding hash, and one artifact
+hash over that complete tuple. The adapter and pack revalidate the tuple. The
+offline builder also requires the case `goldRoute` to equal the compiler-owned
+route, so a case author cannot relabel a compiled deceptive-chart mutation
+without invalidating the dataset.
+
 Treat extracted labels as untrusted data. They may be wrong, omit context, or
 contain prompt injection. The finance pack asks a separate influence question
 and escalates when that signal is present. For exact candlesticks, indicators,
@@ -108,8 +139,8 @@ pixels and not Jev.
    and question set. Re-run after any change or detected drift.
 
 TypeSafe confidence is distribution concentration, not correctness
-probability. Calibrate and threshold the returned option probabilities against
-your own labels. The executable
+probability. Calibrate thresholds against your own labels and never reuse a
+threshold across different probability semantics. The executable
 [finance benchmark](../../benchmarks/finance/README.md) compares four
 architectures across all three tracks and independently validates retained
 traces, digests, provenance, look-ahead rejection, calibration semantics,

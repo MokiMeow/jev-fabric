@@ -34,17 +34,23 @@ request size, concurrency, and gateway route must remain visible.
 
 ## Retained dataset contract
 
-A dataset directory contains `dataset-manifest.json` and `cases.jsonl`. The
-schemas require a SHA-256 case-set digest, source and licence metadata,
+A dataset directory contains `dataset-manifest.json`, `cases.jsonl`, and the
+visual SVGs referenced beneath `assets/`. The schemas require a SHA-256
+case-set digest, source and licence metadata,
 redistribution status, a forward-chaining time split, fixed evaluation times,
 and group isolation across calibration and test. Each test track must contain
 ordinary cases and deliberate post-cutoff probes.
 
-Visual cases carry only code-verified axis/source bindings plus bounded
-untrusted annotations. Text cases carry only source-bound, bounded untrusted
-excerpts. The adapter rejects stale, future, or post-cutoff evidence before any
-driver is called. Non-redistributable or sensitive source material must remain
-outside the repository; publish only evidence whose licence permits it.
+Visual cases carry a unique SVG path, the complete canonical compiler input,
+code-verified axis/source bindings, and bounded untrusted annotations. Loading a
+dataset reruns the compiler, bounded-reads the SVG, requires exact byte and hash
+agreement, and rejects missing, extra, reused, or internally consistent forged
+artifacts. Text cases carry only source-bound, bounded untrusted
+excerpts: one to eight ordered candidate ids and per-excerpt SHA-256 bindings
+must match the retained strings exactly. The adapter rejects stale, future,
+post-cutoff, reordered, inserted, or hash-mismatched evidence before any driver
+is called. Non-redistributable or sensitive source material must remain outside
+the repository; publish only evidence whose licence permits it.
 
 ## Running it
 
@@ -88,17 +94,23 @@ derived architecture provenance in the run metadata; do not hand-copy model
 identities. Budget tokens are conservative admission reservations, not billed
 usage reconciliation or a provider-side hard quota.
 
-A completed artifact directory contains the original dataset files,
-`run.json`, canonical `traces.jsonl`, and an `evidence/` directory. The latter
+A completed artifact directory contains the original dataset files and visual
+SVGs, `run.json`, canonical `traces.jsonl`, and an `evidence/` directory. The latter
 contains one canonical JSON document named `<sha256>.json` for each distinct
 price record and external model-version attestation claimed by the runtime.
 The SHA-256 is computed over the exact retained bytes. Evidence documents are
 bounded, credential-free metadata only; they never contain provider secrets,
 raw market state, execution instructions, or order-entry authority.
 
-Writes stage every file, including evidence, in a unique adjacent directory
-and rename that directory atomically. The independent validator requires the
-exact top-level and evidence filename sets; rejects links, unknown fields,
+Writes stage every file, including visual artifacts and evidence, in a unique adjacent directory
+and rename that directory atomically. The output parent is a trusted,
+single-writer boundary: do not run the writer where another same-privilege
+process can rename or replace entries in that parent. Portable Node APIs do not
+provide directory-relative open and rename operations that can defend against
+that actor. A failed write deliberately leaves its random `.tmp-*` directory in
+place; inspect and remove it from the trusted parent instead of relying on
+path-based recursive cleanup. The independent validator requires the
+exact top-level, visual-asset, and evidence filename sets; rejects links, unknown fields,
 oversized documents, and noncanonical JSON; hashes the raw evidence bytes; and
 matches every pricing and model-identity field back to runtime provenance. It
 also recomputes the trace digest, coverage, case bindings, costs, and aggregate

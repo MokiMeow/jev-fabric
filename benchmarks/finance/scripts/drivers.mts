@@ -449,6 +449,7 @@ async function evaluateComponent(
     policyVersion: arm.policyVersion,
     estimatedTokens: arm.limits.estimatedInputTokensPerCall,
     retry: retryOnce,
+    now: () => context.evaluationNowEpochMs,
   });
   const result = await runtime.evaluate({
     pack: financeSurveillancePack,
@@ -875,6 +876,8 @@ function driverContext(
 ): void {
   if (context.architecture !== architecture)
     throw new TypeError(`finance driver context must be ${architecture}`);
+  if (!Number.isFinite(context.evaluationNowEpochMs))
+    throw new TypeError("finance driver evaluation time must be finite");
 }
 
 function financeRoute(value: unknown): FinanceRoute {

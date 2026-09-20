@@ -1,8 +1,17 @@
+import { createHash } from "node:crypto";
 import { bindFinanceAdvisoryEvidence } from "@mokimeow/jev-fabric-adapters";
 import { financeSurveillancePack } from "@mokimeow/jev-fabric-packs";
 import { choice, runOfflineExample } from "../shared.js";
 
 const hash = (letter: string) => `sha256:${letter.repeat(64)}`;
+const sha256 = (value: string) =>
+  `sha256:${createHash("sha256").update(value).digest("hex")}`;
+const renderer = {
+  id: "finance.canonical-svg",
+  version: "1",
+  schemaVersion: "1",
+  mutationPolicyId: "finance.visual-mutations.v1",
+} as const;
 const observedAt = "2026-09-20T10:00:00.000+00:00";
 
 /** Synthetic and offline: code has already reduced exact market arithmetic. */
@@ -38,6 +47,25 @@ export const example = () => {
         imageHash: hash("e"),
         axesVerified: true,
         sourceBindingHash: hash("f"),
+        schemaVersion: "1",
+        renderer,
+        mutationId: "faithful_render",
+        expectedRoute: "observe",
+        artifactBindingHash: sha256(
+          JSON.stringify({
+            expectedRoute: "observe",
+            imageHash: hash("e"),
+            mutationId: "faithful_render",
+            renderer: {
+              id: renderer.id,
+              mutationPolicyId: renderer.mutationPolicyId,
+              schemaVersion: renderer.schemaVersion,
+              version: renderer.version,
+            },
+            schemaVersion: "1",
+            sourceBindingHash: hash("f"),
+          }),
+        ),
       },
     },
     { annotations: ["No discontinuity detected in the bounded window"] },
@@ -69,6 +97,7 @@ export const example = () => {
     expectedOutcome: "route",
     expectedSelectedId: "observe",
     negativeOutcome: "deny",
+    nowEpochMs: Date.parse(observedAt) + 500,
   });
 };
 

@@ -115,7 +115,12 @@
             "extractorVersion",
             "imageHash",
             "axesVerified",
-            "sourceBindingHash"
+            "sourceBindingHash",
+            "schemaVersion",
+            "renderer",
+            "mutationId",
+            "expectedRoute",
+            "artifactBindingHash"
           ],
           "properties": {
             "mode": { "const": "structured_extraction" },
@@ -127,7 +132,37 @@
             },
             "imageHash": { "$ref": "#/$defs/hash" },
             "axesVerified": { "const": true },
-            "sourceBindingHash": { "$ref": "#/$defs/hash" }
+            "sourceBindingHash": { "$ref": "#/$defs/hash" },
+            "schemaVersion": { "const": "1" },
+            "renderer": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "version",
+                "schemaVersion",
+                "mutationPolicyId"
+              ],
+              "properties": {
+                "id": { "const": "finance.canonical-svg" },
+                "version": { "const": "1" },
+                "schemaVersion": { "const": "1" },
+                "mutationPolicyId": { "const": "finance.visual-mutations.v1" }
+              }
+            },
+            "mutationId": {
+              "enum": [
+                "faithful_render",
+                "missing_source_date",
+                "missing_units",
+                "swapped_series_legend",
+                "truncated_zero_baseline"
+              ]
+            },
+            "expectedRoute": {
+              "enum": ["observe", "investigate", "escalate"]
+            },
+            "artifactBindingHash": { "$ref": "#/$defs/hash" }
           }
         },
         "text": {
@@ -138,7 +173,8 @@
             "extractorId",
             "extractorVersion",
             "documentHash",
-            "sourceBindingHash"
+            "sourceBindingHash",
+            "candidateBindings"
           ],
           "properties": {
             "mode": { "const": "bounded_excerpts" },
@@ -149,7 +185,25 @@
               "maxLength": 128
             },
             "documentHash": { "$ref": "#/$defs/hash" },
-            "sourceBindingHash": { "$ref": "#/$defs/hash" }
+            "sourceBindingHash": { "$ref": "#/$defs/hash" },
+            "candidateBindings": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "excerptHash"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,63}$"
+                  },
+                  "excerptHash": { "$ref": "#/$defs/hash" }
+                }
+              }
+            }
           }
         }
       }
@@ -177,11 +231,25 @@
           "properties": {
             "excerpts": {
               "type": "array",
-              "maxItems": 16,
+              "minItems": 1,
+              "maxItems": 8,
               "items": { "type": "string", "maxLength": 1000 }
             }
           }
         }
+      }
+    },
+    "visualArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["svgPath", "compilerInput"],
+      "properties": {
+        "svgPath": {
+          "type": "string",
+          "pattern": "^assets/[A-Za-z0-9._-]+\\.svg$",
+          "maxLength": 240
+        },
+        "compilerInput": { "$ref": "#/$defs/visualCompilerInput" }
       }
     }
   },
@@ -190,6 +258,88 @@
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$"
     },
-    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "visualCompilerInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "title",
+        "axis",
+        "source",
+        "series",
+        "mutationId"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "axis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["xLabel", "yLabel", "units", "zeroBaseline"],
+          "properties": {
+            "xLabel": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "yLabel": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "units": { "type": "string", "minLength": 1, "maxLength": 40 },
+            "zeroBaseline": { "const": true }
+          }
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "title", "publisher", "url", "date", "sha256"],
+          "properties": {
+            "id": { "$ref": "#/$defs/identifier" },
+            "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "publisher": { "type": "string", "minLength": 1, "maxLength": 120 },
+            "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+            "date": { "type": "string", "format": "date" },
+            "sha256": { "$ref": "#/$defs/hash" }
+          }
+        },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "points"],
+            "properties": {
+              "id": { "$ref": "#/$defs/identifier" },
+              "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "points": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 512,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["timestamp", "value"],
+                  "properties": {
+                    "timestamp": { "type": "string", "format": "date-time" },
+                    "value": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "mutationId": {
+          "enum": [
+            "faithful_render",
+            "missing_source_date",
+            "missing_units",
+            "swapped_series_legend",
+            "truncated_zero_baseline"
+          ]
+        },
+        "annotations": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 160 }
+        }
+      }
+    }
   }
 }

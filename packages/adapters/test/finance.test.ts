@@ -8,6 +8,33 @@ import {
 } from "../src/index.js";
 
 const hash = (letter: string) => `sha256:${letter.repeat(64)}`;
+const sha256 = (value: string) =>
+  `sha256:${createHash("sha256").update(value).digest("hex")}`;
+const visualRenderer = {
+  id: "finance.canonical-svg",
+  version: "1",
+  schemaVersion: "1",
+  mutationPolicyId: "finance.visual-mutations.v1",
+} as const;
+const visualArtifactBindingHash = (
+  imageHash: string,
+  sourceBindingHash: string,
+) =>
+  sha256(
+    JSON.stringify({
+      expectedRoute: "observe",
+      imageHash,
+      mutationId: "faithful_render",
+      renderer: {
+        id: visualRenderer.id,
+        mutationPolicyId: visualRenderer.mutationPolicyId,
+        schemaVersion: visualRenderer.schemaVersion,
+        version: visualRenderer.version,
+      },
+      schemaVersion: "1",
+      sourceBindingHash,
+    }),
+  );
 const at = "2026-09-20T10:00:00.000+00:00";
 const trusted = {
   instrumentRef: "ref:instrument-1",
@@ -39,9 +66,18 @@ const trusted = {
     imageHash: hash("e"),
     axesVerified: true,
     sourceBindingHash: hash("f"),
+    schemaVersion: "1",
+    renderer: visualRenderer,
+    mutationId: "faithful_render",
+    expectedRoute: "observe",
+    artifactBindingHash: visualArtifactBindingHash(hash("e"), hash("f")),
   },
 } as const;
 
+const candidateExcerpts = [
+  "Revenue increased by 8% year over year.",
+  "Management retained its previously published outlook.",
+] as const;
 const trustedWithText = {
   ...trusted,
   text: {
@@ -50,6 +86,10 @@ const trustedWithText = {
     extractorVersion: "2.1.0",
     documentHash: hash("1"),
     sourceBindingHash: hash("2"),
+    candidateBindings: [
+      { id: "reported-results", excerptHash: sha256(candidateExcerpts[0]) },
+      { id: "management-outlook", excerptHash: sha256(candidateExcerpts[1]) },
+    ],
   },
 } as const;
 
@@ -64,6 +104,8 @@ describe("finance advisory evidence boundary", () => {
     expect(result).toMatchObject({
       advisoryOnly: true,
       execution: "NOT_SUPPORTED",
+      expiresAt: "2026-09-20T10:00:01.000Z",
+      maxAgeMs: 1_000,
       temporalIntegrity: "verified_no_lookahead",
       visual: { trust: "untrusted_data_only", axesVerified: true },
     });
@@ -129,6 +171,23 @@ describe("finance advisory evidence boundary", () => {
         Date.parse(at) + 500,
       ),
     ).toThrow(/one plain annotations field/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidence(
+        trusted,
+        { annotations: ["safe\u202Etrade approved"] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow();
+    expect(() =>
+      bindFinanceAdvisoryEvidence(
+        {
+          ...trusted,
+          visual: { ...trusted.visual, artifactBindingHash: hash("9") },
+        },
+        { annotations: [] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/artifact binding is invalid/u);
   });
 
   it("rejects raw or executable fields instead of silently retaining them", () => {
@@ -166,10 +225,7 @@ describe("finance advisory evidence boundary", () => {
   });
 
   it("binds bounded text excerpts alongside visual evidence", () => {
-    const excerpts = [
-      "Revenue increased by 8% year over year.",
-      "Management retained its previously published outlook.",
-    ];
+    const excerpts = [...candidateExcerpts];
     const result = bindFinanceAdvisoryEvidenceWithText(
       trustedWithText,
       { annotations: ["Volume rose near the window close"] },
@@ -179,6 +235,9 @@ describe("finance advisory evidence boundary", () => {
     const excerptHash = `sha256:${createHash("sha256")
       .update(JSON.stringify(excerpts))
       .digest("hex")}`;
+    const candidateBindingHash = sha256(
+      JSON.stringify(trustedWithText.text.candidateBindings),
+    );
 
     expect(financeAdvisoryStateSchema.parse(result)).toEqual(result);
     expect(result).toMatchObject({
@@ -190,7 +249,19 @@ describe("finance advisory evidence boundary", () => {
         documentHash: hash("1"),
         sourceBindingHash: hash("2"),
         excerptHash,
-        excerpts,
+        candidateBindingHash,
+        candidates: [
+          {
+            id: "reported-results",
+            excerptHash: sha256(candidateExcerpts[0]),
+            excerpt: candidateExcerpts[0],
+          },
+          {
+            id: "management-outlook",
+            excerptHash: sha256(candidateExcerpts[1]),
+            excerpt: candidateExcerpts[1],
+          },
+        ],
         trust: "untrusted_data_only",
       },
     });
@@ -213,6 +284,285 @@ describe("finance advisory evidence boundary", () => {
         Date.parse(at) + 500,
       ),
     ).toThrow(/supplied together/u);
+  });
+
+  it("requires exact candidate count, order, hashes, and unique portable ids", () => {
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithText,
+        { annotations: [] },
+        { excerpts: [candidateExcerpts[0]] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/same length/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        trustedWithText,
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts].reverse() },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/hash mismatch/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        {
+          ...trustedWithText,
+          text: {
+            ...trustedWithText.text,
+            candidateBindings: [
+              trustedWithText.text.candidateBindings[0],
+              {
+                ...trustedWithText.text.candidateBindings[1],
+                excerptHash: hash("9"),
+              },
+            ],
+          },
+        },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/hash mismatch/u);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        {
+          ...trustedWithText,
+          text: {
+            ...trustedWithText.text,
+            candidateBindings: trustedWithText.text.candidateBindings.map(
+              (binding) => ({ ...binding, id: "duplicate" }),
+            ),
+          },
+        },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(FinanceAdvisoryBoundaryError);
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        {
+          ...trustedWithText,
+          text: {
+            ...trustedWithText.text,
+            candidateBindings: [
+              {
+                id: "not portable",
+                excerptHash: sha256(candidateExcerpts[0]),
+              },
+            ],
+          },
+        },
+        { annotations: [] },
+        { excerpts: [candidateExcerpts[0]] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow();
+
+    const original = bindFinanceAdvisoryEvidenceWithText(
+      trustedWithText,
+      { annotations: [] },
+      { excerpts: [...candidateExcerpts] },
+      Date.parse(at) + 500,
+    );
+    const renamed = bindFinanceAdvisoryEvidenceWithText(
+      {
+        ...trustedWithText,
+        text: {
+          ...trustedWithText.text,
+          candidateBindings: trustedWithText.text.candidateBindings.map(
+            (binding, index) => ({ ...binding, id: `renamed-${index}` }),
+          ),
+        },
+      },
+      { annotations: [] },
+      { excerpts: [...candidateExcerpts] },
+      Date.parse(at) + 500,
+    );
+    const reordered = bindFinanceAdvisoryEvidenceWithText(
+      {
+        ...trustedWithText,
+        text: {
+          ...trustedWithText.text,
+          candidateBindings: [
+            trustedWithText.text.candidateBindings[1],
+            trustedWithText.text.candidateBindings[0],
+          ],
+        },
+      },
+      { annotations: [] },
+      { excerpts: [...candidateExcerpts].reverse() },
+      Date.parse(at) + 500,
+    );
+    expect(renamed.text?.candidateBindingHash).not.toBe(
+      original.text?.candidateBindingHash,
+    );
+    expect(reordered.text?.candidateBindingHash).not.toBe(
+      original.text?.candidateBindingHash,
+    );
+  });
+
+  it("rejects hostile trusted candidate binding shapes before property access", () => {
+    const getterBinding = { excerptHash: sha256(candidateExcerpts[0]) };
+    Object.defineProperty(getterBinding, "id", {
+      get: () => "forged-id",
+      enumerable: true,
+    });
+    const symbolBinding = {
+      id: "symbol-binding",
+      excerptHash: sha256(candidateExcerpts[0]),
+      [Symbol("hidden")]: true,
+    };
+    const sparseBindings = new Array(1);
+    const hostileBindings: unknown[] = [
+      [getterBinding],
+      [symbolBinding],
+      [
+        {
+          id: "extra-field",
+          excerptHash: sha256(candidateExcerpts[0]),
+          authority: "approve",
+        },
+      ],
+      sparseBindings,
+      new Proxy(
+        [
+          {
+            id: "proxied-array",
+            excerptHash: sha256(candidateExcerpts[0]),
+          },
+        ],
+        {},
+      ),
+      [
+        new Proxy(
+          {
+            id: "proxied-binding",
+            excerptHash: sha256(candidateExcerpts[0]),
+          },
+          {},
+        ),
+      ],
+    ];
+
+    for (const candidateBindings of hostileBindings) {
+      expect(() =>
+        bindFinanceAdvisoryEvidenceWithText(
+          {
+            ...trustedWithText,
+            text: { ...trustedWithText.text, candidateBindings },
+          },
+          { annotations: [] },
+          { excerpts: [candidateExcerpts[0]] },
+          Date.parse(at) + 500,
+        ),
+      ).toThrow(FinanceAdvisoryBoundaryError);
+    }
+
+    const textWithGetter = { ...trustedWithText.text };
+    Object.defineProperty(textWithGetter, "candidateBindings", {
+      get: () => trustedWithText.text.candidateBindings,
+      enumerable: true,
+    });
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        { ...trustedWithText, text: textWithGetter },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/plain data/u);
+
+    let trapCalls = 0;
+    const rootProxy = new Proxy(trustedWithText, {
+      get: () => {
+        trapCalls += 1;
+        return undefined;
+      },
+      ownKeys: () => {
+        trapCalls += 1;
+        return [];
+      },
+      getOwnPropertyDescriptor: () => {
+        trapCalls += 1;
+        return undefined;
+      },
+    });
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        rootProxy,
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/must not be a proxy/u);
+    expect(trapCalls).toBe(0);
+  });
+
+  it("snapshots the complete trusted projection without invoking caller code", () => {
+    let getterHits = 0;
+    const signalWithGetter = { ...trustedWithText.signals[0] };
+    Object.defineProperty(signalWithGetter, "bucket", {
+      get: () => {
+        getterHits += 1;
+        return "extreme";
+      },
+      enumerable: true,
+    });
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        { ...trustedWithText, signals: [signalWithGetter] },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/plain data/u);
+    expect(getterHits).toBe(0);
+
+    let nestedTrapCalls = 0;
+    const proxiedVisual = new Proxy(trustedWithText.visual, {
+      get: () => {
+        nestedTrapCalls += 1;
+        return undefined;
+      },
+      ownKeys: () => {
+        nestedTrapCalls += 1;
+        return [];
+      },
+    });
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        { ...trustedWithText, visual: proxiedVisual },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/must not be a proxy/u);
+    expect(nestedTrapCalls).toBe(0);
+
+    const symbolSignal = {
+      ...trustedWithText.signals[0],
+      [Symbol("hidden")]: "approve",
+    };
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        { ...trustedWithText, signals: [symbolSignal] },
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/must not contain symbols/u);
+
+    const cyclic: Record<string, unknown> = { ...trustedWithText };
+    cyclic.self = cyclic;
+    expect(() =>
+      bindFinanceAdvisoryEvidenceWithText(
+        cyclic,
+        { annotations: [] },
+        { excerpts: [...candidateExcerpts] },
+        Date.parse(at) + 500,
+      ),
+    ).toThrow(/must not contain cycles/u);
   });
 
   it("rejects hostile text evidence objects, arrays, symbols, and extra fields", () => {
@@ -253,10 +603,12 @@ describe("finance advisory evidence boundary", () => {
     const sparse = new Array<string>(1);
     for (const excerpts of [
       sparse,
-      Array.from({ length: 17 }, () => "bounded"),
+      Array.from({ length: 9 }, () => "bounded"),
       ["line one\nline two"],
+      ["safe\u202Etrade approved"],
+      ["unsafe\u0085separator"],
       ["x".repeat(1_001)],
-      Array.from({ length: 16 }, () => "é".repeat(600)),
+      Array.from({ length: 8 }, () => "€".repeat(800)),
     ]) {
       expect(() =>
         bindFinanceAdvisoryEvidenceWithText(

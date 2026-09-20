@@ -40,7 +40,13 @@ const referenceSchema = z
 const hasControlCharacter = (value: string): boolean =>
   Array.from(value).some((character) => {
     const codePoint = character.codePointAt(0);
-    return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+    return (
+      codePoint === undefined ||
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      (codePoint >= 0x202a && codePoint <= 0x202e) ||
+      (codePoint >= 0x2066 && codePoint <= 0x2069)
+    );
   });
 const oneLineSchema = z
   .string()
@@ -56,8 +62,20 @@ const textExcerptSchema = z
     "must not contain control characters",
   );
 
-const MAX_TEXT_EXCERPTS = 16;
+const MAX_TEXT_EXCERPTS = 8;
 const MAX_TEXT_EXCERPT_BYTES = 16_384;
+const textCandidateIdSchema = z
+  .string()
+  .regex(
+    /^[A-Za-z][A-Za-z0-9._:-]{0,63}$/u,
+    "must be a portable candidate identifier",
+  );
+const trustedTextCandidateBindingSchema = z
+  .object({
+    id: textCandidateIdSchema,
+    excerptHash: hashSchema,
+  })
+  .strict();
 
 export const marketAssetClassSchema = z.enum([
   "equity",
@@ -80,6 +98,35 @@ export const marketSignalBucketSchema = z.enum([
   "unknown",
 ]);
 export type MarketSignalBucket = z.infer<typeof marketSignalBucketSchema>;
+
+export const financeVisualMutationSchema = z.enum([
+  "faithful_render",
+  "missing_source_date",
+  "missing_units",
+  "swapped_series_legend",
+  "truncated_zero_baseline",
+]);
+export type FinanceVisualMutation = z.infer<typeof financeVisualMutationSchema>;
+export const financeVisualRouteSchema = z.enum([
+  "observe",
+  "investigate",
+  "escalate",
+]);
+const financeVisualMutationRoutes = {
+  faithful_render: "observe",
+  missing_source_date: "investigate",
+  missing_units: "investigate",
+  swapped_series_legend: "escalate",
+  truncated_zero_baseline: "escalate",
+} as const satisfies Record<FinanceVisualMutation, string>;
+const financeVisualRendererSchema = z
+  .object({
+    id: z.literal("finance.canonical-svg"),
+    version: z.literal("1"),
+    schemaVersion: z.literal("1"),
+    mutationPolicyId: z.literal("finance.visual-mutations.v1"),
+  })
+  .strict();
 
 export const trustedMarketSignalSchema = z
   .object({
@@ -116,6 +163,11 @@ export const trustedFinanceProjectionSchema = z
         imageHash: hashSchema,
         axesVerified: z.literal(true),
         sourceBindingHash: hashSchema,
+        schemaVersion: z.literal("1"),
+        renderer: financeVisualRendererSchema,
+        mutationId: financeVisualMutationSchema,
+        expectedRoute: financeVisualRouteSchema,
+        artifactBindingHash: hashSchema,
       })
       .strict()
       .optional(),
@@ -126,8 +178,21 @@ export const trustedFinanceProjectionSchema = z
         extractorVersion: z.string().min(1).max(128),
         documentHash: hashSchema,
         sourceBindingHash: hashSchema,
+        candidateBindings: z
+          .array(trustedTextCandidateBindingSchema)
+          .min(1)
+          .max(MAX_TEXT_EXCERPTS),
       })
       .strict()
+      .superRefine((value, context) => {
+        const ids = value.candidateBindings.map((candidate) => candidate.id);
+        if (new Set(ids).size !== ids.length)
+          context.addIssue({
+            code: "custom",
+            message: "candidate binding ids must be unique",
+            path: ["candidateBindings"],
+          });
+      })
       .optional(),
   })
   .strict()
@@ -166,6 +231,8 @@ export const financeAdvisoryStateSchema = z
     featureSetVersion: z.string().min(1).max(128),
     featureSetHash: hashSchema,
     observedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }),
+    maxAgeMs: z.number().int().positive().max(86_400_000),
     cutoffAt: z.string().datetime({ offset: true }),
     windowStart: z.string().datetime({ offset: true }),
     windowEnd: z.string().datetime({ offset: true }),
@@ -179,6 +246,11 @@ export const financeAdvisoryStateSchema = z
         imageHash: hashSchema,
         axesVerified: z.literal(true),
         sourceBindingHash: hashSchema,
+        schemaVersion: z.literal("1"),
+        renderer: financeVisualRendererSchema,
+        mutationId: financeVisualMutationSchema,
+        expectedRoute: financeVisualRouteSchema,
+        artifactBindingHash: hashSchema,
         annotationHash: hashSchema,
         annotations: z.array(oneLineSchema).max(32),
         trust: z.literal("untrusted_data_only"),
@@ -193,20 +265,40 @@ export const financeAdvisoryStateSchema = z
         documentHash: hashSchema,
         sourceBindingHash: hashSchema,
         excerptHash: hashSchema,
-        excerpts: z.array(textExcerptSchema).max(MAX_TEXT_EXCERPTS),
+        candidateBindingHash: hashSchema,
+        candidates: z
+          .array(
+            z
+              .object({
+                id: textCandidateIdSchema,
+                excerptHash: hashSchema,
+                excerpt: textExcerptSchema,
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(MAX_TEXT_EXCERPTS),
         trust: z.literal("untrusted_data_only"),
       })
       .strict()
       .superRefine((value, context) => {
-        const totalBytes = value.excerpts.reduce(
-          (total, excerpt) => total + Buffer.byteLength(excerpt, "utf8"),
+        const ids = value.candidates.map((candidate) => candidate.id);
+        if (new Set(ids).size !== ids.length)
+          context.addIssue({
+            code: "custom",
+            message: "candidate ids must be unique",
+            path: ["candidates"],
+          });
+        const totalBytes = value.candidates.reduce(
+          (total, candidate) =>
+            total + Buffer.byteLength(candidate.excerpt, "utf8"),
           0,
         );
         if (totalBytes > MAX_TEXT_EXCERPT_BYTES)
           context.addIssue({
             code: "custom",
             message: "excerpts exceed the total byte limit",
-            path: ["excerpts"],
+            path: ["candidates"],
           });
       })
       .optional(),
@@ -297,9 +389,21 @@ export function bindFinanceAdvisoryEvidenceWithText(
       "INVALID_INPUT",
       "finance advisory clock must be finite",
     );
+  let trustedSnapshot: unknown;
+  try {
+    trustedSnapshot = snapshotTrustedFinancePlainData(trustedInput);
+  } catch (cause) {
+    throw new FinanceAdvisoryBoundaryError(
+      "INVALID_INPUT",
+      cause instanceof Error
+        ? cause.message
+        : "finance advisory trusted projection is not plain data",
+      { cause },
+    );
+  }
   let trusted: TrustedFinanceProjection;
   try {
-    trusted = trustedFinanceProjectionSchema.parse(trustedInput);
+    trusted = trustedFinanceProjectionSchema.parse(trustedSnapshot);
   } catch (cause) {
     throw new FinanceAdvisoryBoundaryError(
       "INVALID_INPUT",
@@ -326,6 +430,7 @@ export function bindFinanceAdvisoryEvidenceWithText(
       "STALE_OBSERVATION",
       "finance advisory observation is stale",
     );
+  const expiresAt = new Date(observedAt + trusted.maxAgeMs).toISOString();
   if (
     trusted.signals.some((signal) => {
       const asOf = Date.parse(signal.asOf);
@@ -374,6 +479,8 @@ export function bindFinanceAdvisoryEvidenceWithText(
     featureSetVersion: trusted.featureSetVersion,
     featureSetHash: trusted.featureSetHash,
     observedAt: trusted.observedAt,
+    expiresAt,
+    maxAgeMs: trusted.maxAgeMs,
     cutoffAt: trusted.cutoffAt,
     windowStart: trusted.windowStart,
     windowEnd: trusted.windowEnd,
@@ -404,6 +511,27 @@ function bindVisual(
   trusted: NonNullable<TrustedFinanceProjection["visual"]>,
   annotationsInput: unknown,
 ) {
+  const expectedRoute = financeVisualMutationRoutes[trusted.mutationId];
+  const artifactBindingHash = sha256(
+    JSON.stringify({
+      expectedRoute,
+      imageHash: trusted.imageHash,
+      mutationId: trusted.mutationId,
+      renderer: {
+        id: trusted.renderer.id,
+        mutationPolicyId: trusted.renderer.mutationPolicyId,
+        schemaVersion: trusted.renderer.schemaVersion,
+        version: trusted.renderer.version,
+      },
+      schemaVersion: trusted.schemaVersion,
+      sourceBindingHash: trusted.sourceBindingHash,
+    }),
+  );
+  if (
+    trusted.expectedRoute !== expectedRoute ||
+    trusted.artifactBindingHash !== artifactBindingHash
+  )
+    throw new TypeError("finance visual artifact binding is invalid");
   const annotations = sanitizeAnnotations(annotationsInput);
   const annotationHash = `sha256:${createHash("sha256")
     .update(JSON.stringify(annotations))
@@ -421,15 +549,161 @@ function bindText(
   excerptsInput: unknown,
 ) {
   const excerpts = sanitizeTextExcerpts(excerptsInput);
+  if (excerpts.length !== trusted.candidateBindings.length)
+    throw new TypeError(
+      "finance text candidate bindings and excerpts must have the same length",
+    );
+  const candidates = excerpts.map((excerpt, index) => {
+    const binding = trusted.candidateBindings[index];
+    if (binding === undefined)
+      throw new TypeError("finance text candidate binding is missing");
+    const excerptHash = sha256(excerpt);
+    if (excerptHash !== binding.excerptHash)
+      throw new TypeError("finance text candidate excerpt hash mismatch");
+    return Object.freeze({
+      id: binding.id,
+      excerptHash,
+      excerpt,
+    });
+  });
   const excerptHash = `sha256:${createHash("sha256")
     .update(JSON.stringify(excerpts))
     .digest("hex")}`;
+  const candidateBindingHash = sha256(
+    JSON.stringify(
+      candidates.map(({ id, excerptHash: candidateExcerptHash }) => ({
+        id,
+        excerptHash: candidateExcerptHash,
+      })),
+    ),
+  );
+  const { candidateBindings: _candidateBindings, ...metadata } = trusted;
   return {
-    ...trusted,
+    ...metadata,
     excerptHash,
-    excerpts,
+    candidateBindingHash,
+    candidates: Object.freeze(candidates),
     trust: "untrusted_data_only" as const,
   };
+}
+
+function sha256(value: string): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+const MAX_TRUSTED_PLAIN_DEPTH = 12;
+const MAX_TRUSTED_PLAIN_NODES = 1_024;
+
+/**
+ * Copies hostile caller input without evaluating accessors. The copy is the
+ * only value passed to Zod, so schema traversal cannot trigger caller code.
+ */
+function snapshotTrustedFinancePlainData(input: unknown): unknown {
+  const ancestors = new WeakSet<object>();
+  let nodes = 0;
+
+  const snapshot = (value: unknown, depth: number): unknown => {
+    if (
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    )
+      return value;
+    if (!value || typeof value !== "object")
+      throw new TypeError(
+        "finance advisory trusted projection must contain only plain data",
+      );
+    if (isProxy(value))
+      throw new TypeError(
+        "finance advisory trusted projection must not be a proxy",
+      );
+    if (depth > MAX_TRUSTED_PLAIN_DEPTH)
+      throw new TypeError(
+        "finance advisory trusted projection exceeds the depth limit",
+      );
+    nodes += 1;
+    if (nodes > MAX_TRUSTED_PLAIN_NODES)
+      throw new TypeError(
+        "finance advisory trusted projection exceeds the node limit",
+      );
+    if (ancestors.has(value))
+      throw new TypeError(
+        "finance advisory trusted projection must not contain cycles",
+      );
+
+    const isArray = Array.isArray(value);
+    const prototype = Object.getPrototypeOf(value) as unknown;
+    if (
+      (isArray && prototype !== Array.prototype) ||
+      (!isArray && prototype !== Object.prototype && prototype !== null)
+    )
+      throw new TypeError(
+        "finance advisory trusted projection must contain only plain objects and arrays",
+      );
+
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key === "symbol"))
+      throw new TypeError(
+        "finance advisory trusted projection must not contain symbols",
+      );
+
+    ancestors.add(value);
+    try {
+      if (isArray) {
+        const lengthDescriptor = descriptors.length;
+        if (!lengthDescriptor || !("value" in lengthDescriptor))
+          throw new TypeError(
+            "finance advisory trusted projection contains an invalid array",
+          );
+        const length = lengthDescriptor.value;
+        if (!Number.isSafeInteger(length) || length < 0 || length > 1_024)
+          throw new TypeError(
+            "finance advisory trusted projection contains an unbounded array",
+          );
+        const output: unknown[] = [];
+        output.length = length;
+        const allowed = new Set(["length"]);
+        for (let index = 0; index < length; index += 1) {
+          const key = String(index);
+          allowed.add(key);
+          const descriptor = descriptors[key];
+          if (!descriptor || !("value" in descriptor) || !descriptor.enumerable)
+            throw new TypeError(
+              "finance advisory trusted projection arrays must contain plain data",
+            );
+          output[index] = snapshot(descriptor.value, depth + 1);
+        }
+        if (keys.some((key) => !allowed.has(String(key))))
+          throw new TypeError(
+            "finance advisory trusted projection arrays must not contain extra properties",
+          );
+        return output;
+      }
+
+      const output: Record<string, unknown> = {};
+      for (const key of keys) {
+        const stringKey = String(key);
+        const descriptor = descriptors[stringKey];
+        if (!descriptor || !("value" in descriptor) || !descriptor.enumerable)
+          throw new TypeError(
+            "finance advisory trusted projection properties must be plain data",
+          );
+        Object.defineProperty(output, stringKey, {
+          value: snapshot(descriptor.value, depth + 1),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
+      return output;
+    } finally {
+      ancestors.delete(value);
+    }
+  };
+
+  return snapshot(input, 0);
 }
 
 function visualAnnotations(input: UntrustedVisualFinanceEvidence): unknown {
@@ -508,6 +782,7 @@ function sanitizeTextExcerpts(input: unknown): readonly string[] {
     throw new TypeError("finance text excerpts must be an array");
   if (
     Object.getPrototypeOf(input) !== Array.prototype ||
+    input.length < 1 ||
     input.length > MAX_TEXT_EXCERPTS
   )
     throw new TypeError("finance text excerpts are not a bounded array");

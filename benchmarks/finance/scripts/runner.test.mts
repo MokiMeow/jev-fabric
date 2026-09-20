@@ -11,8 +11,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { canonicalJson, sha256 } from "../builders/lib/canonical.mjs";
+import { FINANCE_CHART_RENDERER } from "../builders/visual/render.mjs";
+import { renderFinanceChart } from "../builders/visual/render.mjs";
 import {
   aggregateFinanceBenchmarkTraces,
   type FinanceBenchmarkTrace,
@@ -35,6 +38,8 @@ import {
 } from "./validate.mjs";
 
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
+const textExcerpt = "Routine filing excerpt for routing.";
+const excerptHash = `sha256:${createHash("sha256").update(textExcerpt).digest("hex")}`;
 
 function benchmarkCase(
   track: FinanceTrack,
@@ -46,17 +51,28 @@ function benchmarkCase(
       ? "2026-01-15T12:00:00.000Z"
       : "2026-02-15T12:00:00.000Z";
   const prefix = `${track}-${split}-${probe ? "probe" : "regular"}`;
+  const date = split === "calibration" ? "2026-01-15" : "2026-02-15";
+  const compilerInput =
+    track === "visual_evidence" ? visualCompilerInput(prefix, date) : undefined;
   const visual =
-    track === "visual_evidence"
-      ? {
-          mode: "structured_extraction" as const,
-          extractorId: "chart.extractor",
-          extractorVersion: "1",
-          imageHash: hash("a"),
-          axesVerified: true as const,
-          sourceBindingHash: hash("b"),
-        }
-      : undefined;
+    compilerInput === undefined
+      ? undefined
+      : (() => {
+          const rendered = renderFinanceChart(compilerInput);
+          return {
+            mode: "structured_extraction" as const,
+            extractorId: "chart.extractor",
+            extractorVersion: "1",
+            imageHash: rendered.imageHash,
+            axesVerified: true as const,
+            sourceBindingHash: rendered.sourceBindingHash,
+            schemaVersion: rendered.schemaVersion,
+            renderer: rendered.renderer,
+            mutationId: rendered.mutationId,
+            expectedRoute: rendered.expectedRoute,
+            artifactBindingHash: rendered.artifactBindingHash,
+          };
+        })();
   const text =
     track === "financial_text_triage"
       ? {
@@ -65,6 +81,7 @@ function benchmarkCase(
           extractorVersion: "1",
           documentHash: hash("c"),
           sourceBindingHash: hash("d"),
+          candidateBindings: [{ id: "filing.claim.1", excerptHash }],
         }
       : undefined;
   return {
@@ -79,6 +96,14 @@ function benchmarkCase(
       split === "calibration"
         ? "2026-01-15T12:01:00.000Z"
         : "2026-02-15T12:01:00.000Z",
+    ...(compilerInput === undefined
+      ? {}
+      : {
+          visualArtifact: {
+            svgPath: `assets/${prefix}.svg`,
+            compilerInput,
+          },
+        }),
     trustedProjection: {
       instrumentRef: "ref:instrument.fixture",
       assetClass: "equity",
@@ -128,10 +153,44 @@ function benchmarkCase(
               annotations: ["Series remains inside the declared axis"],
             },
           }),
-      ...(text === undefined
-        ? {}
-        : { text: { excerpts: ["Routine filing excerpt for routing."] } }),
+      ...(text === undefined ? {} : { text: { excerpts: [textExcerpt] } }),
     },
+  };
+}
+
+function visualCompilerInput(
+  id: string,
+  date: string,
+): Record<string, unknown> {
+  return {
+    schemaVersion: "1",
+    title: `Synthetic revenue trend ${id}`,
+    axis: {
+      xLabel: "Date",
+      yLabel: "Revenue",
+      units: "USD millions",
+      zeroBaseline: true,
+    },
+    source: {
+      id: `chart.${id}`,
+      title: `Synthetic XBRL fixture ${id}`,
+      publisher: "SEC",
+      url: "https://www.sec.gov/dera/data/financial-statement-data-sets",
+      date,
+      sha256: hash("a"),
+    },
+    series: [
+      {
+        id: "revenue",
+        label: "Revenue",
+        points: [
+          { timestamp: `${date}T09:00:00.000Z`, value: 100 },
+          { timestamp: `${date}T10:00:00.000Z`, value: 110 },
+        ],
+      },
+    ],
+    mutationId: "faithful_render",
+    annotations: ["Series remains inside the declared axis"],
   };
 }
 
@@ -165,6 +224,15 @@ async function datasetDirectory(
   await mkdir(directory);
   const values = cases();
   mutate?.(values);
+  for (const value of values) {
+    if (value.track !== "visual_evidence") continue;
+    const retained = value.visualArtifact;
+    assert.ok(retained !== undefined);
+    const rendered = renderFinanceChart(retained.compilerInput);
+    const destination = join(directory, retained.svgPath);
+    await mkdir(dirname(destination), { recursive: true });
+    await writeFile(destination, rendered.svg);
+  }
   const casesText = `${values.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
   const manifest: FinanceDatasetManifest = {
     schemaVersion: "1",
@@ -391,6 +459,120 @@ test("runs, retains, and independently validates the complete finance matrix", a
         )
         .sort(),
     );
+    await assert.doesNotReject(validateFinanceArtifactDirectory(output));
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("rejects tampered SVG bytes and internally consistent forged visual hashes", async () => {
+  const tamperedSvg = await datasetDirectory();
+  try {
+    const visual = cases().find((entry) => entry.track === "visual_evidence");
+    assert.ok(visual?.visualArtifact !== undefined);
+    await writeFile(
+      join(tamperedSvg.directory, visual.visualArtifact.svgPath),
+      '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n',
+    );
+    await assert.rejects(
+      loadFinanceDataset(tamperedSvg.directory),
+      /retained SVG mismatch/u,
+    );
+  } finally {
+    await rm(tamperedSvg.root, { recursive: true, force: true });
+  }
+
+  const forgedHashes = await datasetDirectory((values) => {
+    const visualCase = values.find(
+      (entry) => entry.track === "visual_evidence",
+    );
+    assert.ok(visualCase?.trustedProjection.visual !== undefined);
+    const visual = visualCase.trustedProjection.visual as {
+      imageHash: string;
+      sourceBindingHash: string;
+      artifactBindingHash: string;
+      mutationId: string;
+      expectedRoute: string;
+    };
+    visual.imageHash = hash("8");
+    visual.sourceBindingHash = hash("7");
+    visual.artifactBindingHash = sha256(
+      canonicalJson({
+        schemaVersion: "1",
+        renderer: FINANCE_CHART_RENDERER,
+        sourceBindingHash: visual.sourceBindingHash,
+        imageHash: visual.imageHash,
+        mutationId: visual.mutationId,
+        expectedRoute: visual.expectedRoute,
+      }),
+    );
+  });
+  try {
+    await assert.rejects(
+      loadFinanceDataset(forgedHashes.directory),
+      /compiler output mismatch/u,
+    );
+  } finally {
+    await rm(forgedHashes.root, { recursive: true, force: true });
+  }
+});
+
+test("artifact writer rejects traversal before creating any outside file", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    const artifacts = await runFinanceBenchmark({
+      runId: "finance-writer-traversal",
+      dataset,
+      drivers,
+      runtime,
+      runtimeEvidence,
+      now: () => 100,
+    });
+    const first = artifacts.dataset.visualArtifacts[0];
+    assert.ok(first !== undefined);
+    const escaped = join(fixture.root, "unintended.svg");
+    const forged: typeof artifacts = {
+      ...artifacts,
+      dataset: {
+        ...artifacts.dataset,
+        visualArtifacts: [
+          { path: "../unintended.svg", bytes: first.bytes },
+          ...artifacts.dataset.visualArtifacts.slice(1),
+        ],
+      },
+    };
+    await assert.rejects(
+      writeFinanceArtifacts(join(fixture.root, "artifacts"), forged),
+      /visual artifact path|unsafe path/u,
+    );
+    await assert.rejects(readFile(escaped), (error: unknown) => {
+      return (error as NodeJS.ErrnoException).code === "ENOENT";
+    });
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("artifact writer snapshots mutable retained bytes before its first await", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    const artifacts = await runFinanceBenchmark({
+      runId: "finance-writer-byte-snapshot",
+      dataset,
+      drivers,
+      runtime,
+      runtimeEvidence,
+      now: () => 100,
+    });
+    const first = artifacts.dataset.visualArtifacts[0];
+    assert.ok(first !== undefined);
+    const output = join(fixture.root, "artifacts");
+    const write = writeFinanceArtifacts(output, artifacts);
+    artifacts.dataset.casesBytes.fill(0);
+    first.bytes.fill(0);
+    await write;
     await assert.doesNotReject(validateFinanceArtifactDirectory(output));
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -914,6 +1096,7 @@ test("driver context omits dataset identifiers and labels", async () => {
     });
     assert.deepEqual([...observedKeys].sort(), [
       "architecture",
+      "evaluationNowEpochMs",
       "signal",
       "track",
     ]);

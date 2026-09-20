@@ -17,8 +17,10 @@ import {
   type FinanceProviderArmOptions,
   type FinanceProviderPricing,
 } from "./drivers.mjs";
-import type { FinanceDriverContext } from "./run.mjs";
-import type { ArchitectureRuntimeModelVersionEvidence } from "./run.mjs";
+import type {
+  ArchitectureRuntimeModelVersionEvidence,
+  FinanceDriverContext,
+} from "./run.mjs";
 
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const candidates = [
@@ -59,6 +61,8 @@ function financeState(
     featureSetVersion: "1",
     featureSetHash: hash("b"),
     observedAt: "2026-02-15T12:00:00.000Z",
+    expiresAt: "2026-02-15T13:00:00.000Z",
+    maxAgeMs: 3_600_000,
     cutoffAt: "2026-02-15T11:50:00.000Z",
     windowStart: "2026-02-15T11:00:00.000Z",
     windowEnd: "2026-02-15T11:30:00.000Z",
@@ -80,7 +84,12 @@ function context(
   architecture: FinanceDriverContext["architecture"],
   signal = new AbortController().signal,
 ): FinanceDriverContext {
-  return { architecture, signal, track: "market_surveillance" };
+  return {
+    architecture,
+    signal,
+    track: "market_surveillance",
+    evaluationNowEpochMs: Date.parse("2026-02-15T12:01:00.000Z"),
+  };
 }
 
 interface AnswerSelections {
@@ -418,12 +427,12 @@ test("provider driver honors caller cancellation and its bounded deadline", asyn
 });
 
 test("concurrent calls retain their own provider accounting", async () => {
+  let invocation = 0;
   const host = testInvoker({
     providerId: "host-provider",
     modelVersion: "host-2026-09-01",
     evaluate: async (request) => {
-      const ref = (request.state as { instrumentRef: string }).instrumentRef;
-      const first = ref.endsWith(".one");
+      const first = invocation++ === 0;
       await new Promise((resolve) => setTimeout(resolve, first ? 20 : 1));
       return measuredResponse(
         request,

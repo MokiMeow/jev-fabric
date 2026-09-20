@@ -6,26 +6,26 @@ import type {
   PolicyOutcome,
 } from "@mokimeow/jev-fabric-protocol";
 import { validateDecisionResponse } from "@mokimeow/jev-fabric-protocol";
-import { summarizeAccounting, type AccountingSummary } from "./accounting.js";
+import { type AccountingSummary, summarizeAccounting } from "./accounting.js";
 import type { DecisionCache } from "./cache.js";
-import { sha256Digest } from "./canonical.js";
 import {
   CandidateCoverageError,
   compileCandidates,
   type DecisionCandidate,
 } from "./candidates.js";
+import { sha256Digest } from "./canonical.js";
 import { projectState } from "./context.js";
+import { DeadlineExceededError, DecisionAbortedError } from "./errors.js";
 import { assertProviderCapabilities, type DecisionPack } from "./pack.js";
 import {
   evaluatePolicy,
-  preflightStaticPolicy,
   type PolicyRule,
+  preflightStaticPolicy,
 } from "./policy.js";
 import { ReceiptBuilder } from "./receipt.js";
-import { DecisionScheduler } from "./scheduler.js";
-import type { SchedulerAttempt } from "./scheduler.js";
-import { DeadlineExceededError, DecisionAbortedError } from "./errors.js";
 import { type RetryPolicy, validPolicy } from "./retry.js";
+import type { SchedulerAttempt } from "./scheduler.js";
+import { DecisionScheduler } from "./scheduler.js";
 
 export class ProviderOutageError extends Error {
   override name = "ProviderOutageError";
@@ -138,6 +138,7 @@ export class FabricRuntime {
       implementation.projector,
       input.state,
       input.pack.manifest.limits,
+      { nowEpochMs: startedAt },
     );
     const stateHash = sha256Digest(state, "jev-fabric/projected-state/v1");
     const scopeHash = sha256Digest(
@@ -266,7 +267,11 @@ export class FabricRuntime {
         startedAt,
         "hit",
         [],
-        implementation.interpret(response.answers, candidates),
+        implementation.interpret(
+          response.answers,
+          candidates,
+          interpretationContext(response),
+        ),
       );
     }
 
@@ -298,7 +303,11 @@ export class FabricRuntime {
       );
       validated = validateDecisionResponse(request, response);
       semantic = freezeSemantic(
-        implementation.interpret(validated.answers, candidates),
+        implementation.interpret(
+          validated.answers,
+          candidates,
+          interpretationContext(validated),
+        ),
       );
     } catch (error) {
       const termination = terminationOf(error, input.signal);
@@ -585,6 +594,16 @@ function freezeSemantic<T extends import("./pack.js").PackSemanticResult>(
     ...value,
     metadata: Object.freeze({ ...value.metadata }),
   }) as T;
+}
+
+function interpretationContext(
+  response: DecisionResponse,
+): import("./pack.js").PackInterpretContext {
+  return Object.freeze({
+    providerId: response.providerId,
+    model: response.model,
+    probabilitySemantics: response.probabilitySemantics,
+  });
 }
 
 function runtimeRetry(policy: RetryPolicy | undefined): RetryPolicy {

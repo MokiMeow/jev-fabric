@@ -5,16 +5,18 @@ and their use through the existing Fabric runtime. Scenarios are hypotheses for
 review, not confirmed vulnerabilities. The integration is an advisory
 surveillance component, not a trading system.
 
-The architecture pass for this iteration was performed sequentially by the
-implementing agent; it was not an independent security review.
+This iteration received independent correctness and security reviews. Their
+accessor-execution, direct-pack binding, stale replay, bidirectional-text, and
+visual-label binding findings were reproduced, fixed, and covered by
+regression tests before publication.
 
 ## Overview
 
 | Component | Responsibility | Source evidence |
 | --- | --- | --- |
-| Trusted finance host | Calculate exact features, bind licensed sources, verify time cutoffs and visual extractor identity. | `packages/adapters/src/finance.ts:200` |
-| Finance evidence adapter | Reject stale, future, look-ahead, post-cutoff, unbound, or malformed evidence; emit no execution interface. | `packages/adapters/src/finance.ts:113`, `packages/adapters/src/finance.ts:200-261` |
-| Finance surveillance pack | Ask bounded route, anomaly, evidence-quality, and influence questions; upgrade unsafe or malformed results to review. | `packs/finance-surveillance/pack.ts:46-205` |
+| Trusted finance host | Calculate exact features, bind licensed sources, verify time cutoffs, and supply ordered candidate ids and excerpt hashes. | `packages/adapters/src/finance.ts` |
+| Finance evidence adapter | Reject stale, future, look-ahead, post-cutoff, unbound, hash-mismatched, or malformed evidence; emit no execution interface. | `packages/adapters/src/finance.ts` |
+| Finance surveillance pack | Ask bounded route, anomaly, evidence-quality, influence, and per-candidate claim questions; upgrade unsafe or malformed results to review. | `packs/finance-surveillance/pack.ts` |
 | Fabric runtime | Apply state limits, candidate coverage, provider capability checks, deterministic policy, budgets, deadlines, and redacted receipts. | `packages/core/src/runtime.ts:81-83`, `packages/core/src/runtime.ts:235-237`, `packages/core/src/runtime.ts:282-317` |
 | Authorized host queue | Consume only `observe`, `investigate`, or `escalate` as case-routing advice. | `packs/finance-surveillance/pack.ts:12-34` |
 | Trading and order systems | Separate trust zone; no adapter, candidate, or pack output reaches it. | `packages/adapters/src/finance.ts:113`, `packs/finance-surveillance/pack.ts:109-114` |
@@ -22,8 +24,8 @@ implementing agent; it was not an independent security review.
 ```mermaid
 flowchart LR
   A[Licensed source] --> T[Trusted calculations and cutoff]
-  B[Chart or document image] --> V[Versioned visual extractor]
-  V --> U[Untrusted bounded annotations]
+  B[Chart or financial document] --> V[Versioned extractor]
+  V --> U[Untrusted bounded annotations or excerpts]
   T --> E[Finance evidence adapter]
   U --> E
   E --> J[Jev advisory questions]
@@ -38,7 +40,8 @@ flowchart LR
 | --- | --- | --- | --- | --- | --- | --- |
 | Offline example | Synthetic evidence | Source and hashes are fixed in the example. | In-memory synthetic projection. | Example runtime only. | No network; scripted provider. | `examples/finance-surveillance/index.ts` |
 | Server-side advisory | Provider credential | Administrator environment and provider configuration take precedence over request state. | Server-side secret reference; never projected. | Provider adapter only. | Decision-state secret rejection and fixed provider configuration. | `packages/core/src/context.ts:122-145`; deployment secret store remains operator-owned. |
-| Visual advisory | Image and extracted annotations | Trusted host selects extractor/version and binds image/source hashes. | Image stays outside Fabric; bounded annotations enter as untrusted data. | Extractor, adapter, provider. | Axes literal, source hash, hostile-array sanitizer, influence question. | `packages/adapters/src/finance.ts:58-95`, `packages/adapters/src/finance.ts:264-323` |
+| Visual advisory | Image and extracted annotations | Trusted host selects the canonical renderer/version and binds image/source hashes, mutation, and route. Benchmark cases additionally retain unique SVG bytes and canonical compiler input. | Image stays outside live Fabric; bounded annotations enter as untrusted data. Benchmark SVGs remain in the evidence artifact. | Extractor, adapter, provider, benchmark verifier. | Artifact tuple hash, compiler-owned route, exact rerendered SVG-byte comparison, one-to-one asset paths, axes literal, hostile-data snapshot, bidi/C1 rejection, and influence question. | `packages/adapters/src/finance.ts`; `packs/finance-surveillance/pack.ts`; `benchmarks/finance/builders/visual/render.mts`; `benchmarks/finance/builders/lib/verify.mts` |
+| Text advisory | Extracted claim candidates | Trusted host fixes candidate ids, order, and per-excerpt SHA-256 hashes. | At most eight source-bound excerpts marked `untrusted_data_only`. | Extractor, adapter, provider. | Exact count/order/hash checks, strict plain-data sanitization, fixed claim taxonomy, influence question. | `packages/adapters/src/finance.ts`; `packs/finance-surveillance/pack.ts` |
 | Surveillance route | Case-routing capability | Pack-owned candidate list wins over state text. | `observe`, `investigate`, `escalate`. | Fabric policy and authorized queue. | Exact candidate comparison and no `allow` result. | `packs/finance-surveillance/pack.ts:12-34`, `packs/finance-surveillance/pack.ts:238-256` |
 | External execution | Orders, broker keys, venue sessions | Not configurable in this integration. | Absent. | None. | `execution: NOT_SUPPORTED`; no executor API. | `packages/adapters/src/finance.ts:113`; a consuming application must preserve this separation. |
 
@@ -53,11 +56,12 @@ Trust boundaries are:
 
 - Source to trusted host: feeds and documents may be stale, licensed, corrupt,
   or adversarial. The host must authenticate sources and calculate exact values.
-- Visual extractor to adapter: annotations are untrusted even when the
-  extractor is approved. The adapter accepts bounded plain strings and hashes
-  the exact annotation set (`packages/adapters/src/finance.ts:264-323`).
-- Adapter to Jev: only source-bound semantic buckets and bounded annotations
-  cross. Raw prices, account data, order fields, images, and credentials do not.
+- Extractor to adapter: annotations and excerpts are untrusted even when the
+  extractor is approved. Text is accepted only when every bounded plain string
+  matches the trusted candidate id, position, and excerpt hash.
+- Adapter to Jev: only source-bound semantic buckets, bounded annotations, and
+  candidate-grounded excerpts cross. Raw prices, account data, order fields,
+  images, and credentials do not.
 - Jev to Fabric: answers are typed advisory evidence. A malformed or uncertain
   result escalates rather than authorizes (`packs/finance-surveillance/pack.ts:168-205`).
 - Fabric to host: receipts are redacted evidence, not authorization
@@ -83,12 +87,24 @@ Assumptions and open questions:
 
 - The consuming host authenticates market data, owns data licences, maps opaque
   references, and enforces retention and privacy policy.
+- Benchmark publication uses a trusted, single-writer output parent. The
+  portable Node writer detects identity changes but does not claim resistance
+  to a same-privilege process racing path replacement. Failed staging
+  directories are retained for operator inspection instead of recursively
+  deleted through a mutable path.
 - The visual extractor and axes verification are independently tested; Fabric
   verifies their declared binding, not their semantic correctness.
+- Retained benchmark visuals are stronger than live extractor claims: the
+  offline builder and runner rerun the deterministic compiler and compare the
+  exact SVG bytes. This proves internal artifact consistency, not that an
+  upstream issuer statement is truthful.
 - The application maps advisory results only to read-only telemetry or an
   authorized human case queue. That host mapping is not implemented here.
 - Domain calibration, drift monitoring, and representative held-out evaluation
   are not yet established; the benchmark remains `NOT RUN`.
+- Candidate claim confidence has no public threshold. Non-native confidence is
+  ignored; native calibrated confidence is retained as unthresholded evidence,
+  while non-`none` claims route to investigation and malformed answers escalate.
 - Jurisdiction-specific legal, suitability, best-interest, credit, AML, KYC,
   sanctions, recordkeeping, and supervisory requirements require qualified
   domain review.
@@ -98,10 +114,11 @@ Assumptions and open questions:
 | Priority | Scenario and capability gain | Prerequisites | Impact | Existing controls | Mitigation | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Critical hypothesis | An advisory answer reaches an order API, gaining financial execution. | Consuming host adds an unauthorized bridge to a trading system. | Market, financial, regulatory, and credential impact. | No executor; literal `NOT_SUPPORTED`; finite non-trading candidates; pack never returns `allow`. | Keep network/process isolation, separate identities and services, and a code-reviewed positive queue mapping. | `packages/adapters/src/finance.ts:113`; `packs/finance-surveillance/pack.ts:12-34`, `packs/finance-surveillance/pack.ts:190-207` |
-| High hypothesis | Future or stale data influences a current case, creating look-ahead or replay bias. | Attacker or bad pipeline controls timestamps or delayed data. | False surveillance conclusions and invalid evaluation. | Code orders window, cutoff, observation, and clock; signal timestamps cannot cross cutoff; max age enforced. | Authenticate source timestamps, use monotonic ingestion telemetry, and retain cutoff/source digests. | `packages/adapters/src/finance.ts:201-231` |
-| High hypothesis | Chart text injects instructions or forged authority. | Attacker controls labels, OCR text, or a document image. | Route manipulation or false dismissal. | Plain bounded annotations, untrusted tag, independent influence question, influence forces escalation. | Add extractor adversarial tests and exclude rich markup, URIs, and hidden metadata. | `packages/adapters/src/finance.ts:264-323`; `packs/finance-surveillance/pack.ts:142-149`, `packs/finance-surveillance/pack.ts:174-181` |
+| High hypothesis | Future or stale data influences a current case, creating look-ahead or replay bias. | Attacker or bad pipeline controls timestamps or delayed data. | False surveillance conclusions and invalid evaluation. | Code orders window, cutoff, observation, and clock; signal timestamps cannot cross cutoff; state carries a bound expiry; runtime supplies trusted evaluation time and the pack rejects stale state before cache/provider access. | Authenticate source timestamps, use monotonic ingestion telemetry, and retain cutoff/source digests. | `packages/adapters/src/finance.ts`; `packages/core/src/context.ts`; `packs/finance-surveillance/pack.ts` |
+| High hypothesis | Chart text injects instructions or forged authority. | Attacker controls labels, OCR text, or a document image. | Route manipulation or false dismissal. | Plain bounded annotations, C0/C1/bidi/isolate rejection, untrusted tag, independently bound annotation hash, separate influence question, and escalation on influence. | Keep extractor adversarial tests and exclude rich markup, URIs, and hidden metadata. | `packages/adapters/src/finance.ts`; `packs/finance-surveillance/pack.ts` |
+| High hypothesis | A document extractor swaps, inserts, or reorders excerpts after trusted selection. | Attacker controls extractor output after candidate bindings are created. | A claim label is attached to the wrong source text. | Candidate ids are trusted; arrays are dense and bounded; count, order, and every excerpt SHA-256 must match exactly. | Create bindings only after source authentication and retain the document/source binding hash. | `packages/adapters/src/finance.ts` |
 | High hypothesis | State forges a permissive candidate or replaces descriptions. | Caller controls decision state. | New semantic route with unintended authority. | Pack compares the entire ordered candidate catalogue exactly and returns unavailable on mismatch. | Keep candidates pack-owned; never accept remote pack definitions for finance. | `packs/finance-surveillance/pack.ts:77-80`, `packs/finance-surveillance/pack.ts:238-256` |
-| Medium hypothesis | Model error or flat probabilities silently becomes a routine observation. | Provider returns wrong, incomplete, tied, or weak selection. | Missed case or delayed review. | Every answer needs full option coverage and selected probability floor; malformed sets escalate. Provider failure and outage escalate. | Calibrate floors per held-out regime and track selective risk and drift. | `packs/finance-surveillance/pack.ts:61`, `packs/finance-surveillance/pack.ts:168-205`, `packs/finance-surveillance/pack.ts:208-236` |
+| Medium hypothesis | Model error or uncalibrated confidence silently becomes a precise financial claim. | Provider returns a wrong, incomplete, tied, weak, or non-native-confidence selection. | Misleading evidence specificity or a missed case. | Claim options and parent mapping are code-owned; non-native confidence is ignored; no calibrated tier is claimed; non-`none` claims investigate and malformed sets escalate. Provider failure and outage escalate. | Establish versioned thresholds only from representative held-out finance evidence and monitor selective risk and drift. | `packs/finance-surveillance/pack.ts` |
 | Medium hypothesis | Licensed, personal, or account data leaks to a provider or receipt. | Host includes raw values despite the contract or weakens state controls. | Privacy, contractual, or regulatory impact. | Adapter schema contains refs, hashes, buckets, and bounded annotations; strict objects reject extra order fields; runtime rejects recognizable secrets; receipts reject sensitive keys. | Add deployment DLP, field allowlists, regional controls, retention rules, and provider agreements. | `packages/adapters/src/finance.ts:104-169`; `packages/core/src/context.ts:122-180`; `packages/core/src/receipt.ts:21-59` |
 | Medium hypothesis | Backtest tuning overfits or uses future information while appearing accurate. | Developer repeatedly tunes on the test interval or omits dataset/version metadata. | Misleading public or internal performance claim. | Benchmark requires forward time split, retained metadata for completed results, null metrics for `NOT_RUN`, and zero execution attempts. | Pre-register splits and acceptance criteria; add untouched final holdout and regime slices. | `benchmarks/finance/scripts/validate.mjs` |
 | Low hypothesis | Repeated calls exhaust provider or budget capacity. | Public application lacks rate isolation or operator budgets. | Cost and availability degradation. | Runtime scheduler, request/token budgets, bounded retries, max questions, and deadlines. | Add tenant quotas, circuit breakers, observability, and provider-specific rate limits. | `packages/core/src/runtime.ts:235-237`, `packages/core/src/runtime.ts:282-317` |

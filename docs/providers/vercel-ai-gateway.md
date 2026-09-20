@@ -1,5 +1,17 @@
 # Vercel AI Gateway Jev
 
+Evidence: official Vercel documentation and model page, observed 2026-09-20.
+Transport contract version: the fixed endpoint and model identity below; pricing
+remains external mutable evidence.
+
+- Evidence class: dated external provider metadata, not benchmark output.
+- Cases/sample denominator: not applicable; no live request was run for these
+  pricing statements.
+- Hardware/region: not applicable; no machine execution is claimed.
+- limitation: availability, eligibility, rate limits, and price can change. See
+  the repository's [`NOT RUN` benchmark contract](../../benchmarks/finance/README.md)
+  for the separate performance-evidence boundary.
+
 Vercel AI Gateway exposes Jev through an official
 [TypeSafe-compatible API](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe).
 Jev Fabric reuses its strict TypeSafe request and response mapping and fixes all
@@ -37,6 +49,11 @@ external promotion, not a repository guarantee. Check the live model page and
 your team billing before each live run. Fabric does not hard-code `free`, infer
 a dollar budget from a promotion, or let a provider dashboard replace its local
 request/token/deadline ledger.
+
+This model-specific promotion is separate from Vercel's general
+[AI Gateway free tier](https://vercel.com/docs/ai-gateway/pricing), which
+currently documents $5 of monthly credit for eligible models with lower rate
+limits. Neither entitlement is assumed by code or benchmark accounting.
 
 ## Operational boundary
 

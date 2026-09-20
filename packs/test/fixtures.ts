@@ -12,6 +12,7 @@ export const fixturePackIds = [
   "progress",
   "completion",
   "finance-surveillance",
+  "fintech-exception",
 ] as const;
 export type FixturePackId = (typeof fixturePackIds)[number];
 type FixtureResponse = {
@@ -363,6 +364,27 @@ function assertResponse(value: unknown, subject: string): void {
         answer.probabilities,
         `${subject}.answers.${index}.probabilities`,
       );
+    } else if (answer.type === "noul") {
+      exactKeys(
+        answer,
+        ["questionId", "type", "value", "probabilityYes"],
+        `${subject}.answers.${index}`,
+      );
+      string(answer.questionId, `${subject}.answers.${index}.questionId`);
+      if (typeof answer.value !== "boolean")
+        throw new Error(`${subject}.answers.${index}.value must be boolean`);
+      if (
+        !Number.isFinite(answer.probabilityYes) ||
+        (answer.probabilityYes as number) < 0 ||
+        (answer.probabilityYes as number) > 1
+      )
+        throw new Error(
+          `${subject}.answers.${index}.probabilityYes is invalid`,
+        );
+      if (answer.value !== (answer.probabilityYes as number) >= 0.5)
+        throw new Error(
+          `${subject}.answers.${index}.value must be the probability argmax`,
+        );
     } else throw new Error(`${subject}.answers.${index}.type is invalid`);
   }
 }

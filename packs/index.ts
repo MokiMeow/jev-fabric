@@ -8,6 +8,7 @@ export { completionPack } from "./completion/pack.js";
 
 import { completionPack } from "./completion/pack.js";
 import { financeSurveillancePack } from "./finance-surveillance/pack.js";
+import { fintechExceptionPack } from "./fintech-exception/pack.js";
 import { progressPack } from "./progress/pack.js";
 import { rankPack } from "./rank/pack.js";
 import { riskPack } from "./risk/pack.js";
@@ -25,9 +26,14 @@ export const builtinPacks = Object.freeze([
   progressPack,
   completionPack,
   financeSurveillancePack,
+  fintechExceptionPack,
 ]);
 
 export {
   financeSurveillancePack,
   financeSurveillanceQuestionSetHash,
 } from "./finance-surveillance/pack.js";
+export {
+  fintechExceptionPack,
+  fintechExceptionQuestionSetHash,
+} from "./fintech-exception/pack.js";

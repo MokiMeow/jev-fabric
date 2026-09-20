@@ -70,6 +70,7 @@ This is an integration-shape comparison, not a speed, cost, or quality ranking. 
 | `progress` | classify bounded workflow state | abstain |
 | `completion` | assess observed completion evidence | abstain |
 | `finance-surveillance` | route bounded market evidence without execution | escalate |
+| `fintech-exception` | route explicit indicators in a redacted fintech case note | escalate |
 
 Read [pack selection](docs/packs/selection.md) before using a pack. Candidate coverage, freshness, and policy are application responsibilities.
 

@@ -13,6 +13,7 @@ Each example imports public packages, uses `ScriptedProvider`, validates a redac
 | [evaluate-pack](evaluate-pack/README.md) | progress | evaluates a pack | empty set abstains |
 | [tool-environment-advice](tool-environment-advice/README.md) | route | chooses a declared environment action | empty set abstains |
 | [finance-surveillance](finance-surveillance/README.md) | finance-surveillance | records an advisory observation | invalid execution boundary denies |
+| [fintech-exception](fintech-exception/README.md) | fintech-exception | routes a bounded exception to investigation | execution-capable boundary denies |
 | [webmcp-action](webmcp-action/README.md) | boundary | binds trusted origin/tool/schema fingerprints | rejects cross-origin metadata |
 | [provider-gateway-typesafe-fake](provider-gateway-typesafe-fake/README.md) | provider | composes the pinned Vercel Gateway Jev route | injected I/O keeps the example offline |
 

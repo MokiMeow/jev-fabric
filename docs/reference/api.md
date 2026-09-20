@@ -5,7 +5,7 @@ Public packages:
 | --- | --- |
 | `@mokimeow/jev-fabric-protocol` | strict question, answer, response, receipt, provider, and tool-environment contracts |
 | `@mokimeow/jev-fabric-core` | runtime, cache, scheduler, policy, redaction, receipts, tickets, scripted provider |
-| `@mokimeow/jev-fabric-packs` | eight trusted built-in packs and fixtures |
+| `@mokimeow/jev-fabric-packs` | nine trusted built-in packs and fixtures |
 | `@mokimeow/jev-fabric-provider-typesafe` | native TypeSafe and fixed Vercel Gateway TypeSafe-compatible adapters |
 | `@mokimeow/jev-fabric-provider-openai-compatible` | administrator-configured compatible adapter |
 | `@mokimeow/jev-fabric-evals` | offline evaluation, manifests, replay, and reports |

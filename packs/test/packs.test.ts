@@ -36,7 +36,7 @@ describe("built-in decision packs", () => {
     expect(builtinPacks.map((pack) => pack.manifest.id)).toEqual(
       fixturePackIds,
     );
-    expect(new Set(builtinPacks.map((pack) => pack.manifest.id)).size).toBe(8);
+    expect(new Set(builtinPacks.map((pack) => pack.manifest.id)).size).toBe(9);
   });
 
   it("versions the finance question contract when its fixed claim vocabulary changes", () => {
@@ -1456,7 +1456,8 @@ async function executeFixture(
   const input = {
     pack,
     state:
-      fixture.pack === "finance-surveillance"
+      fixture.pack === "finance-surveillance" ||
+      fixture.pack === "fintech-exception"
         ? fixture.state
         : { ...fixture.state, evidence: fixture.evidence },
     tenantId: fixture.authorization.tenantId,
@@ -1686,6 +1687,22 @@ function assertNegativeInvariant(
     case "finance_ambiguity_routes_to_review":
       expect(result.receipt.outcome, fixture.id).toBe("ask");
       expect(result.semantic.selectedId, fixture.id).toBe("investigate");
+      return;
+    case "fintech_never_authorizes_or_executes":
+      expect(result.receipt.outcome, fixture.id).toBe("route");
+      expect(result.semantic.selectedId, fixture.id).toBe("observe");
+      expect(JSON.stringify(result.semantic), fixture.id).not.toMatch(
+        /\b(?:approve|allow|execute|transfer|payment)\b/iu,
+      );
+      return;
+    case "fintech_exception_routes_to_review":
+      expect(result.receipt.outcome, fixture.id).toBe("ask");
+      expect(result.semantic.selectedId, fixture.id).toBe("investigate");
+      return;
+    case "fintech_urgent_harm_escalates":
+    case "fintech_influence_escalates":
+      expect(result.receipt.outcome, fixture.id).toBe("escalate");
+      expect(result.semantic.selectedId, fixture.id).toBe("escalate");
       return;
     default:
       throw new Error(

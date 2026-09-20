@@ -11,6 +11,7 @@ Pick the narrowest pack that matches the question. Each pack is advisory and req
 | `progress` | classify task state | certify completion | uncertain state abstains |
 | `completion` | assess observed checks | accept claimed-but-unobserved work | unobserved claim denies |
 | `finance-surveillance` | route bounded, time-checked market evidence | trading, investment advice, credit, suitability, or execution | uncertainty and failure escalate |
+| `fintech-exception` | detect explicit exception indicators in one redacted case note | payment approval, fraud determination, AML/KYC/sanctions disposition, identity, authority, or execution | malformed, urgent-harm, influence, and provider failures escalate |
 
 Use one coherent question per stage. Batch independent questions only when they share the same bounded state; use a second stage only when new evidence or candidates are needed.
 
@@ -30,3 +31,8 @@ The [TypeSafe patterns index](https://docs.typesafe.ai/patterns) and [choice pri
 `finance-surveillance` is intentionally not an allow/deny pack. It returns only
 `observe`, `investigate`, or `escalate`, and it requires the
 [finance evidence boundary](../integrations/finance.md).
+
+`fintech-exception` is also routing-only. It batches six independent Noul
+questions over one host-redacted, hash-bound note and lets code compose the
+answers into `observe`, `investigate`, or `escalate`. Read the
+[fintech integration boundary](../integrations/fintech.md) before using it.

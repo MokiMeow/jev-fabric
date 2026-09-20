@@ -53,6 +53,20 @@ or investigator-routing questions. That separation is incorporated as a
 design constraint; the community examples and their reported numbers have not
 been reproduced here.
 
+The live official documentation scan on 20 September also confirmed a precise
+implementation pattern: Noul is a single yes/no probability question;
+independent Nouls may share one request and are evaluated in parallel; and the
+financial-crime use-case map places ambiguous transaction narratives, KYC
+documents, alert histories, entity matching, and alert prioritization behind
+investigator routing. Fabric implements the narrow, read-only portion of that
+pattern in `fintech-exception`: six independent indicators over a redacted case
+note, followed by deterministic fail-closed route composition. It deliberately
+does not adopt model-driven payment approval, identity decisions, compliance
+disposition, or execution. Sources:
+[Noul](https://docs.typesafe.ai/primitives/noul),
+[Noul consistency](https://docs.typesafe.ai/cookbooks/consistency_noul_cookbook),
+and [use-case map](https://docs.typesafe.ai/concepts/use-case-map).
+
 Two newer stock examples make the boundary more concrete. The
 [Jevinik/jevocks project](https://github.com/unicodeveloper/jevocks) uses a
 retrieval provider for market, news, analyst, and macro evidence, a generative

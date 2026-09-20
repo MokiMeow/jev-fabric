@@ -98,6 +98,14 @@ digests, extractor/profile versions, abstentions, stale and profile-swap
 attacks, and per-class error denominators. Do not retain image bytes,
 proprietary scene contents, or browser user data in this repository.
 
+The text-only visual bridge is likewise conformance-only. It proves that a
+provider-facing state contains bounded extractor text and code-reviewed finding
+dispositions, not pixels, image URLs, credentials, coordinates, selectors, or
+an execution channel. Measure bridge validation in the projection/policy phase
+and measure image capture, OCR, or vision extraction as a separate phase. A
+passing bridge is not evidence of visual correctness, multimodal Jev support,
+extractor accuracy, browser performance, or a Jev latency/cost advantage.
+
 ## WebMCP maturity and security
 
 WebMCP is relevant because it can expose structured web tools to an agent,

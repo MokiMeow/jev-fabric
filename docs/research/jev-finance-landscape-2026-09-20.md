@@ -97,6 +97,17 @@ Jev-compatible visual decision models. They are not evidence that the official
 Jev API accepts images. Fabric therefore uses a separate visual extractor and
 passes only bounded, source-bound structured annotations to Jev.
 
+The official TypeSafe model page confirms that Jev 1.13.0 accepts text and not
+image, audio, or video input. Current community implementations follow that
+boundary: [TypeSafe Playground](https://github.com/TypeSafeAI/typesafe-playground)
+uses OCR and reviewed descriptions, while
+[Vibe Check](https://github.com/RafalWilinski/vibecheck) uses a separate vision
+model to describe media before sending text to Jev. These examples establish an
+integration pattern, not extractor accuracy, latency, cost, or a Jev advantage.
+Fabric's text-only bridge strengthens the pattern by binding every annotation
+and fixed finding to its capture/profile and explicitly removing image,
+credential, URL, and execution channels.
+
 ## Current-source limitation
 
 The public search pass included the official

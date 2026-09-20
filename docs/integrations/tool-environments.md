@@ -50,6 +50,27 @@ only. It does not standardize rendering, screenshotting, OCR, scene inspection,
 or host invocation. For browsers, prefer a page's structured WebMCP/DOM state;
 use a visual profile only to request structured state or human review.
 
+## Text-only visual bridge
+
+Jev 1.13.0 is a text-only model: the official model documentation does not
+accept image, audio, or video input. Do not pass an image URL and describe that
+as visual understanding. Run a separately reviewed visual extractor first,
+then call `bindToolEnvironmentVisualTextBridgeState` with its bounded text and
+fixed finding IDs.
+
+The resulting state declares `inputModality: "extractor_text_only"`,
+`providerReceivesImage: false`, `advisoryOnly: true`, and
+`execution: "NOT_SUPPORTED"`. It binds the exact trusted environment snapshot,
+capture, artifact, annotation, extractor profile, finding vocabulary, and
+expiry. Annotation values containing credential-shaped data or URL schemes are
+rejected. Revalidate retained state with
+`validateToolEnvironmentVisualTextBridgeState` immediately before provider use.
+
+This bridge proves provenance and conformance, not that the extractor correctly
+understood the image. Measure extractor quality separately from Jev routing,
+and never infer OCR, vision, latency, accuracy, or cost from a passing binding.
+See TypeSafe's current [model documentation](https://docs.typesafe.ai/models).
+
 The exported Zod schemas validate structure; they are deliberately not an
 authorization allowlist. A host must keep a code-reviewed
 `TrustedToolEnvironmentCatalogue` outside page, model, project, and request

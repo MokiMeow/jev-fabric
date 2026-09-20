@@ -1,9 +1,8 @@
+import { routePack } from "@mokimeow/jev-fabric-packs";
 import {
-  bindToolEnvironmentProfiledVisualFindings,
-  bindToolEnvironmentProfiledVisualObservation,
+  bindToolEnvironmentVisualTextBridgeState,
   toolEnvironmentVisualExtractorProfileHash,
 } from "../../packages/adapters/src/visual-extractor-profiles.js";
-import { routePack } from "@mokimeow/jev-fabric-packs";
 import { choice, runOfflineExample } from "../shared.js";
 
 const hash = (letter: string) => `sha256:${letter.repeat(64)}`;
@@ -28,7 +27,7 @@ export const example = () => {
       },
     ],
   };
-  const visualObservation = bindToolEnvironmentProfiledVisualObservation(
+  const visualEvidence = bindToolEnvironmentVisualTextBridgeState(
     {
       environment: "blender",
       adapterId: "offline-dcc-adapter",
@@ -52,18 +51,14 @@ export const example = () => {
     },
     profile,
     { annotations: ["A viewport detail remains advisory"] },
-    Date.parse("2026-09-20T10:00:00.200+00:00"),
-  );
-  const profiledFindings = bindToolEnvironmentProfiledVisualFindings(
-    visualObservation,
-    profile,
     { findingIds: ["request-structured-state"] },
+    Date.parse("2026-09-20T10:00:00.200+00:00"),
   );
   return runOfflineExample({
     name: "visual-extractor-profile-advice",
     pack: routePack,
     state: {
-      profiledFindings,
+      visualEvidence,
       candidates: [
         {
           id: "request-structured-data",

@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest";
 import {
   bindToolEnvironmentProfiledVisualFindings,
   bindToolEnvironmentProfiledVisualObservation,
+  bindToolEnvironmentVisualTextBridgeState,
   toolEnvironmentProfiledVisualCaptureBindingHash,
   toolEnvironmentProfiledVisualFindingsBindingHash,
   toolEnvironmentVisualExtractorProfileHash,
   validateToolEnvironmentProfiledVisualFindings,
   validateToolEnvironmentProfiledVisualObservation,
+  validateToolEnvironmentVisualTextBridgeState,
 } from "../src/visual-extractor-profiles.js";
 
 // Canonical vectors are also asserted by the protocol package without a
@@ -194,5 +196,109 @@ describe("offline visual extractor profile binder", () => {
       expect(source.toLocaleLowerCase("en-US")).not.toContain(
         forbidden.toLocaleLowerCase("en-US"),
       );
+  });
+
+  it("builds a source-bound text-only provider state without image or execution data", () => {
+    const state = bindToolEnvironmentVisualTextBridgeState(
+      binding,
+      capture(),
+      profile,
+      { annotations: ["A small viewport detail remains visually ambiguous"] },
+      { findingIds: ["request-structured-state"] },
+      now,
+    );
+    expect(state).toMatchObject({
+      schemaVersion: "1",
+      purpose: "visual_evidence_triage_only",
+      advisoryOnly: true,
+      execution: "NOT_SUPPORTED",
+      inputModality: "extractor_text_only",
+      providerReceivesImage: false,
+      evidence: {
+        trust: "untrusted_data_only",
+        findings: [
+          {
+            id: "request-structured-state",
+            disposition: "requires_structured_state",
+          },
+        ],
+      },
+    });
+    expect(state.evidence.annotations).toEqual([
+      "A small viewport detail remains visually ambiguous",
+    ]);
+    expect(state.stateBindingHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(JSON.stringify(state)).not.toMatch(
+      /imageBytes|data:image|filePath|selector|coordinates|actionId|authority/iu,
+    );
+    expect(() =>
+      validateToolEnvironmentVisualTextBridgeState(
+        state,
+        binding,
+        capture(),
+        profile,
+        now,
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects stale, rebound, tampered, credentialed, and URL-bearing bridge state", () => {
+    const state = bindToolEnvironmentVisualTextBridgeState(
+      binding,
+      capture(),
+      profile,
+      { annotations: ["A small viewport detail remains visually ambiguous"] },
+      { findingIds: ["request-structured-state"] },
+      now,
+    );
+    const tampered = structuredClone(state);
+    tampered.evidence.annotations[0] = "Different extracted description";
+    expect(() =>
+      validateToolEnvironmentVisualTextBridgeState(
+        tampered,
+        binding,
+        capture(),
+        profile,
+        now,
+      ),
+    ).toThrow(/bridge state binding/u);
+    expect(() =>
+      validateToolEnvironmentVisualTextBridgeState(
+        state,
+        { ...binding, stateHash: hash("f") },
+        capture(),
+        profile,
+        now,
+      ),
+    ).toThrow(/trusted snapshot|capture binding/u);
+    expect(() =>
+      validateToolEnvironmentVisualTextBridgeState(
+        state,
+        binding,
+        capture(),
+        profile,
+        now + 1_000,
+      ),
+    ).toThrow(/stale/u);
+    expect(() =>
+      bindToolEnvironmentVisualTextBridgeState(
+        binding,
+        capture(),
+        profile,
+        { annotations: ["Bearer synthetic_credential_value_12345"] },
+        { findingIds: ["request-structured-state"] },
+        now,
+      ),
+    ).toThrow(/credential-shaped/u);
+    expect(() =>
+      bindToolEnvironmentVisualTextBridgeState(
+        binding,
+        capture(),
+        profile,
+        { annotations: ["Inspect https://example.test/screenshot.png"] },
+        { findingIds: ["request-structured-state"] },
+        now,
+      ),
+    ).toThrow(/URL-shaped/u);
   });
 });

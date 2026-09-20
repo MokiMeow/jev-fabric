@@ -32,6 +32,17 @@ const annotationSchema = z
         );
       }),
     "must not contain control characters",
+  )
+  .refine(
+    (value) =>
+      !/\b(?:Bearer\s+[^\s,;]{8,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|(?:sk|rk|pk|apikey|api[_-]?key|ghp|github_pat|xai)[_-][A-Za-z0-9_-]{12,}|v1\.[A-Za-z][A-Za-z0-9_:-]{0,127}\.[A-Za-z0-9_-]{1,8143}\.[A-Za-z0-9_-]{43})\b/iu.test(
+        value,
+      ),
+    "must not contain credential-shaped values",
+  )
+  .refine(
+    (value) => !/(?:https?:\/\/|file:|data:|blob:|javascript:)/iu.test(value),
+    "must not contain URL-shaped values",
   );
 const findingDispositionSchema = z.enum([
   "visual_ambiguity",
@@ -176,6 +187,45 @@ const profiledVisualFindingsSchema = z
   });
 export type ToolEnvironmentProfiledVisualFindings = z.infer<
   typeof profiledVisualFindingsSchema
+>;
+
+const visualTextBridgeEvidenceSchema = z
+  .object({
+    modality: modalitySchema,
+    artifactHash: hashSchema,
+    captureBindingHash: hashSchema,
+    annotationHash: hashSchema,
+    extractorId: identifierSchema,
+    extractorVersion: z.string().min(1).max(128),
+    extractorProfileHash: hashSchema,
+    findingBindingHash: hashSchema,
+    annotations: z.array(annotationSchema).min(1).max(32),
+    findings: z.array(visualExtractorFindingSchema).min(1).max(32),
+    trust: z.literal("untrusted_data_only"),
+  })
+  .strict();
+
+/**
+ * Provider-safe bridge for text-only decision models. It contains bounded text
+ * and fixed findings, never pixels, URLs, paths, selectors, coordinates,
+ * capabilities, authority, or an execution channel.
+ */
+export const toolEnvironmentVisualTextBridgeStateSchema = z
+  .object({
+    schemaVersion: z.literal("1"),
+    purpose: z.literal("visual_evidence_triage_only"),
+    advisoryOnly: z.literal(true),
+    execution: z.literal("NOT_SUPPORTED"),
+    inputModality: z.literal("extractor_text_only"),
+    providerReceivesImage: z.literal(false),
+    capturedAt: z.string().datetime({ offset: true }),
+    validUntil: z.string().datetime({ offset: true }),
+    evidence: visualTextBridgeEvidenceSchema,
+    stateBindingHash: hashSchema,
+  })
+  .strict();
+export type ToolEnvironmentVisualTextBridgeState = z.infer<
+  typeof toolEnvironmentVisualTextBridgeStateSchema
 >;
 
 export interface UntrustedToolEnvironmentVisualFindingEvidence {
@@ -457,6 +507,100 @@ export function validateToolEnvironmentProfiledVisualFindings(
   return { ...findings, findingIds: [...findings.findingIds] };
 }
 
+/**
+ * Validates and converts a profiled visual extraction into a bounded text-only
+ * provider state. This function never calls a provider or a host tool.
+ */
+export function bindToolEnvironmentVisualTextBridgeState(
+  trustedBindingInput: unknown,
+  trustedCaptureInput: unknown,
+  trustedProfileInput: unknown,
+  untrustedEvidenceInput: UntrustedToolEnvironmentProfiledVisualEvidence,
+  untrustedFindingEvidenceInput: UntrustedToolEnvironmentVisualFindingEvidence,
+  nowEpochMs: number,
+): ToolEnvironmentVisualTextBridgeState {
+  const profile = parseProfile(trustedProfileInput);
+  const observation = bindToolEnvironmentProfiledVisualObservation(
+    trustedBindingInput,
+    trustedCaptureInput,
+    profile,
+    untrustedEvidenceInput,
+    nowEpochMs,
+  );
+  const findings = bindToolEnvironmentProfiledVisualFindings(
+    observation,
+    profile,
+    untrustedFindingEvidenceInput,
+  );
+  const dispositionById = new Map(
+    profile.findings.map((finding) => [finding.id, finding.disposition]),
+  );
+  const evidence = {
+    modality: observation.modality,
+    artifactHash: observation.artifactHash,
+    captureBindingHash: observation.captureBindingHash,
+    annotationHash: observation.annotationHash,
+    extractorId: observation.extractorId,
+    extractorVersion: observation.extractorVersion,
+    extractorProfileHash: observation.extractorProfileHash,
+    findingBindingHash: findings.findingBindingHash,
+    annotations: [...observation.annotations],
+    findings: findings.findingIds.map((id) => {
+      const disposition = dispositionById.get(id);
+      if (disposition === undefined)
+        fail("profiled visual finding lost its trusted disposition");
+      return { id, disposition };
+    }),
+    trust: "untrusted_data_only" as const,
+  };
+  const capturedAt = Date.parse(observation.capturedAt);
+  const base = {
+    schemaVersion: "1" as const,
+    purpose: "visual_evidence_triage_only" as const,
+    advisoryOnly: true as const,
+    execution: "NOT_SUPPORTED" as const,
+    inputModality: "extractor_text_only" as const,
+    providerReceivesImage: false as const,
+    capturedAt: observation.capturedAt,
+    validUntil: new Date(capturedAt + observation.maxAgeMs).toISOString(),
+    evidence,
+  };
+  return freezePlain({
+    ...base,
+    stateBindingHash: sha256(
+      `jev-fabric/visual-text-bridge/v1\0${JSON.stringify(base)}`,
+    ),
+  });
+}
+
+/** Revalidates a retained bridge against the exact trusted capture and clock. */
+export function validateToolEnvironmentVisualTextBridgeState(
+  stateInput: unknown,
+  trustedBindingInput: unknown,
+  trustedCaptureInput: unknown,
+  trustedProfileInput: unknown,
+  nowEpochMs: number,
+): ToolEnvironmentVisualTextBridgeState {
+  const state = toolEnvironmentVisualTextBridgeStateSchema.parse(
+    copyPlainData(stateInput, "visual text bridge state"),
+  );
+  const rebuilt = bindToolEnvironmentVisualTextBridgeState(
+    trustedBindingInput,
+    trustedCaptureInput,
+    trustedProfileInput,
+    { annotations: state.evidence.annotations },
+    { findingIds: state.evidence.findings.map((finding) => finding.id) },
+    nowEpochMs,
+  );
+  if (state.evidence.captureBindingHash !== rebuilt.evidence.captureBindingHash)
+    fail(
+      "visual text bridge does not match the trusted snapshot capture binding",
+    );
+  if (JSON.stringify(state) !== JSON.stringify(rebuilt))
+    fail("visual text bridge state binding is invalid");
+  return rebuilt;
+}
+
 function parseProfile(input: unknown): ToolEnvironmentVisualExtractorProfile {
   return visualExtractorProfileSchema.parse(
     copyPlainData(input, "trusted visual extractor profile"),
@@ -617,6 +761,14 @@ function copyStringArray(input: readonly unknown[], label: string): string[] {
 
 function sha256(value: string): string {
   return `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
+}
+
+function freezePlain<T>(value: T): T {
+  if (!value || typeof value !== "object" || Object.isFrozen(value))
+    return value;
+  for (const child of Object.values(value as Record<string, unknown>))
+    freezePlain(child);
+  return Object.freeze(value);
 }
 
 function fail(message: string): never {

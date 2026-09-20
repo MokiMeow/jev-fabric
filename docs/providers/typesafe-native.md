@@ -73,6 +73,44 @@ correlation does not add a provider attempt. An absent header stays absent and
 a malformed identifier fails closed. The digest supports internal trace
 correlation only and is not proof of model quality, latency, cost, or billing.
 
+## Native request preflight
+
+The SDK 0.6.0 types admit request shapes that the live API refuses. Fabric
+therefore applies a stricter preflight before constructing a provider call:
+
+- top-level state may be text, an object, or an array, but not `null`, a number,
+  or a boolean;
+- a Noul must contain non-null instructions or at least one non-null `true` or
+  `false` criterion;
+- Choice and Score limits, criterion keys, and native entry shapes are checked
+  before transport.
+
+An invalid shape becomes a non-retryable `invalid_request` and consumes zero
+provider calls. This mirrors the behavior reported against the live API in the
+official SDK repository's
+[request-validation issue](https://github.com/typesafe-ai/typesafe-sdk-js/issues/6)
+without broadening the public provider-neutral protocol.
+
+## Cancellation transport
+
+Fabric supplies the official SDK with pinned `undici@7.29.1` rather than the
+Node runtime's bundled fetch. This avoids a reported Node 20/22 interaction
+where cancelling after response headers could raise the documented SDK abort
+error and then terminate the process through a second unhandled native
+`AbortError`. Read the upstream
+[cancellation compatibility report](https://github.com/typesafe-ai/typesafe-sdk-js/issues/2).
+
+The repository runs the SDK against a streaming loopback response in a child
+process and requires a handled cancellation plus a normal process exit. That
+automated contract executes under the runtime running the suite; the configured
+CI matrix covers Node 22 and 24 when hosted jobs can start. Separate local
+exploratory runs passed on Node 22.14.0, Node 22.23.1, and Node 24.11.1, but no
+exact-version artifact is retained, so those observations are not release or
+live-provider evidence. None of these probes establishes live API, model,
+latency, or cost behavior. Do not replace the transport with ambient global
+fetch on an unverified runtime, and do not hide failures with a process-wide
+unhandled rejection handler.
+
 ## Offline integration proof
 
 The repository tests this composition with an injected native-shaped fake

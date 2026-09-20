@@ -16,6 +16,7 @@ import {
   type TypeSafeMappedResult,
   type TypeSafeResult,
 } from "./mapping.js";
+import { pinnedTypeSafeFetch } from "./transport.js";
 
 export interface TypeSafeClientResponse {
   readonly data: unknown;
@@ -106,6 +107,7 @@ function createVercelGatewayJevClient(apiKey: string): TypeSafeClient {
       apiKey,
       baseURL: VERCEL_GATEWAY_TYPESAFE_BASE_URL,
       defaultModel: VERCEL_GATEWAY_JEV_MODEL,
+      fetch: pinnedTypeSafeFetch,
       logLevel: "off",
       retry: { maxRetries: 0 },
     });
@@ -242,6 +244,7 @@ function createClient(
     return new TypeSafeClient({
       apiKey,
       defaultModel: model,
+      fetch: pinnedTypeSafeFetch,
       logLevel: "off",
       retry: { maxRetries: 0 },
     });

@@ -77,6 +77,72 @@ describe("TypeSafe mapping", () => {
     ).toThrow();
   });
 
+  it("rejects API-invalid null state and empty Noul meaning", () => {
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "null-state",
+          state: null,
+          questions: [
+            {
+              id: "urgent",
+              type: "noul",
+              instructions: "Is this urgent?",
+              criteria: { true: "Immediate response", false: "Can wait" },
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ),
+    ).toThrow(/state cannot be null/u);
+
+    for (const criteria of [
+      null,
+      {},
+      { true: null },
+      { true: null, false: null },
+    ] as const)
+      expect(() =>
+        compileTypeSafeRequest(
+          {
+            id: "empty-noul",
+            state: {},
+            questions: [
+              {
+                id: "empty",
+                type: "noul",
+                instructions: null,
+                criteria,
+              },
+            ],
+          },
+          "jev-1.13.0",
+        ),
+      ).toThrow(/requires non-null instructions or criteria/u);
+
+    expect(
+      compileTypeSafeRequest(
+        {
+          id: "criteria-only-noul",
+          state: {},
+          questions: [
+            {
+              id: "greeting",
+              type: "noul",
+              instructions: null,
+              criteria: { true: "The text is a greeting", false: null },
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ).questions.greeting,
+    ).toEqual({
+      type: "noul",
+      instructions: null,
+      criteria: { true: "The text is a greeting", false: null },
+    });
+  });
+
   it("enforces native Choice and Score cardinality limits", () => {
     const options = Array.from(
       { length: 256 },

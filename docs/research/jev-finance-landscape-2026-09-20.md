@@ -589,3 +589,23 @@ financial boundary. It does not establish Jev accuracy, batching parity,
 latency, or cost. Those fields remain `NOT_RUN` until a preregistered retained
 dataset measures the batched router against serial questions and a no-Jev host
 baseline using a newly issued server-side credential.
+
+## Same-day SDK compatibility findings
+
+The official JavaScript SDK repository currently records two open compatibility
+reports relevant to a production host. SDK 0.6.0 can construct `state: null` and
+meaningless Noul questions that the live API rejects, and a handled post-header
+cancellation can terminate tested Node 20/22 processes through the bundled
+fetch implementation. These are request and transport findings, not model-
+quality findings.
+
+Fabric now rejects the API-invalid shapes before transport and pins a fixed
+userland Undici transport for both direct TypeSafe and Vercel Gateway clients.
+The committed streaming loopback child-process probe executes under the test
+runtime and uses no external endpoint or real credential. Separate local runs
+on Node 22.14.0, Node 22.23.1, and Node 24.11.1 are exploratory observations,
+not retained release evidence. See the
+[native operation guide](../providers/typesafe-native.md) and the upstream
+[request-shape](https://github.com/typesafe-ai/typesafe-sdk-js/issues/6) and
+[cancellation](https://github.com/typesafe-ai/typesafe-sdk-js/issues/2)
+reports.

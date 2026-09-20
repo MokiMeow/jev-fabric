@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -38,6 +39,7 @@ const externalPackages = [
     "@typesafe-ai/sdk",
     "packages/provider-typesafe/node_modules/@typesafe-ai/sdk",
   ],
+  ["undici", "packages/provider-typesafe/node_modules/undici", true],
   ["zod", "packages/mcp/node_modules/zod"],
 ];
 // `pnpm pack` traverses each actual package directory and its JSON result is
@@ -101,6 +103,10 @@ function offlineEnvironment(overrides = {}) {
     npm_config_registry: "http://127.0.0.1:9/",
     NPM_CONFIG_AUDIT: "false",
     NPM_CONFIG_FUND: "false",
+    // Inspect already-built archives without executing dependency lifecycle
+    // hooks or mutating an installed third-party source directory.
+    NPM_CONFIG_IGNORE_SCRIPTS: "true",
+    npm_config_ignore_scripts: "true",
     NPM_CONFIG_UPDATE_NOTIFIER: "false",
     NPM_CONFIG_PREFER_OFFLINE: "true",
     COREPACK_ENABLE_NETWORK: "0",
@@ -410,6 +416,7 @@ function pack(
   validate,
   pnpm,
   environment,
+  ignoreLifecycle = false,
 ) {
   const manifest = JSON.parse(
     readFileSync(join(source, "package.json"), "utf8"),
@@ -417,18 +424,52 @@ function pack(
   if (validate)
     validatePublishManifest(manifest, sourceRelative, releaseVersion(root));
   if (validate) assertBuildPrerequisite(source, sourceRelative, manifest);
-  const output = execFileSync(
-    pnpm,
-    ["pack", "--offline", "--json", "--pack-destination", artifactsDirectory],
-    { cwd: source, encoding: "utf8", env: environment },
-  );
+  const arguments_ = [
+    "pack",
+    "--offline",
+    "--json",
+    "--pack-destination",
+    artifactsDirectory,
+  ];
+  const output = ignoreLifecycle
+    ? packWithoutLifecycle(source, arguments_, environment)
+    : execFileSync(pnpm, arguments_, {
+        cwd: source,
+        encoding: "utf8",
+        env: environment,
+      });
   const parsed = JSON.parse(output);
   const result = Array.isArray(parsed) ? parsed[0] : parsed;
-  const tarball = resolve(source, result.filename);
+  const tarball = resolve(artifactsDirectory, basename(result.filename));
   if (!existsSync(tarball))
     throw new Error(`npm pack did not write ${result.filename}`);
   if (validate) assertRealArchive(manifest, sourceRelative, tarball, root);
   return { name: manifest.name, version: manifest.version, tarball };
+}
+
+function packWithoutLifecycle(source, arguments_, environment) {
+  const stagingRoot = mkdtempSync(
+    join(tmpdir(), "jev-fabric-external-pack-source-"),
+  );
+  const stagedSource = join(stagingRoot, "package");
+  try {
+    // npm can mis-size pnpm's content-addressed links when repacking an
+    // installed package directly. A dereferenced private copy preserves exact
+    // installed bytes without touching the dependency or running prepare.
+    cpSync(source, stagedSource, {
+      recursive: true,
+      dereference: true,
+      errorOnExist: true,
+    });
+    return npm(
+      [...arguments_, "--ignore-scripts"],
+      stagedSource,
+      environment,
+      "utf8",
+    );
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
 }
 
 function releaseArtifactRecord(item) {
@@ -514,20 +555,23 @@ export function verifyPackArtifacts({
         offline,
       ),
     );
-    const packedExternal = externalPackages.map(([name, relative]) => {
-      const source = resolve(root, relative);
-      if (!existsSync(source))
-        throw new Error(`missing locked runtime dependency source: ${name}`);
-      return pack(
-        source,
-        relative,
-        artifactOutput.directory,
-        root,
-        false,
-        pnpm,
-        offline,
-      );
-    });
+    const packedExternal = externalPackages.map(
+      ([name, relative, ignoreLifecycle = false]) => {
+        const source = resolve(root, relative);
+        if (!existsSync(source))
+          throw new Error(`missing locked runtime dependency source: ${name}`);
+        return pack(
+          source,
+          relative,
+          artifactOutput.directory,
+          root,
+          false,
+          pnpm,
+          offline,
+          ignoreLifecycle,
+        );
+      },
+    );
     // This manifest binds the generated SBOM to the exact first-party archives.
     // It deliberately excludes vendored third-party tarballs used only by the
     // offline consumer smoke.

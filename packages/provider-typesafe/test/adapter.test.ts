@@ -172,9 +172,26 @@ describe("TypeSafeProvider", () => {
         },
       },
     });
-    await expect(
-      provider.evaluate({ ...request, state: true }),
-    ).rejects.toMatchObject({ category: "invalid_request", retryable: false });
+    const invalidRequests: readonly DecisionRequest[] = [
+      { ...request, state: true },
+      { ...request, state: null },
+      {
+        ...request,
+        questions: [
+          {
+            id: "empty_noul",
+            type: "noul",
+            instructions: null,
+            criteria: { true: null, false: null },
+          },
+        ],
+      },
+    ];
+    for (const invalid of invalidRequests)
+      await expect(provider.evaluate(invalid)).rejects.toMatchObject({
+        category: "invalid_request",
+        retryable: false,
+      });
     expect(calls).toBe(0);
   });
 

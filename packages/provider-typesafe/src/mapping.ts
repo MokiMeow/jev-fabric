@@ -68,6 +68,14 @@ export function compileTypeSafeRequest(
         ),
       );
     } else if (question.type === "noul") {
+      if (
+        question.instructions === null &&
+        (question.criteria === null ||
+          !Object.values(question.criteria).some((value) => value !== null))
+      )
+        throw new RangeError(
+          "TypeSafe Noul requires non-null instructions or criteria",
+        );
       questions[question.id] = noul(
         nativeEntry(question.instructions, `${question.id}.instructions`),
         question.criteria === null
@@ -90,7 +98,13 @@ export function compileTypeSafeRequest(
       );
     }
   }
-  return { state: nativeEntry(request.state, "state"), questions, model };
+  return { state: nativeStateEntry(request.state), questions, model };
+}
+
+/** The live API rejects null state even though SDK 0.6.0 admits EntryType null. */
+function nativeStateEntry(value: JsonValue): EntryType {
+  if (value === null) throw new TypeError("state cannot be null for TypeSafe");
+  return nativeEntry(value, "state");
 }
 
 /** Mirrors the SDK's EntryType instead of hiding unsupported scalars in casts. */

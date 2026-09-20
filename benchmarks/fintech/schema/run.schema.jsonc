@@ -394,6 +394,49 @@
     "nullableNonNegative": {
       "oneOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }]
     },
+    "pairedCategoricalRobustness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pairCount",
+        "labeledPairCount",
+        "agreementCount",
+        "flipCount",
+        "regressionCount",
+        "recoveryCount",
+        "stableErrorCount",
+        "labelAgreementRate",
+        "flipRate",
+        "referenceAccuracy",
+        "variantAccuracy",
+        "jointAccuracy",
+        "regressionRate",
+        "recoveryRate",
+        "stableErrorRate",
+        "meanTotalVariation",
+        "maxTotalVariation"
+      ],
+      "properties": {
+        "pairCount": { "type": "integer", "minimum": 0 },
+        "labeledPairCount": { "type": "integer", "minimum": 0 },
+        "agreementCount": { "type": "integer", "minimum": 0 },
+        "flipCount": { "type": "integer", "minimum": 0 },
+        "regressionCount": { "type": "integer", "minimum": 0 },
+        "recoveryCount": { "type": "integer", "minimum": 0 },
+        "stableErrorCount": { "type": "integer", "minimum": 0 },
+        "labelAgreementRate": { "$ref": "#/$defs/nullableProbability" },
+        "flipRate": { "$ref": "#/$defs/nullableProbability" },
+        "referenceAccuracy": { "$ref": "#/$defs/nullableProbability" },
+        "variantAccuracy": { "$ref": "#/$defs/nullableProbability" },
+        "jointAccuracy": { "$ref": "#/$defs/nullableProbability" },
+        "regressionRate": { "$ref": "#/$defs/nullableProbability" },
+        "recoveryRate": { "$ref": "#/$defs/nullableProbability" },
+        "stableErrorRate": { "$ref": "#/$defs/nullableProbability" },
+        "meanTotalVariation": { "$ref": "#/$defs/nullableProbability" },
+        "maxTotalVariation": { "$ref": "#/$defs/nullableProbability" },
+        "reason": { "const": "empty" }
+      }
+    },
     "latencyMetric": {
       "type": "object",
       "additionalProperties": false,
@@ -531,7 +574,9 @@
             "requestReductionRatio",
             "p50LatencySpeedup",
             "costRatioBatchedToSerial",
-            "testAnswerAgreement"
+            "testAnswerAgreement",
+            "testSignalPairCoverage",
+            "testSignalRobustness"
           ],
           "properties": {
             "requestReductionRatio": { "$ref": "#/$defs/nullableNonNegative" },
@@ -539,7 +584,13 @@
             "costRatioBatchedToSerial": {
               "$ref": "#/$defs/nullableNonNegative"
             },
-            "testAnswerAgreement": { "$ref": "#/$defs/nullableProbability" }
+            "testAnswerAgreement": { "$ref": "#/$defs/nullableProbability" },
+            "testSignalPairCoverage": {
+              "$ref": "#/$defs/nullableProbability"
+            },
+            "testSignalRobustness": {
+              "$ref": "#/$defs/pairedCategoricalRobustness"
+            }
           }
         },
         "ablation": {

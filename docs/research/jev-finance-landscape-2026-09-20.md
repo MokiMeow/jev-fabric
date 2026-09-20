@@ -222,6 +222,12 @@ decisions double-counted or metered malformed responses omitted from cost.
 Fabric adopts the accounting lesson, not the composite ranking or headline
 scores—every request, including malformed paid output, must be counted exactly
 once and a service that routes to Jev must not be treated as a second model.
+It also adds a reusable paired categorical robustness metric. Fintech evidence
+now compares each held-out Noul signal under batched and serial delivery using
+label agreement, total-variation distribution shift, joint correctness,
+regressions, recoveries, and valid-pair coverage. Agreement without independent
+gold remains stability evidence only; empty or missing pairs cannot become a
+zero-error accuracy claim.
 
 The official model page also fixes a 32k budget for `state` plus the longest
 question and the jaggedness guide warns that irrelevant state reduces accuracy.

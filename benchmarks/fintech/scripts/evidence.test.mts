@@ -236,8 +236,38 @@ test("completed metrics are recomputed from group-disjoint retained traces", () 
   assert.equal(evidence.metrics.byArm.jev_batched.costNanoUsd, "25200");
   assert.equal(evidence.metrics.batching.requestReductionRatio, 6);
   assert.equal(evidence.metrics.batching.testAnswerAgreement, 1);
+  assert.equal(evidence.metrics.batching.testSignalPairCoverage, 1);
+  assert.equal(evidence.metrics.batching.testSignalRobustness.pairCount, 12);
+  assert.equal(
+    evidence.metrics.batching.testSignalRobustness.labelAgreementRate,
+    1,
+  );
+  assert.equal(
+    evidence.metrics.batching.testSignalRobustness.meanTotalVariation,
+    0,
+  );
+  assert.equal(evidence.metrics.batching.testSignalRobustness.jointAccuracy, 1);
   assert.equal(evidence.metrics.ablation.heldOutAccuracyDelta, 0.5);
   assert.equal(evidence.metrics.ablation.jevAddsMeasuredAccuracyValue, true);
+});
+
+test("batching robustness exposes missing valid signal pairs instead of hiding them", () => {
+  const evidence = completedEvidence();
+  const serial = evidence.traces.find(
+    (trace) =>
+      trace.caseId === "test-investigate" && trace.arm === "jev_serial",
+  );
+  assert.ok(serial);
+  serial.valid = false;
+  serial.signals = [];
+  evidence.metrics = recomputeFintechMetrics(evidence);
+  assert.equal(evidence.metrics.batching.testAnswerAgreement, 0.5);
+  assert.equal(evidence.metrics.batching.testSignalPairCoverage, 0.5);
+  assert.equal(evidence.metrics.batching.testSignalRobustness.pairCount, 6);
+  assert.equal(
+    evidence.metrics.batching.testSignalRobustness.labelAgreementRate,
+    1,
+  );
 });
 
 test("aggregate tampering is rejected", () => {

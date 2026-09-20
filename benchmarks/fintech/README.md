@@ -31,7 +31,9 @@ cases never contribute to that accuracy. The verifier independently recomputes:
   reliability;
 - provider calls, input/output tokens, and exact nano-USD cost;
 - end-to-end and provider p50/p95/p99 latency;
-- batched/serial request, latency, cost, and held-out answer agreement; and
+- batched/serial request, latency, cost, held-out case agreement, valid
+  signal-pair coverage, signal agreement, total-variation distribution shift,
+  jointly correct signals, regressions, recoveries, and stable errors; and
 - the held-out accuracy delta against the deterministic no-Jev baseline.
 
 `jevAddsMeasuredAccuracyValue` means only that the batched arm beat the pinned
@@ -52,6 +54,9 @@ The executable contract in `scripts/evidence.mts` rejects an artifact unless:
   pack, and question-set hash;
 - every valid Jev trace contains exactly the six current Noul answers and each
   boolean agrees with `probabilityYes >= 0.5`;
+- paired batching robustness compares the same held-out case, signal, labels,
+  and gold under batched and serial delivery; invalid or missing pairs reduce
+  explicit coverage rather than disappearing from the report;
 - routes and route scores are reproducible from those answers;
 - invalid Jev output fails closed to `escalate` without invented probabilities;
 - cost is exactly reproducible from retained integer nano-USD pricing;

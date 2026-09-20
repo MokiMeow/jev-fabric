@@ -3,7 +3,9 @@ import {
   binaryBrier,
   nll,
   noulReliability,
+  pairedCategoricalRobustness,
   quantile,
+  type PairedCategoricalRobustness,
 } from "../../../packages/evals/src/index.js";
 import { fintechExceptionQuestionSetHash } from "../../../packs/fintech-exception/pack.js";
 
@@ -185,6 +187,8 @@ export interface FintechMetrics {
     p50LatencySpeedup: number | null;
     costRatioBatchedToSerial: number | null;
     testAnswerAgreement: number | null;
+    testSignalPairCoverage: number | null;
+    testSignalRobustness: PairedCategoricalRobustness;
   }>;
   readonly ablation: Readonly<{
     heldOutAccuracyDelta: number | null;
@@ -651,6 +655,40 @@ export function recomputeFintechMetrics(value: unknown): FintechMetrics {
       ),
     );
   });
+  const signalPairs = testCases.flatMap((datasetCase, caseIndex) => {
+    const batched = traceByCaseArm.get(`${datasetCase.caseId}\0jev_batched`);
+    const serial = traceByCaseArm.get(`${datasetCase.caseId}\0jev_serial`);
+    if (!batched?.valid || !serial?.valid) return [];
+    const batchedSignals = new Map(
+      batched.signals.map((signal) => [signal.signalId, signal]),
+    );
+    const serialSignals = new Map(
+      serial.signals.map((signal) => [signal.signalId, signal]),
+    );
+    return fintechSignalIds.map((signalId, signalIndex) => {
+      const batchedSignal = batchedSignals.get(signalId);
+      const serialSignal = serialSignals.get(signalId);
+      invariant(
+        batchedSignal !== undefined && serialSignal !== undefined,
+        "valid batching pair is missing a fintech signal",
+      );
+      const decision = (signal: typeof batchedSignal) => ({
+        probabilities: {
+          yes: signal.probabilityYes,
+          no: 1 - signal.probabilityYes,
+        },
+        selected: signal.value ? "yes" : "no",
+      });
+      return {
+        pairId: `p${caseIndex}:${signalIndex}:${signalId}`,
+        family: "batching" as const,
+        reference: decision(batchedSignal),
+        variant: decision(serialSignal),
+        gold: datasetCase.goldSignals[signalId] ? "yes" : "no",
+      };
+    });
+  });
+  const expectedSignalPairCount = testCases.length * fintechSignalIds.length;
   const accuracyDelta =
     byArm.jev_batched.testRouteAccuracy === null ||
     byArm.no_jev.testRouteAccuracy === null
@@ -681,6 +719,11 @@ export function recomputeFintechMetrics(value: unknown): FintechMetrics {
         BigInt(byArm.jev_serial.costNanoUsd),
       ),
       testAnswerAgreement: mean(answersAgree),
+      testSignalPairCoverage: ratio(
+        signalPairs.length,
+        expectedSignalPairCount,
+      ),
+      testSignalRobustness: pairedCategoricalRobustness(signalPairs),
     },
     ablation: {
       heldOutAccuracyDelta: accuracyDelta,
@@ -1378,6 +1421,10 @@ export function renderFintechReport(value: unknown): string {
     ...rows,
     "",
     `Batched/serial held-out answer agreement: ${percentage(value.metrics?.batching.testAnswerAgreement ?? null)}`,
+    `Batched/serial signal-pair coverage: ${percentage(value.metrics?.batching.testSignalPairCoverage ?? null)}`,
+    `Batched/serial signal agreement: ${percentage(value.metrics?.batching.testSignalRobustness.labelAgreementRate ?? null)}`,
+    `Batched/serial mean distribution shift (total variation): ${percentage(value.metrics?.batching.testSignalRobustness.meanTotalVariation ?? null)}`,
+    `Batched/serial jointly correct signals: ${percentage(value.metrics?.batching.testSignalRobustness.jointAccuracy ?? null)}`,
     `Jev batched/no-Jev held-out accuracy delta: ${percentage(value.metrics?.ablation.heldOutAccuracyDelta ?? null)}`,
     "",
     "This evidence is advisory-only and makes no claim of financial authorization, identity, compliance disposition, or execution capability.",

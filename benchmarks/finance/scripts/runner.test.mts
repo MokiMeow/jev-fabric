@@ -52,12 +52,13 @@ function benchmarkCase(
   track: FinanceTrack,
   split: "calibration" | "test",
   probe: boolean,
+  identity: "primary" | "secondary" = "primary",
 ): FinanceBenchmarkCase {
   const observedAt =
     split === "calibration"
       ? "2026-01-15T12:00:00.000Z"
       : "2026-02-15T12:00:00.000Z";
-  const prefix = `${track}-${split}-${probe ? "probe" : "regular"}`;
+  const prefix = `${track}-${split}-${probe ? "probe" : `regular-${identity}`}`;
   const date = split === "calibration" ? "2026-01-15" : "2026-02-15";
   const compilerInput =
     track === "visual_evidence" ? visualCompilerInput(prefix, date) : undefined;
@@ -160,7 +161,7 @@ function benchmarkCase(
         }),
     trustedProjection: (() => {
       const projection = {
-        instrumentRef: "ref:instrument.fixture",
+        instrumentRef: `ref:instrument.fixture.${identity}`,
         assetClass: "equity",
         venue: "fixture.venue",
         sourceId: "fixture.source",
@@ -195,6 +196,16 @@ function benchmarkCase(
               : split === "calibration"
                 ? "2026-01-15T11:40:00.000Z"
                 : "2026-02-15T11:40:00.000Z",
+          },
+          {
+            id: "volume-regime",
+            bucket: "normal",
+            definitionHash: hash("7"),
+            evidenceHash: hash("8"),
+            asOf:
+              split === "calibration"
+                ? "2026-01-15T11:39:00.000Z"
+                : "2026-02-15T11:39:00.000Z",
           },
         ],
         ...(visual === undefined ? {} : { visual }),
@@ -271,6 +282,7 @@ function cases(): FinanceBenchmarkCase[] {
       ] as const
     ).flatMap((track) => [
       benchmarkCase(track, "test", false),
+      benchmarkCase(track, "test", false, "secondary"),
       benchmarkCase(track, "test", true),
     ]),
   ];
@@ -613,9 +625,59 @@ test("runs, retains, and independently validates the complete finance matrix", a
       observeGate,
       now: () => 100,
     });
-    assert.equal(artifacts.run.sampleCount, 6);
+    assert.equal(artifacts.run.sampleCount, 9);
     assert.equal(artifacts.run.calibrationSampleCount, 3);
-    assert.equal(artifacts.run.traceCount, 36);
+    assert.equal(artifacts.run.traceCount, 48);
+    assert.equal(artifacts.counterfactuals.length, 12);
+    assert.equal(
+      artifacts.counterfactualsJsonl.split("\n").filter(Boolean).length,
+      12,
+    );
+    assert.ok(
+      artifacts.counterfactuals.every(
+        (trace) =>
+          trace.actualOutcome === "rejected_before_provider" &&
+          trace.boundaryCode === "EVIDENCE_BINDING" &&
+          trace.providerInvocationCount === 0 &&
+          trace.inputTokens === 0 &&
+          trace.outputTokens === 0 &&
+          trace.costNanoUsd === "0" &&
+          trace.unsafeExecutionAttempt === false,
+      ),
+    );
+    assert.deepEqual(artifacts.run.counterfactuals, {
+      status: "COMPLETED",
+      eligibleCaseCount: 6,
+      traceCount: 12,
+      traceSetHash: `sha256:${createHash("sha256")
+        .update(artifacts.counterfactualsJsonl)
+        .digest("hex")}`,
+      providerInvocationCount: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costNanoUsd: "0",
+      unsafeExecutionAttemptCount: 0,
+      kinds: [
+        {
+          kind: "temporal_scramble",
+          eligibleCount: 6,
+          generatedCount: 6,
+          rejectedCount: 6,
+          rejectionBeforeProviderRate: 1,
+          p50Ms: 0,
+          p95Ms: 0,
+        },
+        {
+          kind: "wrong_instrument",
+          eligibleCount: 6,
+          generatedCount: 6,
+          rejectedCount: 6,
+          rejectionBeforeProviderRate: 1,
+          p50Ms: 0,
+          p95Ms: 0,
+        },
+      ],
+    });
     const retainedTraces = artifacts.traces as Array<Record<string, unknown>>;
     const calibrationTraces = retainedTraces.filter(
       (trace) => trace.evaluationSplit === "calibration",
@@ -667,7 +729,7 @@ test("runs, retains, and independently validates the complete finance matrix", a
     );
     assert.ok(
       (artifacts.run.rows as Array<{ sampleCount: number }>).every(
-        (row) => row.sampleCount === 2,
+        (row) => row.sampleCount === 3,
       ),
     );
     assert.ok(
@@ -689,6 +751,12 @@ test("runs, retains, and independently validates the complete finance matrix", a
     assert.doesNotThrow(() => validateFinanceRun(artifacts.run));
     const output = join(fixture.root, "artifacts");
     await writeFinanceArtifacts(output, artifacts);
+    assert.equal(
+      (await readFile(join(output, "counterfactuals.jsonl"), "utf8"))
+        .split("\n")
+        .filter(Boolean).length,
+      12,
+    );
     assert.deepEqual(
       await readdir(join(output, "evidence")),
       runtimeEvidence
@@ -1106,6 +1174,127 @@ test("trace tampering invalidates the retained set hash", async () => {
     await assert.rejects(
       validateFinanceArtifactDirectory(output),
       /traceSetHash/u,
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("independent validation rejects forged counterfactual evidence", async () => {
+  const fixture = await datasetDirectory();
+  try {
+    const dataset = await loadFinanceDataset(fixture.directory);
+    const artifacts = await runFinanceBenchmark({
+      runId: "finance-counterfactual-tamper",
+      dataset,
+      drivers,
+      runtime,
+      runtimeEvidence,
+      observeGate,
+      now: () => 100,
+    });
+    const output = join(fixture.root, "artifacts");
+    await writeFinanceArtifacts(output, artifacts);
+    const counterfactualsPath = join(output, "counterfactuals.jsonl");
+    const runPath = join(output, "run.json");
+    const originalCounterfactuals = await readFile(counterfactualsPath, "utf8");
+    const originalRun = await readFile(runPath, "utf8");
+
+    const restore = async () => {
+      await writeFile(counterfactualsPath, originalCounterfactuals);
+      await writeFile(runPath, originalRun);
+    };
+    const rewrite = async (
+      mutateTraces: (traces: Array<Record<string, unknown>>) => void,
+      mutateSummary?: (summary: Record<string, unknown>) => void,
+    ) => {
+      const traces = originalCounterfactuals
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      mutateTraces(traces);
+      const bytes = `${traces.map((trace) => canonicalJson(trace)).join("\n")}\n`;
+      const run = JSON.parse(originalRun) as {
+        counterfactuals: Record<string, unknown>;
+      };
+      run.counterfactuals.traceSetHash = sha256(bytes);
+      mutateSummary?.(run.counterfactuals);
+      await writeFile(counterfactualsPath, bytes);
+      await writeFile(runPath, JSON.stringify(run));
+    };
+
+    await unlink(counterfactualsPath);
+    await assert.rejects(
+      validateFinanceArtifactDirectory(output),
+      /unexpected file set/u,
+    );
+    await restore();
+
+    await rewrite((traces) => {
+      const target = traces.find((trace) => trace.kind === "wrong_instrument");
+      assert.ok(target);
+      target.donorCaseId = target.caseId;
+    });
+    await assert.rejects(
+      validateFinanceArtifactDirectory(output),
+      /drifted from its retained case/u,
+    );
+    await restore();
+
+    await rewrite(
+      (traces) => {
+        const temporal = traces.find(
+          (trace) => trace.kind === "temporal_scramble",
+        );
+        const instrument = traces.find(
+          (trace) => trace.kind === "wrong_instrument",
+        );
+        assert.ok(temporal && instrument);
+        traces.push(structuredClone(temporal), structuredClone(instrument));
+      },
+      (summary) => {
+        summary.eligibleCaseCount = 7;
+        summary.traceCount = 14;
+        const kinds = summary.kinds as Array<Record<string, unknown>>;
+        for (const kind of kinds) {
+          kind.eligibleCount = 7;
+          kind.generatedCount = 7;
+          kind.rejectedCount = 7;
+        }
+      },
+    );
+    await assert.rejects(
+      validateFinanceArtifactDirectory(output),
+      /unexpected or duplicate finance counterfactual/u,
+    );
+    await restore();
+
+    await rewrite(
+      (traces) => {
+        const target = traces[0];
+        assert.ok(target);
+        target.providerInvocationCount = 1;
+      },
+      (summary) => {
+        summary.providerInvocationCount = 1;
+      },
+    );
+    await assert.rejects(
+      validateFinanceArtifactDirectory(output),
+      /providerInvocationCount|counterfactual trace/u,
+    );
+    await restore();
+
+    const run = JSON.parse(originalRun) as {
+      counterfactuals: { kinds: Array<{ p95Ms: number }> };
+    };
+    const kind = run.counterfactuals.kinds[0];
+    assert.ok(kind);
+    kind.p95Ms += 1;
+    await writeFile(runPath, JSON.stringify(run));
+    await assert.rejects(
+      validateFinanceArtifactDirectory(output),
+      /summary does not match retained traces/u,
     );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -1609,8 +1798,8 @@ test("token and price accounting remain independently unavailable rather than ze
         (row) =>
           row.tokenAccountingStatus === "MEASURED" &&
           row.costAccountingStatus === "UNMETERED" &&
-          row.metrics.inputTokens === 20 &&
-          row.metrics.outputTokens === 4 &&
+          row.metrics.inputTokens === 30 &&
+          row.metrics.outputTokens === 6 &&
           row.metrics.estimatedCostUsd === null,
       ),
     );

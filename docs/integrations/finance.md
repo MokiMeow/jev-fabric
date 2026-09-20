@@ -144,6 +144,15 @@ is never sent to Jev and does not authenticate the publisher; retained public
 evidence still depends on the dataset manifest chain and the repository's
 external publication trust.
 
+The retained benchmark actively tests that boundary before model evaluation.
+For every eligible held-out case it substitutes a distinct same-track
+instrument and separately rotates timestamps across signal identities without
+recomputing the seal. Both variants must be rejected with
+`EVIDENCE_BINDING` before a host model or Jev is called. Their canonical traces
+retain zero calls, tokens, cost, and execution attempts, and the offline
+validator independently reconstructs each mutation. These checks are not
+model-scored examples and are never mixed into Jev accuracy or latency.
+
 The benchmark's canonical SVG compiler emits a versioned renderer identity,
 mutation id, expected route, image hash, source-binding hash, and one artifact
 hash over that complete tuple. The offline verifier and trusted adapter validate

@@ -48,6 +48,15 @@ all counterfactual metadata remain absent from provider-visible state. Version
 1 case producers must compute the seal and regenerate their case-set and build
 manifests.
 
+The finance runner now derives wrong-instrument and timestamp-rotation
+counterfactuals once per regular held-out case before calibration or provider
+execution. A run aborts unless every probe fails at the trusted evidence
+boundary with zero calls, tokens, cost, and unsafe execution attempts. Canonical
+`counterfactuals.jsonl` evidence is retained outside model metrics; the offline
+validator independently reconstructs donors and mutations, reruns the binding
+check, recomputes state digests and summaries, and rejects missing, duplicated,
+rebound, or non-zero-accounting records.
+
 Finance state is snapshotted without invoking accessors, rejects C1 and
 bidirectional/isolate controls, revalidates direct-pack text and annotation
 hashes, and carries an expiry that is checked against the runtime's trusted

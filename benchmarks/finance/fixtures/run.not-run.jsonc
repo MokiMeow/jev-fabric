@@ -6,6 +6,18 @@
   "calibrationSampleCount": 0,
   "traceCount": 0,
   "traceSetHash": null,
+  "counterfactuals": {
+    "status": "NOT_RUN",
+    "eligibleCaseCount": 0,
+    "traceCount": 0,
+    "traceSetHash": null,
+    "providerInvocationCount": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "costNanoUsd": "0",
+    "unsafeExecutionAttemptCount": 0,
+    "kinds": []
+  },
   "dataset": {
     "status": "NOT_SELECTED",
     "datasetId": null,

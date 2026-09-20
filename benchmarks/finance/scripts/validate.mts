@@ -4,6 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import {
+  bindFinanceAdvisoryEvidenceWithText,
+  FinanceAdvisoryBoundaryError,
+} from "../../../packages/adapters/src/index.js";
+import {
   financeArchitectures,
   financeTracks,
   stableJson,
@@ -11,6 +15,7 @@ import {
 import {
   type ArchitectureRuntimePricing,
   type FinanceBenchmarkCase,
+  type FinanceCounterfactualTrace,
   type FinanceObserveGateConfiguration,
   type FinanceRuntimeEvidence,
   type FinanceRuntimeProvenance,
@@ -18,6 +23,7 @@ import {
   loadFinanceDataset,
   recomputeFinanceBenchmarkEvidence,
 } from "./run.mjs";
+import { canonicalJson } from "../builders/lib/canonical.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const maximumArtifactBytes = 100 * 1024 * 1024;
@@ -61,6 +67,26 @@ interface FinanceRunDocument {
   readonly calibrationSampleCount: number;
   readonly traceCount: number;
   readonly traceSetHash: string | null;
+  readonly counterfactuals: Readonly<{
+    status: "NOT_RUN" | "COMPLETED";
+    eligibleCaseCount: number;
+    traceCount: number;
+    traceSetHash: string | null;
+    providerInvocationCount: number;
+    inputTokens: number;
+    outputTokens: number;
+    costNanoUsd: string;
+    unsafeExecutionAttemptCount: number;
+    kinds: readonly Readonly<{
+      kind: "temporal_scramble" | "wrong_instrument";
+      eligibleCount: number;
+      generatedCount: number;
+      rejectedCount: number;
+      rejectionBeforeProviderRate: number;
+      p50Ms: number;
+      p95Ms: number;
+    }>[];
+  }>;
   readonly dataset: FinanceRunDataset;
   readonly runtime: FinanceRuntimeProvenance;
   readonly observeGate: Readonly<{
@@ -208,6 +234,22 @@ export function validateFinanceRun(value: unknown): void {
       "NOT_RUN finance run cannot claim traces",
     );
     invariant(
+      stableJson(run.counterfactuals) ===
+        stableJson({
+          status: "NOT_RUN",
+          eligibleCaseCount: 0,
+          traceCount: 0,
+          traceSetHash: null,
+          providerInvocationCount: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          costNanoUsd: "0",
+          unsafeExecutionAttemptCount: 0,
+          kinds: [],
+        }),
+      "NOT_RUN finance run cannot claim counterfactual evidence",
+    );
+    invariant(
       run.dataset.status === "NOT_SELECTED",
       "NOT_RUN finance run cannot claim a dataset",
     );
@@ -246,6 +288,29 @@ export function validateFinanceRun(value: unknown): void {
         (run.sampleCount + run.calibrationSampleCount) &&
       typeof run.traceSetHash === "string",
     "completed finance run requires one retained trace per architecture and retained case",
+  );
+  invariant(
+    run.counterfactuals.status === "COMPLETED" &&
+      run.counterfactuals.eligibleCaseCount > 0 &&
+      run.counterfactuals.traceCount ===
+        2 * run.counterfactuals.eligibleCaseCount &&
+      typeof run.counterfactuals.traceSetHash === "string" &&
+      run.counterfactuals.providerInvocationCount === 0 &&
+      run.counterfactuals.inputTokens === 0 &&
+      run.counterfactuals.outputTokens === 0 &&
+      run.counterfactuals.costNanoUsd === "0" &&
+      run.counterfactuals.unsafeExecutionAttemptCount === 0 &&
+      run.counterfactuals.kinds.length === 2 &&
+      run.counterfactuals.kinds.every(
+        (entry) =>
+          entry.eligibleCount === run.counterfactuals.eligibleCaseCount &&
+          entry.generatedCount === entry.eligibleCount &&
+          entry.rejectedCount === entry.eligibleCount &&
+          entry.rejectionBeforeProviderRate === 1 &&
+          entry.p50Ms >= 0 &&
+          entry.p95Ms >= entry.p50Ms,
+      ),
+    "completed finance run has invalid counterfactual evidence",
   );
   invariant(
     run.rows.reduce(
@@ -296,18 +361,29 @@ export async function validateFinanceArtifactDirectory(
   await validateArtifactLayout(directory);
   const runPath = join(directory, "run.json");
   const tracesPath = join(directory, "traces.jsonl");
+  const counterfactualsPath = join(directory, "counterfactuals.jsonl");
   await Promise.all([
     assertRegularFile(runPath),
     assertRegularFile(tracesPath),
+    assertRegularFile(counterfactualsPath),
   ]);
-  const [dataset, runBytes, traceBytes, runSchema, traceSchema] =
-    await Promise.all([
-      loadFinanceDataset(directory),
-      boundedRead(runPath, 10_000_000),
-      boundedRead(tracesPath, maximumArtifactBytes),
-      readSchema("run.schema.jsonc"),
-      readSchema("trace.schema.jsonc"),
-    ]);
+  const [
+    dataset,
+    runBytes,
+    traceBytes,
+    counterfactualBytes,
+    runSchema,
+    traceSchema,
+    counterfactualSchema,
+  ] = await Promise.all([
+    loadFinanceDataset(directory),
+    boundedRead(runPath, 10_000_000),
+    boundedRead(tracesPath, maximumArtifactBytes),
+    boundedRead(counterfactualsPath, maximumArtifactBytes),
+    readSchema("run.schema.jsonc"),
+    readSchema("trace.schema.jsonc"),
+    readSchema("counterfactual-trace.schema.jsonc"),
+  ]);
   const run = JSON.parse(
     new TextDecoder().decode(runBytes),
   ) as FinanceRunDocument;
@@ -354,6 +430,15 @@ export async function validateFinanceArtifactDirectory(
     return trace as Record<string, unknown>;
   });
   validateTraceCoverage(run, traces, dataset.cases);
+  validateCounterfactualCoverage(
+    run,
+    parseCounterfactualTraces(
+      counterfactualBytes,
+      counterfactualSchema,
+      run.counterfactuals,
+    ),
+    dataset.cases,
+  );
   validateTracePricing(run, traces);
   const recomputed = recomputeFinanceBenchmarkEvidence(
     traces,
@@ -379,6 +464,7 @@ export async function validateFinanceArtifactDirectory(
 async function validateArtifactLayout(directory: string): Promise<void> {
   const expected = new Map<string, "file" | "directory">([
     ["cases.jsonl", "file"],
+    ["counterfactuals.jsonl", "file"],
     ["dataset-manifest.json", "file"],
     ["assets", "directory"],
     ["evidence", "directory"],
@@ -790,6 +876,201 @@ function validateTraceCoverage(
     actual.size === expected.size,
     "finance traces do not cover every case and architecture",
   );
+}
+
+function parseCounterfactualTraces(
+  bytes: Uint8Array,
+  schema: object,
+  summary: FinanceRunDocument["counterfactuals"],
+): readonly FinanceCounterfactualTrace[] {
+  invariant(
+    summary.traceSetHash === sha256(bytes),
+    "finance counterfactual traceSetHash does not match counterfactuals.jsonl",
+  );
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const lines = text.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  invariant(
+    lines.length === summary.traceCount,
+    "finance counterfactual traceCount is incorrect",
+  );
+  return lines.map((line, index) => {
+    invariant(
+      line.length > 0,
+      `finance counterfactuals have a blank line at ${index + 1}`,
+    );
+    const trace = JSON.parse(line) as FinanceCounterfactualTrace;
+    validateAgainstSchema(
+      schema,
+      trace,
+      `finance counterfactual trace ${index + 1}`,
+    );
+    invariant(
+      line === canonicalJson(trace),
+      `finance counterfactual trace ${index + 1} is not canonical JSON`,
+    );
+    return trace;
+  });
+}
+
+function validateCounterfactualCoverage(
+  run: FinanceRunDocument,
+  traces: readonly FinanceCounterfactualTrace[],
+  cases: readonly FinanceBenchmarkCase[],
+): void {
+  const eligible = cases
+    .filter((entry) => entry.split === "test" && !entry.lookaheadProbe)
+    .sort((left, right) =>
+      compareCodeUnits(
+        `${left.track}\u0000${left.id}`,
+        `${right.track}\u0000${right.id}`,
+      ),
+    );
+  const casesById = new Map(eligible.map((entry) => [entry.id, entry]));
+  const expected = new Set(
+    eligible.flatMap((entry) => [
+      `${entry.id}\u0000temporal_scramble`,
+      `${entry.id}\u0000wrong_instrument`,
+    ]),
+  );
+  const actual = new Set<string>();
+  for (const trace of traces) {
+    const source = casesById.get(trace.caseId);
+    invariant(
+      source !== undefined,
+      "finance counterfactual references an ineligible case",
+    );
+    const key = `${trace.caseId}\u0000${trace.kind}`;
+    invariant(
+      expected.has(key) && !actual.has(key),
+      `unexpected or duplicate finance counterfactual ${key}`,
+    );
+    actual.add(key);
+    const counterfactual = structuredClone(source);
+    let expectedDonorCaseId: string | null = null;
+    if (trace.kind === "wrong_instrument") {
+      const sameTrack = eligible.filter(
+        (candidate) => candidate.track === source.track,
+      );
+      const position = sameTrack.findIndex(
+        (candidate) => candidate.id === source.id,
+      );
+      const donor = Array.from(
+        { length: sameTrack.length - 1 },
+        (_, offset) => sameTrack[(position + offset + 1) % sameTrack.length],
+      ).find(
+        (candidate) =>
+          candidate !== undefined &&
+          candidate.trustedProjection.instrumentRef !==
+            source.trustedProjection.instrumentRef,
+      );
+      invariant(
+        donor !== undefined,
+        `finance counterfactual case ${source.id} has no instrument donor`,
+      );
+      expectedDonorCaseId = donor.id;
+      (
+        counterfactual.trustedProjection as { instrumentRef: string }
+      ).instrumentRef = donor.trustedProjection.instrumentRef;
+    } else {
+      const signals = counterfactual.trustedProjection.signals as Array<{
+        readonly id: string;
+        asOf: string;
+      }>;
+      const byId = signals
+        .map((signal, index) => ({ id: signal.id, index, asOf: signal.asOf }))
+        .sort((left, right) => compareCodeUnits(left.id, right.id));
+      invariant(
+        byId.length >= 2 && new Set(byId.map((entry) => entry.asOf)).size >= 2,
+        `finance counterfactual case ${source.id} lacks distinct signal times`,
+      );
+      for (let index = 0; index < byId.length; index += 1) {
+        const current = byId[index];
+        const next = byId[(index + 1) % byId.length];
+        invariant(
+          current !== undefined && next !== undefined,
+          "finance temporal counterfactual rotation failed",
+        );
+        const signal = signals[current.index];
+        invariant(
+          signal !== undefined,
+          "finance temporal counterfactual signal is missing",
+        );
+        signal.asOf = next.asOf;
+      }
+    }
+    let rejection: unknown;
+    try {
+      bindFinanceAdvisoryEvidenceWithText(
+        counterfactual.trustedProjection,
+        counterfactual.untrustedEvidence.visual,
+        counterfactual.untrustedEvidence.text,
+        Date.parse(counterfactual.evaluationNow),
+      );
+    } catch (error) {
+      rejection = error;
+    }
+    invariant(
+      rejection instanceof FinanceAdvisoryBoundaryError &&
+        rejection.code === "EVIDENCE_BINDING",
+      `finance counterfactual ${key} is not rejected at the evidence boundary`,
+    );
+    invariant(
+      trace.probeId ===
+        `${run.runId}:counterfactual:${source.id}:${trace.kind}` &&
+        trace.track === source.track &&
+        trace.donorCaseId === expectedDonorCaseId &&
+        trace.sourceStateDigest === financeCaseStateDigest(source) &&
+        trace.counterfactualStateDigest ===
+          financeCaseStateDigest(counterfactual),
+      `finance counterfactual ${key} drifted from its retained case`,
+    );
+  }
+  invariant(
+    actual.size === expected.size,
+    "finance counterfactuals do not cover every eligible case",
+  );
+  const expectedSummary = {
+    status: "COMPLETED",
+    eligibleCaseCount: eligible.length,
+    traceCount: traces.length,
+    traceSetHash: run.counterfactuals.traceSetHash,
+    providerInvocationCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costNanoUsd: "0",
+    unsafeExecutionAttemptCount: 0,
+    kinds: (["temporal_scramble", "wrong_instrument"] as const).map((kind) => {
+      const selected = traces.filter((trace) => trace.kind === kind);
+      const durations = selected
+        .map((trace) => trace.durationMs)
+        .sort((left, right) => left - right);
+      return {
+        kind,
+        eligibleCount: eligible.length,
+        generatedCount: selected.length,
+        rejectedCount: selected.length,
+        rejectionBeforeProviderRate: 1,
+        p50Ms: nearestRank(durations, 0.5),
+        p95Ms: nearestRank(durations, 0.95),
+      };
+    }),
+  };
+  invariant(
+    stableJson(run.counterfactuals) === stableJson(expectedSummary),
+    "finance counterfactual summary does not match retained traces",
+  );
+}
+
+function nearestRank(values: readonly number[], probability: number): number {
+  invariant(values.length > 0, "finance counterfactual timings are empty");
+  const value = values[Math.max(0, Math.ceil(probability * values.length) - 1)];
+  invariant(value !== undefined, "finance counterfactual timing is missing");
+  return value;
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function validateRuntimeProvenance(runtime: FinanceRuntimeProvenance): void {

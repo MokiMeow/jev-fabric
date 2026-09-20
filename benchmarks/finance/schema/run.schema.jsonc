@@ -14,6 +14,7 @@
           "calibrationSampleCount": { "const": 0 },
           "traceCount": { "const": 0 },
           "traceSetHash": { "type": "null" },
+          "counterfactuals": { "$ref": "#/$defs/counterfactualsNotRun" },
           "dataset": { "$ref": "#/$defs/notRunDataset" },
           "runtime": { "$ref": "#/$defs/notRunRuntime" },
           "observeGate": { "$ref": "#/$defs/observeGateNotRun" },
@@ -29,6 +30,7 @@
           "calibrationSampleCount": { "type": "integer", "minimum": 1 },
           "traceCount": { "type": "integer", "minimum": 24 },
           "traceSetHash": { "$ref": "#/$defs/hash" },
+          "counterfactuals": { "$ref": "#/$defs/counterfactualsCompleted" },
           "observeGate": { "$ref": "#/$defs/observeGateCompleted" }
         }
       }
@@ -42,6 +44,7 @@
     "calibrationSampleCount",
     "traceCount",
     "traceSetHash",
+    "counterfactuals",
     "dataset",
     "runtime",
     "observeGate",
@@ -58,6 +61,12 @@
       "anyOf": [
         { "type": "null" },
         { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      ]
+    },
+    "counterfactuals": {
+      "oneOf": [
+        { "$ref": "#/$defs/counterfactualsNotRun" },
+        { "$ref": "#/$defs/counterfactualsCompleted" }
       ]
     },
     "dataset": {
@@ -398,6 +407,113 @@
     }
   },
   "$defs": {
+    "counterfactualsNotRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "eligibleCaseCount",
+        "traceCount",
+        "traceSetHash",
+        "providerInvocationCount",
+        "inputTokens",
+        "outputTokens",
+        "costNanoUsd",
+        "unsafeExecutionAttemptCount",
+        "kinds"
+      ],
+      "properties": {
+        "status": { "const": "NOT_RUN" },
+        "eligibleCaseCount": { "const": 0 },
+        "traceCount": { "const": 0 },
+        "traceSetHash": { "type": "null" },
+        "providerInvocationCount": { "const": 0 },
+        "inputTokens": { "const": 0 },
+        "outputTokens": { "const": 0 },
+        "costNanoUsd": { "const": "0" },
+        "unsafeExecutionAttemptCount": { "const": 0 },
+        "kinds": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "counterfactualsCompleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "eligibleCaseCount",
+        "traceCount",
+        "traceSetHash",
+        "providerInvocationCount",
+        "inputTokens",
+        "outputTokens",
+        "costNanoUsd",
+        "unsafeExecutionAttemptCount",
+        "kinds"
+      ],
+      "properties": {
+        "status": { "const": "COMPLETED" },
+        "eligibleCaseCount": { "type": "integer", "minimum": 1 },
+        "traceCount": { "type": "integer", "minimum": 2 },
+        "traceSetHash": { "$ref": "#/$defs/hash" },
+        "providerInvocationCount": { "const": 0 },
+        "inputTokens": { "const": 0 },
+        "outputTokens": { "const": 0 },
+        "costNanoUsd": { "const": "0" },
+        "unsafeExecutionAttemptCount": { "const": 0 },
+        "kinds": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            { "$ref": "#/$defs/counterfactualTemporalSummary" },
+            { "$ref": "#/$defs/counterfactualInstrumentSummary" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "counterfactualTemporalSummary": {
+      "allOf": [
+        { "$ref": "#/$defs/counterfactualKindSummary" },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "temporal_scramble" } }
+        }
+      ]
+    },
+    "counterfactualInstrumentSummary": {
+      "allOf": [
+        { "$ref": "#/$defs/counterfactualKindSummary" },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "wrong_instrument" } }
+        }
+      ]
+    },
+    "counterfactualKindSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "eligibleCount",
+        "generatedCount",
+        "rejectedCount",
+        "rejectionBeforeProviderRate",
+        "p50Ms",
+        "p95Ms"
+      ],
+      "properties": {
+        "kind": {
+          "enum": ["temporal_scramble", "wrong_instrument"]
+        },
+        "eligibleCount": { "type": "integer", "minimum": 1 },
+        "generatedCount": { "type": "integer", "minimum": 1 },
+        "rejectedCount": { "type": "integer", "minimum": 1 },
+        "rejectionBeforeProviderRate": { "const": 1 },
+        "p50Ms": { "type": "number", "minimum": 0 },
+        "p95Ms": { "type": "number", "minimum": 0 }
+      }
+    },
     "notRunDataset": {
       "type": "object",
       "properties": {

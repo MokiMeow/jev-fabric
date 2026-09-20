@@ -63,7 +63,7 @@ test("accepts the canonical offline three-track fixture", async () => {
     datasetDirectory: fixture.dataset,
     cacheDirectory: fixture.cache,
   });
-  assert.equal(result.caseCount, 9);
+  assert.equal(result.caseCount, 12);
   assert.equal(result.sourceCount, 3);
   assert.match(result.rebuildDigest, /^sha256:[a-f0-9]{64}$/u);
   assert.equal(result.schemaVersion, "finance.retained-dataset-bundle.v1");
@@ -136,6 +136,60 @@ test("rejects trusted instrument and signal-time substitutions after outer rehas
 
     await assert.rejects(verify(fixture), /projection binding hash mismatch/u);
   }
+});
+
+test("rejects retained test tracks without counterfactual donor coverage", async () => {
+  const instrumentFixture = await createFixture();
+  const instrumentCasesPath = join(instrumentFixture.dataset, "cases.jsonl");
+  const instrumentCases = await readJsonLines(instrumentCasesPath);
+  const primary = instrumentCases.find(
+    (entry) =>
+      entry.track === "market_surveillance" &&
+      entry.split === "test" &&
+      entry.lookaheadProbe === false &&
+      entry.id.endsWith(".primary"),
+  );
+  const secondary = instrumentCases.find(
+    (entry) =>
+      entry.track === "market_surveillance" &&
+      entry.split === "test" &&
+      entry.lookaheadProbe === false &&
+      entry.id.endsWith(".secondary"),
+  );
+  if (primary === undefined || secondary === undefined)
+    throw new TypeError("fixture instrument donors are missing");
+  secondary.trustedProjection.instrumentRef =
+    primary.trustedProjection.instrumentRef;
+  resealBenchmarkCase(secondary);
+  await writeCanonicalJsonLines(instrumentCasesPath, instrumentCases);
+  await refreshManifest(instrumentFixture.dataset);
+  await assert.rejects(
+    () => verify(instrumentFixture),
+    /needs two regular instrument identities/u,
+  );
+
+  const temporalFixture = await createFixture();
+  const temporalCasesPath = join(temporalFixture.dataset, "cases.jsonl");
+  const temporalCases = await readJsonLines(temporalCasesPath);
+  const temporalCase = temporalCases.find(
+    (entry) =>
+      entry.track === "market_surveillance" &&
+      entry.split === "test" &&
+      entry.lookaheadProbe === false,
+  );
+  if (temporalCase === undefined)
+    throw new TypeError("fixture temporal counterfactual case is missing");
+  const [firstSignal, secondSignal] = temporalCase.trustedProjection.signals;
+  if (firstSignal === undefined || secondSignal === undefined)
+    throw new TypeError("fixture temporal signals are missing");
+  secondSignal.asOf = firstSignal.asOf;
+  resealBenchmarkCase(temporalCase);
+  await writeCanonicalJsonLines(temporalCasesPath, temporalCases);
+  await refreshManifest(temporalFixture.dataset);
+  await assert.rejects(
+    () => verify(temporalFixture),
+    /needs distinct signal times/u,
+  );
 });
 
 test("accepts multiple immutable sources for one track", async () => {
@@ -347,9 +401,15 @@ test("publishes the exact verified builder evidence snapshots", async () => {
     },
   };
   const runArtifacts = {
-    run: { runtime, traceSetHash: sha256("") },
+    run: {
+      runtime,
+      traceSetHash: sha256(""),
+      counterfactuals: { traceSetHash: sha256("") },
+    },
     traces: [],
     tracesJsonl: "",
+    counterfactuals: [],
+    counterfactualsJsonl: "",
     dataset,
     runtimeEvidence: [],
   };
@@ -1355,7 +1415,24 @@ function createCases(
       ),
     );
     records.push(
-      caseRecord(track, "test", false, textSourceHash, filingExcerptByteStart),
+      caseRecord(
+        track,
+        "test",
+        false,
+        textSourceHash,
+        filingExcerptByteStart,
+        "primary",
+      ),
+    );
+    records.push(
+      caseRecord(
+        track,
+        "test",
+        false,
+        textSourceHash,
+        filingExcerptByteStart,
+        "secondary",
+      ),
     );
     records.push(
       caseRecord(track, "test", true, textSourceHash, filingExcerptByteStart),
@@ -1372,15 +1449,16 @@ function caseRecord(
   probe: boolean,
   textSourceHash: string,
   filingExcerptByteStart: number,
+  identity: "primary" | "secondary" = "primary",
 ): Record<string, unknown> {
-  const id = `${track}.${split}.${probe ? "probe" : "normal"}`;
+  const id = `${track}.${split}.${probe ? "probe" : `normal.${identity}`}`;
   const date = split === "calibration" ? "2025-01-01" : "2025-03-15";
   const cutoffAt = `${date}T12:00:00.000Z`;
   const evidenceHash = sha256(`${id}:evidence`);
   const normalAsOf = `${date}T11:59:00.000Z`;
   const lateAsOf = `${date}T12:01:00.000Z`;
   const trustedProjection: Record<string, unknown> = {
-    instrumentRef: "ref:fixture.instrument",
+    instrumentRef: `ref:fixture.instrument.${identity}`,
     assetClass: "equity",
     venue: "fixture.venue",
     sourceId: "fixture.source",
@@ -1400,6 +1478,13 @@ function caseRecord(
         definitionHash: hash("d"),
         evidenceHash,
         asOf: probe ? lateAsOf : normalAsOf,
+      },
+      {
+        id: "fixture.volume",
+        bucket: "normal",
+        definitionHash: hash("c"),
+        evidenceHash,
+        asOf: `${date}T11:58:00.000Z`,
       },
     ],
   };
@@ -1616,7 +1701,7 @@ function createProvenance(
       ],
       lookahead: probe
         ? {
-            probeOf: `${track}.${split}.normal`,
+            probeOf: `${track}.${split}.normal.primary`,
             modality,
             evidenceHash: signal.evidenceHash,
             signalEvidenceHash: signal.evidenceHash,

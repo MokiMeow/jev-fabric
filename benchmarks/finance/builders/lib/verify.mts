@@ -991,6 +991,44 @@ function verifyCasesAndProvenance(
       throw new TypeError(
         `missing modality-bound lookahead probe for ${track}`,
       );
+    const regularTestCases = caseRecords.filter(
+      (benchmarkCase) =>
+        benchmarkCase.track === track &&
+        benchmarkCase.split === "test" &&
+        benchmarkCase.lookaheadProbe === false,
+    );
+    const regularInstrumentRefs = new Set(
+      regularTestCases.map((benchmarkCase) =>
+        requiredString(
+          requiredRecord(
+            benchmarkCase.trustedProjection,
+            "case.trustedProjection",
+          ).instrumentRef,
+          "trustedProjection.instrumentRef",
+        ),
+      ),
+    );
+    if (regularTestCases.length < 2 || regularInstrumentRefs.size < 2)
+      throw new TypeError(
+        `finance test track ${track} needs two regular instrument identities`,
+      );
+    for (const benchmarkCase of regularTestCases) {
+      const trustedProjection = requiredRecord(
+        benchmarkCase.trustedProjection,
+        "case.trustedProjection",
+      );
+      const signals = requiredArray(
+        trustedProjection.signals,
+        "trustedProjection.signals",
+      ).map((signal, index) => requiredRecord(signal, `signal ${index}`));
+      const signalTimes = new Set(
+        signals.map((signal) => requiredString(signal.asOf, "signal.asOf")),
+      );
+      if (signals.length < 2 || signalTimes.size < 2)
+        throw new TypeError(
+          `finance test track ${track} needs distinct signal times`,
+        );
+    }
   }
 
   if (visualAssetPaths.size !== assetBytes.size)

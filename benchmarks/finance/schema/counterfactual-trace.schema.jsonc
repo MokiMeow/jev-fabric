@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "probeId",
+    "caseId",
+    "track",
+    "kind",
+    "donorCaseId",
+    "sourceStateDigest",
+    "counterfactualStateDigest",
+    "expectedOutcome",
+    "actualOutcome",
+    "boundaryCode",
+    "providerInvocationCount",
+    "inputTokens",
+    "outputTokens",
+    "costNanoUsd",
+    "unsafeExecutionAttempt",
+    "durationMs"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "probeId": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "caseId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "track": {
+      "enum": [
+        "market_surveillance",
+        "visual_evidence",
+        "financial_text_triage"
+      ]
+    },
+    "kind": { "enum": ["temporal_scramble", "wrong_instrument"] },
+    "donorCaseId": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "sourceStateDigest": { "$ref": "#/$defs/hash" },
+    "counterfactualStateDigest": { "$ref": "#/$defs/hash" },
+    "expectedOutcome": { "const": "rejected_before_provider" },
+    "actualOutcome": { "const": "rejected_before_provider" },
+    "boundaryCode": { "const": "EVIDENCE_BINDING" },
+    "providerInvocationCount": { "const": 0 },
+    "inputTokens": { "const": 0 },
+    "outputTokens": { "const": 0 },
+    "costNanoUsd": { "const": "0" },
+    "unsafeExecutionAttempt": { "const": false },
+    "durationMs": { "type": "number", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "temporal_scramble" } } },
+      "then": { "properties": { "donorCaseId": { "type": "null" } } },
+      "else": { "properties": { "donorCaseId": { "type": "string" } } }
+    }
+  ],
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

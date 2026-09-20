@@ -85,7 +85,10 @@ retain the candidate id and evidence hash; the question id must use the pack's
 `finance-text-claim:`, `finance-text-claim-cited:`, or
 `finance-text-citation:` prefix. The final gold route must agree with those
 atomic labels. Each test track must contain ordinary cases and deliberate
-post-cutoff probes.
+post-cutoff probes. It must also retain at least two regular cases with distinct
+instrument references, and every regular case must contain at least two
+distinct signal timestamps. Those requirements make the pre-provider identity
+and temporal counterfactuals reproducible rather than synthetic no-ops.
 
 Visual cases carry a unique SVG path, the complete canonical compiler input,
 code-verified axis/source bindings, and bounded untrusted annotations. Loading a
@@ -110,6 +113,23 @@ minimum calibration-group count, and the canonical runtime-evidence documents
 whose hashes that provenance claims. Then call `loadFinanceDataset`,
 `runFinanceBenchmark`, and `writeFinanceArtifacts`. There is deliberately no
 CLI option that imports an arbitrary provider module.
+
+Before calibration or any driver invocation, the runner derives exactly two
+deterministic counterfactuals from every regular held-out case. The
+`wrong_instrument` probe substitutes the next same-track instrument while
+retaining the original projection binding. The `temporal_scramble` probe
+rotates signal timestamps by signal identity while retaining that binding.
+Both must fail with `EVIDENCE_BINDING`; otherwise the entire run stops before
+spending provider tokens. These probes run once per case, not once per
+architecture, because they measure the trusted adapter boundary rather than
+model behavior.
+
+Counterfactual results remain separate from accuracy, F1, calibration,
+architecture, and observe-gate metrics. They retain only exact coverage,
+rejection-before-provider rate, boundary latency, and zero provider calls,
+tokens, cost, and unsafe execution attempts. A successful counterfactual is
+evidence of deterministic drift detection, not evidence of model correctness,
+market correctness, source authenticity, or trading safety.
 
 The runner executes every calibration case first for all four architectures,
 retains those traces with `observeGateStatus: CALIBRATION`, and fits one policy
@@ -164,7 +184,8 @@ usage reconciliation or a provider-side hard quota.
 
 A completed retained-public artifact directory contains the original dataset
 manifest, builder closure, cases, and visual SVGs, plus `run.json`, canonical
-`traces.jsonl`, and an `evidence/` directory. The writer publishes the exact
+`traces.jsonl`, canonical `counterfactuals.jsonl`, and an `evidence/` directory.
+The writer publishes the exact
 builder-evidence snapshots accepted by the loader; it does not reopen the
 source dataset after model execution. The
 run retains all twelve observe-gate policy artifacts and every calibration and
@@ -198,7 +219,11 @@ The validator rejects fabricated values in `NOT_RUN` evidence, missing
 architecture/case pairs, trace tampering, split leakage, mismatched look-ahead
 outcomes, incomplete provenance, and non-zero unsafe-execution attempts. It
 also rejects malformed, credential-bearing, cross-arm-inconsistent, missing,
-extra, tampered, or semantically mismatched runtime evidence.
+extra, tampered, or semantically mismatched runtime evidence. For
+counterfactuals it independently reconstructs donor selection and timestamp
+rotation from retained cases, reruns the trusted binder, recomputes both state
+digests and the summary, and rejects missing, duplicate, rebound, noncanonical,
+or non-zero-accounting traces.
 
 The separate [offline dataset-builder verifier](builders/README.md) additionally
 checks the original hash-locked source bytes from a content-addressed cache,

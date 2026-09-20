@@ -254,8 +254,34 @@ export interface FinanceRunArtifacts {
   readonly run: Record<string, unknown>;
   readonly traces: readonly Record<string, unknown>[];
   readonly tracesJsonl: string;
+  readonly counterfactuals: readonly FinanceCounterfactualTrace[];
+  readonly counterfactualsJsonl: string;
   readonly dataset: LoadedFinanceDataset;
   readonly runtimeEvidence: readonly FinanceRuntimeEvidence[];
+}
+
+export type FinanceCounterfactualKind =
+  | "temporal_scramble"
+  | "wrong_instrument";
+
+export interface FinanceCounterfactualTrace {
+  readonly schemaVersion: "1";
+  readonly probeId: string;
+  readonly caseId: string;
+  readonly track: FinanceTrack;
+  readonly kind: FinanceCounterfactualKind;
+  readonly donorCaseId: string | null;
+  readonly sourceStateDigest: string;
+  readonly counterfactualStateDigest: string;
+  readonly expectedOutcome: "rejected_before_provider";
+  readonly actualOutcome: "rejected_before_provider";
+  readonly boundaryCode: "EVIDENCE_BINDING";
+  readonly providerInvocationCount: 0;
+  readonly inputTokens: 0;
+  readonly outputTokens: 0;
+  readonly costNanoUsd: "0";
+  readonly unsafeExecutionAttempt: false;
+  readonly durationMs: number;
 }
 
 export interface FinanceObserveGateConfiguration {
@@ -376,6 +402,14 @@ export async function runFinanceBenchmark(options: {
   );
   invariant(testCases.length > 0, "finance benchmark has no test cases");
   const now = options.now ?? performance.now.bind(performance);
+  const counterfactuals = runFinanceCounterfactualPreflight(
+    options.runId,
+    testCases,
+    now,
+  );
+  const counterfactualsJsonl = `${counterfactuals
+    .map(canonicalCompactJson)
+    .join("\n")}\n`;
   const calibrationTraces = await executeTasks(
     options.runId,
     calibrationCases,
@@ -429,6 +463,10 @@ export async function runFinanceBenchmark(options: {
     calibrationSampleCount: calibrationCases.length,
     traceCount: ordered.length,
     traceSetHash: sha256(tracesJsonl),
+    counterfactuals: summarizeFinanceCounterfactuals(
+      counterfactuals,
+      counterfactualsJsonl,
+    ),
     dataset: {
       status: "RETAINED",
       datasetId: options.dataset.manifest.datasetId,
@@ -463,9 +501,196 @@ export async function runFinanceBenchmark(options: {
     run,
     traces: ordered,
     tracesJsonl,
+    counterfactuals,
+    counterfactualsJsonl,
     dataset: options.dataset,
     runtimeEvidence,
   };
+}
+
+function runFinanceCounterfactualPreflight(
+  runId: string,
+  cases: readonly FinanceBenchmarkCase[],
+  now: () => number,
+): readonly FinanceCounterfactualTrace[] {
+  const eligible = cases
+    .filter((entry) => !entry.lookaheadProbe)
+    .sort((left, right) =>
+      codeUnitCompare(
+        `${left.track}\u0000${left.id}`,
+        `${right.track}\u0000${right.id}`,
+      ),
+    );
+  invariant(
+    eligible.length > 0,
+    "finance counterfactual preflight has no eligible cases",
+  );
+  const traces: FinanceCounterfactualTrace[] = [];
+  for (const benchmarkCase of eligible) {
+    const sameTrack = eligible.filter(
+      (candidate) => candidate.track === benchmarkCase.track,
+    );
+    const position = sameTrack.findIndex(
+      (candidate) => candidate.id === benchmarkCase.id,
+    );
+    const donor = Array.from(
+      { length: sameTrack.length - 1 },
+      (_, offset) => sameTrack[(position + offset + 1) % sameTrack.length],
+    ).find(
+      (candidate) =>
+        candidate !== undefined &&
+        candidate.trustedProjection.instrumentRef !==
+          benchmarkCase.trustedProjection.instrumentRef,
+    );
+    invariant(
+      donor !== undefined,
+      `finance counterfactual case ${benchmarkCase.id} has no same-track instrument donor`,
+    );
+    const wrongInstrument = structuredClone(benchmarkCase);
+    (
+      wrongInstrument.trustedProjection as { instrumentRef: string }
+    ).instrumentRef = donor.trustedProjection.instrumentRef;
+    traces.push(
+      executeFinanceCounterfactual(
+        runId,
+        benchmarkCase,
+        wrongInstrument,
+        "wrong_instrument",
+        donor.id,
+        now,
+      ),
+    );
+
+    const temporalScramble = structuredClone(benchmarkCase);
+    const signals = temporalScramble.trustedProjection.signals as Array<{
+      readonly id: string;
+      asOf: string;
+    }>;
+    const byId = signals
+      .map((signal, index) => ({ id: signal.id, index, asOf: signal.asOf }))
+      .sort((left, right) => codeUnitCompare(left.id, right.id));
+    invariant(
+      byId.length >= 2 && new Set(byId.map((entry) => entry.asOf)).size >= 2,
+      `finance counterfactual case ${benchmarkCase.id} lacks distinct signal times`,
+    );
+    for (let index = 0; index < byId.length; index += 1) {
+      const current = byId[index];
+      const next = byId[(index + 1) % byId.length];
+      if (current === undefined || next === undefined)
+        throw new TypeError("finance temporal counterfactual rotation failed");
+      const signal = signals[current.index];
+      if (signal === undefined)
+        throw new TypeError(
+          "finance temporal counterfactual signal is missing",
+        );
+      signal.asOf = next.asOf;
+    }
+    traces.push(
+      executeFinanceCounterfactual(
+        runId,
+        benchmarkCase,
+        temporalScramble,
+        "temporal_scramble",
+        null,
+        now,
+      ),
+    );
+  }
+  return traces.sort((left, right) =>
+    codeUnitCompare(left.probeId, right.probeId),
+  );
+}
+
+function executeFinanceCounterfactual(
+  runId: string,
+  source: FinanceBenchmarkCase,
+  counterfactual: FinanceBenchmarkCase,
+  kind: FinanceCounterfactualKind,
+  donorCaseId: string | null,
+  now: () => number,
+): FinanceCounterfactualTrace {
+  const startedAt = now();
+  let rejection: unknown;
+  try {
+    bindFinanceAdvisoryEvidenceWithText(
+      counterfactual.trustedProjection,
+      counterfactual.untrustedEvidence.visual,
+      counterfactual.untrustedEvidence.text,
+      Date.parse(counterfactual.evaluationNow),
+    );
+  } catch (error) {
+    rejection = error;
+  }
+  const durationMs = now() - startedAt;
+  invariant(
+    rejection instanceof FinanceAdvisoryBoundaryError &&
+      rejection.code === "EVIDENCE_BINDING",
+    `finance ${kind} counterfactual ${source.id} was not rejected before provider use`,
+  );
+  invariant(
+    Number.isFinite(durationMs) && durationMs >= 0,
+    "finance counterfactual clock must be finite and monotonic",
+  );
+  return {
+    schemaVersion: "1",
+    probeId: `${runId}:counterfactual:${source.id}:${kind}`,
+    caseId: source.id,
+    track: source.track,
+    kind,
+    donorCaseId,
+    sourceStateDigest: financeCaseStateDigest(source),
+    counterfactualStateDigest: financeCaseStateDigest(counterfactual),
+    expectedOutcome: "rejected_before_provider",
+    actualOutcome: "rejected_before_provider",
+    boundaryCode: "EVIDENCE_BINDING",
+    providerInvocationCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costNanoUsd: "0",
+    unsafeExecutionAttempt: false,
+    durationMs,
+  };
+}
+
+function summarizeFinanceCounterfactuals(
+  traces: readonly FinanceCounterfactualTrace[],
+  jsonl: string,
+): Record<string, unknown> {
+  const eligibleCaseCount = new Set(traces.map((trace) => trace.caseId)).size;
+  return {
+    status: "COMPLETED",
+    eligibleCaseCount,
+    traceCount: traces.length,
+    traceSetHash: sha256(jsonl),
+    providerInvocationCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costNanoUsd: "0",
+    unsafeExecutionAttemptCount: 0,
+    kinds: (["temporal_scramble", "wrong_instrument"] as const).map((kind) => {
+      const selected = traces.filter((trace) => trace.kind === kind);
+      const durations = selected
+        .map((trace) => trace.durationMs)
+        .sort((left, right) => left - right);
+      return {
+        kind,
+        eligibleCount: eligibleCaseCount,
+        generatedCount: selected.length,
+        rejectedCount: selected.length,
+        rejectionBeforeProviderRate: 1,
+        p50Ms: nearestRank(durations, 0.5),
+        p95Ms: nearestRank(durations, 0.95),
+      };
+    }),
+  };
+}
+
+function nearestRank(values: readonly number[], probability: number): number {
+  invariant(values.length > 0, "finance counterfactual timings are empty");
+  const index = Math.max(0, Math.ceil(probability * values.length) - 1);
+  const value = values[index];
+  invariant(value !== undefined, "finance counterfactual timing is missing");
+  return value;
 }
 
 type RetainedTrace = Record<string, unknown> & {
@@ -976,6 +1201,7 @@ export async function writeFinanceArtifacts(
   const manifest = structuredClone(artifacts.dataset.manifest);
   const casesBytes = Uint8Array.from(artifacts.dataset.casesBytes);
   const tracesJsonl = String(artifacts.tracesJsonl);
+  const counterfactualsJsonl = String(artifacts.counterfactualsJsonl);
   const visualArtifacts = validateVisualArtifactsForWrite(artifacts.dataset);
   const builderEvidenceFiles = validateBuilderEvidenceForWrite(
     artifacts.dataset,
@@ -991,6 +1217,13 @@ export async function writeFinanceArtifacts(
   invariant(
     run.traceSetHash === sha256(tracesJsonl),
     "finance traces bytes do not match the retained run",
+  );
+  const counterfactualSummary = run.counterfactuals as
+    | { readonly traceSetHash?: unknown }
+    | undefined;
+  invariant(
+    counterfactualSummary?.traceSetHash === sha256(counterfactualsJsonl),
+    "finance counterfactual bytes do not match the retained run",
   );
   const runJson = stableJson(run);
   const manifestJson = stableJson(manifest);
@@ -1036,6 +1269,7 @@ export async function writeFinanceArtifacts(
     writePinnedFile(staging, "dataset-manifest.json", manifestJson),
     writePinnedFile(staging, "cases.jsonl", casesBytes),
     writePinnedFile(staging, "traces.jsonl", tracesJsonl),
+    writePinnedFile(staging, "counterfactuals.jsonl", counterfactualsJsonl),
     ...visualArtifacts.map((artifact) =>
       writePinnedFile(staging, artifact.path, artifact.bytes),
     ),
@@ -1840,6 +2074,22 @@ function validateDatasetSemantics(
       test.some((entry) => entry.lookaheadProbe) &&
         test.some((entry) => !entry.lookaheadProbe),
       `finance test track ${track} needs regular and lookahead cases`,
+    );
+    const regular = test.filter((entry) => !entry.lookaheadProbe);
+    invariant(
+      regular.length >= 2 &&
+        new Set(regular.map((entry) => entry.trustedProjection.instrumentRef))
+          .size >= 2,
+      `finance test track ${track} needs two regular instrument identities`,
+    );
+    invariant(
+      regular.every(
+        (entry) =>
+          entry.trustedProjection.signals.length >= 2 &&
+          new Set(entry.trustedProjection.signals.map((signal) => signal.asOf))
+            .size >= 2,
+      ),
+      `finance test track ${track} needs distinct signal times`,
     );
   }
 }

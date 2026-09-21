@@ -3,9 +3,9 @@ import {
   binaryBrier,
   nll,
   noulReliability,
+  type PairedCategoricalRobustness,
   pairedCategoricalRobustness,
   quantile,
-  type PairedCategoricalRobustness,
 } from "../../../packages/evals/src/index.js";
 import { fintechExceptionQuestionSetHash } from "../../../packs/fintech-exception/pack.js";
 

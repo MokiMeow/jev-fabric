@@ -486,7 +486,9 @@ async function evaluateComponent(
     throw new Error(`finance provider decision ${result.termination}`);
   if (providerFailure instanceof FinanceMeasurementError) throw providerFailure;
   if (providerFailure !== undefined)
-    throw new TypeError("finance provider invocation failed");
+    throw new TypeError("finance provider invocation failed", {
+      cause: providerFailure,
+    });
   if (measurement === undefined)
     throw new TypeError("provider-backed finance decision unavailable");
   validateRuntimeResult(result, measurement.response, arm);
@@ -808,11 +810,12 @@ function architectureProvenance(
   const architecture = (
     components: ArchitectureRuntime["components"],
     combinerId: string,
+    combinerVersion = "1",
   ): ArchitectureRuntime =>
     Object.freeze({
       components: Object.freeze([...components]),
       combinerId,
-      combinerVersion: "1",
+      combinerVersion,
     });
   return Object.freeze({
     deterministic_only: architecture(
@@ -820,7 +823,11 @@ function architectureProvenance(
       "finance-deterministic-signal-lattice",
     ),
     host_model_only: architecture([hostComponent], "single-provider"),
-    jev_advisory: architecture([jevComponent], "single-provider"),
+    jev_advisory: architecture(
+      [jevComponent],
+      financeSurveillancePack.manifest.id,
+      financeSurveillancePack.manifest.version,
+    ),
     host_plus_jev: architecture(
       [hostComponent, jevComponent],
       "restrictive-route-lattice",

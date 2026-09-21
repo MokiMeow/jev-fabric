@@ -37,7 +37,7 @@ function finiteProbability(value: number, name = "probability"): void {
 function validateDistribution(
   probabilities: Readonly<Record<string, number>>,
 ): void {
-  const values = Object.values(probabilities);
+  const values = orderedEntries(probabilities).map(([, value]) => value);
   if (values.length === 0)
     throw new TypeError("distribution must not be empty");
   for (const value of values) finiteProbability(value);
@@ -70,12 +70,20 @@ export function categoricalBrier(
       validateDistribution(row.probabilities);
       if (!(row.gold in row.probabilities))
         throw new TypeError("gold must be a distribution label");
-      return Object.entries(row.probabilities).reduce(
+      return orderedEntries(row.probabilities).reduce(
         (sum, [label, probability]) =>
           sum + (probability - Number(label === row.gold)) ** 2,
         0,
       );
     }),
+  );
+}
+
+function orderedEntries(
+  probabilities: Readonly<Record<string, number>>,
+): readonly (readonly [string, number])[] {
+  return Object.entries(probabilities).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
   );
 }
 export function nll(

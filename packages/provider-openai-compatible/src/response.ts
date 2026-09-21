@@ -24,14 +24,53 @@ export function parseCompatibleAnswers(
   } catch {
     throw new TypeError("compatible provider returned invalid JSON");
   }
-  const envelope = answerEnvelope.parse(parsed);
-  return validateDecisionResponse(request, {
-    requestId: request.id,
-    providerId,
-    model,
-    probabilitySemantics: "self_reported",
-    answers: envelope.answers,
-  });
+  const normalized = normalizeIndexedAnswers(request, parsed);
+  const envelope = answerEnvelope.safeParse(normalized);
+  if (!envelope.success)
+    throw new TypeError(
+      "compatible provider returned an invalid answer envelope",
+    );
+  try {
+    return validateDecisionResponse(request, {
+      requestId: request.id,
+      providerId,
+      model,
+      probabilitySemantics: "self_reported",
+      answers: envelope.data.answers,
+    });
+  } catch {
+    throw new TypeError("compatible provider answer violated the request");
+  }
+}
+
+function normalizeIndexedAnswers(
+  request: DecisionRequest,
+  parsed: unknown,
+): unknown {
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    Object.keys(parsed).length !== 1 ||
+    !("answers" in parsed)
+  )
+    return parsed;
+  const answers = (parsed as { readonly answers?: unknown }).answers;
+  if (!answers || typeof answers !== "object" || Array.isArray(answers))
+    return parsed;
+  const expected = request.questions.map((question) => question.id);
+  const actual = Object.keys(answers);
+  if (
+    actual.length !== expected.length ||
+    actual.some((questionId) => !expected.includes(questionId))
+  )
+    return parsed;
+  return {
+    answers: expected.map(
+      (questionId) =>
+        (answers as Readonly<Record<string, unknown>>)[questionId],
+    ),
+  };
 }
 
 export interface CompatibleResponseEnvelope {
@@ -57,8 +96,10 @@ export function extractCompatibleResponse(
       choices: z
         .array(
           z
-            .object({ message: z.object({ content: z.string() }).strict() })
-            .strict(),
+            .object({
+              message: z.object({ content: z.string() }).passthrough(),
+            })
+            .passthrough(),
         )
         .length(1),
       usage: z
@@ -78,16 +119,18 @@ export function extractCompatibleResponse(
         .optional(),
     })
     .passthrough()
-    .parse(parsed);
+    .safeParse(parsed);
+  if (!value.success)
+    throw new TypeError("compatible endpoint returned an invalid envelope");
   const content =
-    value.choices[0]?.message.content ??
+    value.data.choices[0]?.message.content ??
     (() => {
       throw new TypeError("compatible endpoint omitted content");
     })();
-  const usage = mapCompatibleUsage(value.usage);
+  const usage = mapCompatibleUsage(value.data.usage);
   return {
     content,
-    model: value.model,
+    model: value.data.model,
     ...(usage === undefined ? {} : { usage }),
   };
 }

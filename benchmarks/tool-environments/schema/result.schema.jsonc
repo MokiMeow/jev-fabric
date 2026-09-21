@@ -17,7 +17,7 @@
     "sampleCount": { "type": "integer", "minimum": 0, "maximum": 100 },
     "rows": {
       "type": "array",
-      "minItems": 27,
+      "minItems": 3,
       "maxItems": 27,
       "items": { "$ref": "#/$defs/row" }
     }

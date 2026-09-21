@@ -40,6 +40,11 @@ test("retains labeled SDK-key detection and permits inert placeholders", async (
   await assert.doesNotReject(securityCheck(placeholder));
 });
 
+test("does not confuse uppercase source identifiers with credential values", async () => {
+  const root = await fixture("inputNanoUsdPerInputToken: JEV_PRICING_EVIDENCE");
+  await assert.doesNotReject(securityCheck(root));
+});
+
 test("scans test directories instead of treating them as secret-safe", async () => {
   const root = await mkdtemp(join(tmpdir(), "jev-fabric-security-"));
   roots.push(root);

@@ -14,7 +14,10 @@ import {
   EndpointPolicy,
   EndpointPolicyError,
 } from "./endpoint-policy.js";
-import { buildCompatiblePrompt } from "./prompt.js";
+import {
+  buildCompatiblePrompt,
+  buildCompatibleResponseFormat,
+} from "./prompt.js";
 import {
   extractCompatibleResponse,
   parseCompatibleAnswers,
@@ -153,11 +156,20 @@ export interface OpenAICompatibleProviderOptions {
   readonly repairAttempts?: number;
   readonly maxResponseBytes?: number;
   readonly onAttempt?: (attempt: CompatibleAttempt) => void;
+  /** Request strict JSON Schema output from compatible endpoints that support it. */
+  readonly structuredOutput?: boolean;
+  /** Optional upstream sampling temperature; zero is appropriate for evaluation. */
+  readonly temperature?: number;
+  /** Optional one-hot constraint for small local models that cannot add reliably. */
+  readonly probabilityMode?: "continuous" | "one_hot";
 }
 
 export interface OpenAICompatibleExecutionPolicy {
   readonly maxRedirects: number;
   readonly repairAttempts: number;
+  readonly structuredOutput: boolean;
+  readonly temperature: number | null;
+  readonly probabilityMode: "continuous" | "one_hot";
 }
 
 export class OpenAICompatibleProvider implements DecisionProvider {
@@ -177,6 +189,9 @@ export class OpenAICompatibleProvider implements DecisionProvider {
   readonly #repairAttempts: number;
   readonly #maxResponseBytes: number;
   readonly #onAttempt: ((attempt: CompatibleAttempt) => void) | undefined;
+  readonly #structuredOutput: boolean;
+  readonly #temperature: number | undefined;
+  readonly #probabilityMode: "continuous" | "one_hot";
   constructor(options: OpenAICompatibleProviderOptions) {
     if (
       !options.id ||
@@ -187,7 +202,14 @@ export class OpenAICompatibleProvider implements DecisionProvider {
       !Number.isSafeInteger(options.maxRedirects ?? 2) ||
       (options.maxRedirects ?? 2) < 0 ||
       !Number.isSafeInteger(options.maxResponseBytes ?? 1_000_000) ||
-      (options.maxResponseBytes ?? 1_000_000) < 1
+      (options.maxResponseBytes ?? 1_000_000) < 1 ||
+      (options.temperature !== undefined &&
+        (!Number.isFinite(options.temperature) ||
+          options.temperature < 0 ||
+          options.temperature > 2)) ||
+      (options.probabilityMode !== undefined &&
+        options.probabilityMode !== "continuous" &&
+        options.probabilityMode !== "one_hot")
     )
       throw new OpenAICompatibleProviderError("configuration", false);
     this.id = options.id;
@@ -209,9 +231,15 @@ export class OpenAICompatibleProvider implements DecisionProvider {
     this.#executionPolicy = Object.freeze({
       maxRedirects: this.#maxRedirects,
       repairAttempts: this.#repairAttempts,
+      structuredOutput: options.structuredOutput === true,
+      temperature: options.temperature ?? null,
+      probabilityMode: options.probabilityMode ?? "continuous",
     });
     this.#maxResponseBytes = options.maxResponseBytes ?? 1_000_000;
     this.#onAttempt = options.onAttempt;
+    this.#structuredOutput = options.structuredOutput === true;
+    this.#temperature = options.temperature;
+    this.#probabilityMode = options.probabilityMode ?? "continuous";
   }
   /** Immutable, inspectable transport multiplicity controls. */
   get executionPolicy(): OpenAICompatibleExecutionPolicy {
@@ -299,6 +327,17 @@ export class OpenAICompatibleProvider implements DecisionProvider {
                 },
               ],
               stream: false,
+              ...(this.#structuredOutput
+                ? {
+                    response_format: buildCompatibleResponseFormat(
+                      request,
+                      this.#probabilityMode,
+                    ),
+                  }
+                : {}),
+              ...(this.#temperature === undefined
+                ? {}
+                : { temperature: this.#temperature }),
             }),
           },
           this.#maxResponseBytes,

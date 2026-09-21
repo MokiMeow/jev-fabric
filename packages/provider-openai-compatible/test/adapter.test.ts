@@ -61,8 +61,84 @@ describe("OpenAICompatibleProvider", () => {
     expect(provider.executionPolicy).toEqual({
       maxRedirects: 2,
       repairAttempts: 0,
+      structuredOutput: false,
+      temperature: null,
+      probabilityMode: "continuous",
     });
     expect(Object.isFrozen(provider.executionPolicy)).toBe(true);
+    const sent = JSON.parse(String(init?.body)) as {
+      messages: readonly { readonly content: string }[];
+    };
+    const prompt = JSON.parse(sent.messages[0]?.content ?? "null") as {
+      answerContracts?: Record<string, unknown>;
+    };
+    expect(prompt.answerContracts).toHaveProperty("choice");
+    expect(prompt.answerContracts).toHaveProperty("noul");
+    expect(prompt.answerContracts).toHaveProperty("score");
+  });
+
+  it("can request strict schema output while retaining local validation", async () => {
+    let body: Record<string, unknown> | undefined;
+    const provider = new OpenAICompatibleProvider({
+      id: "compatible",
+      endpoint: "https://models.example.test/v1/chat/completions",
+      model: "configured-model",
+      resolve: async () => ["8.8.8.8"],
+      structuredOutput: true,
+      temperature: 0,
+      probabilityMode: "one_hot",
+      transport: {
+        execute: async (_plan, init) => {
+          body = JSON.parse(String(init.body)) as Record<string, unknown>;
+          return json(
+            '{"answers":[{"questionId":"route","type":"choice","selected":"billing","probabilities":{"billing":0.7,"other":0.3}}]}',
+          );
+        },
+      },
+    });
+    await provider.evaluate(request);
+    expect(body).toHaveProperty("response_format.type", "json_schema");
+    expect(body).toHaveProperty("temperature", 0);
+    expect(provider.executionPolicy).toMatchObject({
+      structuredOutput: true,
+      temperature: 0,
+      probabilityMode: "one_hot",
+    });
+  });
+
+  it("maps a schema-indexed answer object in exact request order", async () => {
+    const provider = new OpenAICompatibleProvider({
+      id: "compatible",
+      endpoint: "https://models.example.test/v1/chat/completions",
+      model: "configured-model",
+      resolve: async () => ["8.8.8.8"],
+      structuredOutput: true,
+      transport: {
+        execute: async () =>
+          json(
+            '{"answers":{"route":{"questionId":"route","type":"choice","selected":"billing","probabilities":{"billing":0.7,"other":0.3}}}}',
+          ),
+      },
+    });
+    await expect(provider.evaluate(request)).resolves.toMatchObject({
+      answers: [{ questionId: "route", selected: "billing" }],
+    });
+  });
+
+  it("classifies schema-invalid model JSON as invalid response", async () => {
+    const provider = new OpenAICompatibleProvider({
+      id: "compatible",
+      endpoint: "https://models.example.test/v1/chat/completions",
+      model: "configured-model",
+      resolve: async () => ["8.8.8.8"],
+      transport: {
+        execute: async () =>
+          json('{"answers":[{"questionId":"route","type":"billing"}]}'),
+      },
+    });
+    await expect(provider.evaluate(request)).rejects.toMatchObject({
+      category: "invalid_response",
+    });
   });
 
   it("retains exact provider-reported token usage without changing evaluate", async () => {
@@ -101,6 +177,39 @@ describe("OpenAICompatibleProvider", () => {
         usage: { inputTokens: 41, outputTokens: 7, totalTokens: 48 },
       },
     );
+    await expect(provider.evaluate(request)).resolves.toMatchObject({
+      model: "configured-model",
+    });
+  });
+
+  it("accepts standard compatible choice and message metadata", async () => {
+    const provider = new OpenAICompatibleProvider({
+      id: "compatible",
+      endpoint: "https://models.example.test/v1/chat/completions",
+      model: "configured-model",
+      resolve: async () => ["8.8.8.8"],
+      transport: {
+        execute: async () =>
+          new Response(
+            JSON.stringify({
+              id: "redacted-by-caller",
+              model: "configured-model",
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: "stop",
+                  message: {
+                    role: "assistant",
+                    content:
+                      '{"answers":[{"questionId":"route","type":"choice","selected":"billing","probabilities":{"billing":0.7,"other":0.3}}]}',
+                  },
+                },
+              ],
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+      },
+    });
     await expect(provider.evaluate(request)).resolves.toMatchObject({
       model: "configured-model",
     });

@@ -28,7 +28,7 @@
     },
     "tasks": {
       "type": "array",
-      "minItems": 9,
+      "minItems": 1,
       "maxItems": 9,
       "items": { "$ref": "#/$defs/task" }
     }

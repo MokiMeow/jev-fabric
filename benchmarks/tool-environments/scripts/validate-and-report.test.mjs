@@ -1,19 +1,29 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { runLiveBenchmark } from "./live-runner.mjs";
 import {
+  executionEvidenceDigest,
   providerCallBindingDigest,
   readBoundedUtf8,
   recomputeToolEnvironmentRows,
   replayCheckEvidenceDigest,
   staleCheckEvidenceDigest,
   traceDecisionDigest,
-  validateArtifactSet,
   validateAgainstSchema,
+  validateArtifactSet,
+  validateManifest,
   validateResults,
   validateTrace,
 } from "./validate-and-report.mjs";
@@ -43,6 +53,38 @@ function attachPassingChecks(trace) {
   };
   stale.evidenceDigest = staleCheckEvidenceDigest(trace, stale);
   trace.checks = { replay, stale };
+}
+
+const adapterByEnvironment = {
+  webmcp_declarative: "playwright_chrome_webmcp_declarative",
+  webmcp_imperative: "playwright_chrome_webmcp_imperative",
+  browser_dom_cdp: "playwright_chrome_dom_cdp",
+  browser_visual_fallback: "playwright_chrome_visual_fallback",
+  blender: "blender_cli",
+  unreal_engine: "unreal_readiness_gate",
+  unity: "unity_readiness_gate",
+  godot: "godot_cli",
+  freecad: "freecad_cli",
+};
+
+function attachExecutionEvidence(trace) {
+  const evidence = {
+    kind: "local_adapter_process",
+    adapterId: adapterByEnvironment[trace.environment] ?? "blender_cli",
+    executionId: `${trace.traceId}-adapter`,
+    fixtureDigest: "9".repeat(64),
+    executableDigest: "a".repeat(64),
+    executableVersionDigest: "b".repeat(64),
+    commandDigest: "c".repeat(64),
+    stdoutDigest: "d".repeat(64),
+    stderrDigest: "e".repeat(64),
+    startedAt: "2026-09-20T00:00:00.000Z",
+    completedAt: "2026-09-20T00:00:01.000Z",
+    deadlineMs: 10_000,
+    invocationEvidenceDigest: "",
+  };
+  evidence.invocationEvidenceDigest = executionEvidenceDigest(trace, evidence);
+  trace.executionEvidence = evidence;
 }
 
 function completedTrace(manifest, task, architecture, sample = 0) {
@@ -128,6 +170,7 @@ function completedTrace(manifest, task, architecture, sample = 0) {
     },
   };
   attachPassingChecks(trace);
+  attachExecutionEvidence(trace);
   return trace;
 }
 
@@ -297,6 +340,7 @@ test("completed traces require bound replay and stale observations", async () =>
     ],
   };
   attachPassingChecks(completed);
+  attachExecutionEvidence(completed);
   assert.doesNotThrow(() => validateTrace(completed, manifest));
   completed.checks.replay.evidenceDigest = "0".repeat(64);
   assert.throws(
@@ -406,6 +450,91 @@ test("completed traces bind planned/executed candidates and exact accounting", a
   attachPassingChecks(expectedRejection);
   assert.doesNotThrow(() =>
     validateTrace(expectedRejection, unsafeTaskManifest),
+  );
+});
+
+test("completed traces reject verification-only evidence", async () => {
+  const manifest = await readJson("fixtures/task-manifest.not-run.jsonc");
+  const task = manifest.tasks[0];
+  assert.ok(task);
+  const trace = completedTrace(manifest, task, "direct_deterministic");
+  trace.executionEvidence = null;
+  assert.throws(
+    () => validateTrace(trace, manifest),
+    /no adapter execution evidence/u,
+  );
+});
+
+test("live runner fails closed before creating artifacts for Unity and Unreal", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "jev-live-runner-"));
+  try {
+    const manifestPath = join(directory, "manifest.json");
+    const configPath = join(directory, "config.json");
+    const artifactsDir = join(directory, "artifacts");
+    const manifest = await readJson("fixtures/task-manifest.not-run.jsonc");
+    manifest.evidenceState = "LOCAL_EXPLORATORY";
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await writeFile(
+      configPath,
+      JSON.stringify({ schemaVersion: "jev.tool-environment.live-config/v1" }),
+    );
+    await assert.rejects(
+      () =>
+        runLiveBenchmark({
+          artifactsDir,
+          configPath,
+          manifestPath,
+          samples: 1,
+          maxProviderCalls: 2,
+          maxInputTokens: 100,
+          maxOutputTokens: 100,
+          deadlineMs: 1_000,
+        }),
+      /Unity and Unreal have no local adapter/u,
+    );
+    await assert.rejects(() => lstat(artifactsDir));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("local exploratory manifests may retain an ordered environment subset", async () => {
+  const [taskSchema, traceSchema, resultSchema, fixture, resultFixture] =
+    await Promise.all([
+      readJson("schema/task-manifest.schema.jsonc"),
+      readJson("schema/trace.schema.jsonc"),
+      readJson("schema/result.schema.jsonc"),
+      readJson("fixtures/task-manifest.not-run.jsonc"),
+      readJson("fixtures/result.not-run.jsonc"),
+    ]);
+  const manifest = clone(fixture);
+  manifest.evidenceState = "LOCAL_EXPLORATORY";
+  manifest.tasks = manifest.tasks.filter(
+    (task) =>
+      task.environment !== "unity" && task.environment !== "unreal_engine",
+  );
+  assert.doesNotThrow(() =>
+    validateAgainstSchema(taskSchema, manifest, "manifest"),
+  );
+  assert.doesNotThrow(() => validateManifest(manifest));
+
+  const traces = completedTraces(manifest);
+  const result = recomputedResult(resultFixture, manifest, traces, 1);
+  assert.doesNotThrow(() =>
+    validateArtifactSet({
+      taskSchema,
+      traceSchema,
+      resultSchema,
+      manifest,
+      traces,
+      result,
+    }),
+  );
+
+  manifest.evidenceState = "RETAINED";
+  assert.throws(
+    () => validateManifest(manifest),
+    /require all nine environments/u,
   );
 });
 
@@ -554,6 +683,7 @@ test("completed comparisons require paired unique trials", async () => {
   assert.ok(changed);
   changed.trialId = `${changed.taskId}-unpaired-trial`;
   attachPassingChecks(changed);
+  attachExecutionEvidence(changed);
   assert.throws(
     () =>
       validateArtifactSet({
@@ -576,6 +706,7 @@ test("completed comparisons require paired unique trials", async () => {
   assert.equal(duplicateCell.length, 2);
   duplicateCell[1].trialId = duplicateCell[0].trialId;
   attachPassingChecks(duplicateCell[1]);
+  attachExecutionEvidence(duplicateCell[1]);
   assert.throws(
     () =>
       validateArtifactSet({

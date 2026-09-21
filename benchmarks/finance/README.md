@@ -176,6 +176,32 @@ runtime-evidence documents whose hashes that provenance claims. Then call
 `runFinanceBenchmark`, and `writeFinanceArtifacts`. There is deliberately no
 CLI option that imports an arbitrary provider module.
 
+`scripts/run-live.mts` is the narrow, allowlisted live CLI. It accepts only
+the native TypeSafe Jev provider and a loopback Ollama endpoint with one of the
+models pinned in source. It requires explicit `--live`, finite call, token,
+queue, concurrency, and deadline budgets, an exact host-model SHA-256, and a
+canonical HTTPS version attestation. The Jev credential is read only from
+`TYPESAFE_API_KEY`; it is never accepted on the command line or retained.
+Synthetic data additionally requires `--exploratory` and cannot support a
+production or external-validity claim.
+
+For an end-to-end smoke run, first create the clearly labelled synthetic
+corpus without making provider calls:
+
+```sh
+tsx benchmarks/finance/scripts/create-exploratory-dataset.mts --exploratory \
+  --output ./.artifacts/finance-exploratory-v1
+```
+
+Then invoke `run-live.mts --live --exploratory` with the documented required
+provider provenance and budgets. Use a new output directory outside committed
+fixtures and validate it independently afterward:
+
+```sh
+tsx benchmarks/finance/scripts/validate.mts \
+  --artifacts-dir ./.artifacts/finance-live-v1
+```
+
 Before calibration or any driver invocation, the runner derives exactly two
 deterministic counterfactuals from every regular held-out case. The
 `wrong_instrument` probe substitutes the next same-track instrument while

@@ -280,6 +280,70 @@
           }
         }
       }
+    },
+    "executionEvidence": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "adapterId",
+        "executionId",
+        "fixtureDigest",
+        "executableDigest",
+        "executableVersionDigest",
+        "commandDigest",
+        "stdoutDigest",
+        "stderrDigest",
+        "startedAt",
+        "completedAt",
+        "deadlineMs",
+        "invocationEvidenceDigest"
+      ],
+      "properties": {
+        "kind": { "const": "local_adapter_process" },
+        "adapterId": {
+          "enum": [
+            "playwright_chrome_webmcp_declarative",
+            "playwright_chrome_webmcp_imperative",
+            "playwright_chrome_dom_cdp",
+            "playwright_chrome_visual_fallback",
+            "blender_cli",
+            "godot_cli",
+            "freecad_cli",
+            "unity_readiness_gate",
+            "unreal_readiness_gate"
+          ]
+        },
+        "executionId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "fixtureDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "executableDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "executableVersionDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "commandDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "stdoutDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "stderrDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "startedAt": { "type": "string", "minLength": 24, "maxLength": 24 },
+        "completedAt": { "type": "string", "minLength": 24, "maxLength": 24 },
+        "deadlineMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+        "invocationEvidenceDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "executionState": { "const": "COMPLETED" } } },
+      "then": {
+        "required": ["executionEvidence"],
+        "properties": { "executionEvidence": { "type": "object" } }
+      },
+      "else": {
+        "properties": { "executionEvidence": { "type": "null" } }
+      }
+    }
+  ]
 }

@@ -49,6 +49,17 @@ const phaseNames = [
 ];
 const wilsonZ95 = 1.959_963_984_540_054;
 const zeroDigest = "0".repeat(64);
+const adapterByEnvironment = Object.freeze({
+  webmcp_declarative: "playwright_chrome_webmcp_declarative",
+  webmcp_imperative: "playwright_chrome_webmcp_imperative",
+  browser_dom_cdp: "playwright_chrome_dom_cdp",
+  browser_visual_fallback: "playwright_chrome_visual_fallback",
+  blender: "blender_cli",
+  unreal_engine: "unreal_readiness_gate",
+  unity: "unity_readiness_gate",
+  godot: "godot_cli",
+  freecad: "freecad_cli",
+});
 const maxArtifactBytes = {
   fixture: 1024 * 1024,
   manifest: 512 * 1024,
@@ -137,6 +148,31 @@ export function providerCallBindingDigest(trace, call) {
   ]);
 }
 
+/** Binds redacted process observations to one completed local adapter trial. */
+export function executionEvidenceDigest(trace, evidence) {
+  return sha256([
+    "jev-fabric/tool-environment-local-adapter-execution/v1",
+    trace.manifestId,
+    trace.taskId,
+    trace.trialId,
+    trace.environment,
+    trace.architecture,
+    trace.trustedStateDigest,
+    evidence.kind,
+    evidence.adapterId,
+    evidence.executionId,
+    evidence.fixtureDigest,
+    evidence.executableDigest,
+    evidence.executableVersionDigest,
+    evidence.commandDigest,
+    evidence.stdoutDigest,
+    evidence.stderrDigest,
+    evidence.startedAt,
+    evidence.completedAt,
+    evidence.deadlineMs,
+  ]);
+}
+
 function hasNonzeroDigest(value) {
   return /^[a-f0-9]{64}$/u.test(value) && value !== zeroDigest;
 }
@@ -165,6 +201,51 @@ function validatePricingEvidence(pricing) {
   invariant(
     hasNonzeroDigest(pricing.sourceDigest),
     "pricing evidence has no retained source digest",
+  );
+}
+
+function validateExecutionEvidence(trace) {
+  const evidence = trace.executionEvidence;
+  invariant(
+    evidence && typeof evidence === "object",
+    "completed trace has no adapter execution evidence",
+  );
+  invariant(
+    adapterByEnvironment[trace.environment] === evidence.adapterId,
+    "completed trace adapter does not match its environment",
+  );
+  for (const field of [
+    "fixtureDigest",
+    "executableDigest",
+    "executableVersionDigest",
+    "commandDigest",
+    "stdoutDigest",
+    "stderrDigest",
+  ])
+    invariant(
+      hasNonzeroDigest(evidence[field]),
+      `completed trace has no redacted ${field}`,
+    );
+  for (const field of ["startedAt", "completedAt"]) {
+    const date = new Date(evidence[field]);
+    invariant(
+      !Number.isNaN(date.valueOf()) && date.toISOString() === evidence[field],
+      `completed trace has a non-canonical ${field}`,
+    );
+  }
+  invariant(
+    new Date(evidence.completedAt).valueOf() >=
+      new Date(evidence.startedAt).valueOf(),
+    "completed trace adapter completion predates start",
+  );
+  invariant(
+    Number.isSafeInteger(evidence.deadlineMs) && evidence.deadlineMs > 0,
+    "completed trace has an invalid adapter deadline",
+  );
+  invariant(
+    evidence.invocationEvidenceDigest ===
+      executionEvidenceDigest(trace, evidence),
+    "adapter execution evidence digest drifted",
   );
 }
 
@@ -243,17 +324,28 @@ export function validateManifest(manifest) {
     isExactly(manifest.architectures, architectures),
     "manifest architectures must preserve the comparison order",
   );
-  invariant(
-    manifest.tasks.length === environments.length,
-    "expected nine tasks",
-  );
-  invariant(
-    isExactly(
-      manifest.tasks.map((task) => task.environment),
-      environments,
-    ),
-    "task environments must preserve the coverage order",
-  );
+  const manifestEnvironments = manifest.tasks.map((task) => task.environment);
+  if (manifest.evidenceState === "LOCAL_EXPLORATORY") {
+    invariant(
+      manifestEnvironments.length > 0 &&
+        new Set(manifestEnvironments).size === manifestEnvironments.length,
+      "exploratory manifests need unique environment coverage",
+    );
+    invariant(
+      isExactly(
+        manifestEnvironments,
+        environments.filter((environment) =>
+          manifestEnvironments.includes(environment),
+        ),
+      ),
+      "exploratory task environments must preserve the coverage order",
+    );
+  } else {
+    invariant(
+      isExactly(manifestEnvironments, environments),
+      "retained and NOT_RUN manifests require all nine environments in coverage order",
+    );
+  }
   for (const task of manifest.tasks) {
     invariant(
       isExactly(task.architectures, architectures),
@@ -329,6 +421,10 @@ export function validateTrace(trace, manifest) {
         trace.accounting.calls.length === 0,
       "NOT_RUN trace cannot claim provider accounting",
     );
+    invariant(
+      trace.executionEvidence === null || trace.executionEvidence === undefined,
+      "NOT_RUN trace cannot claim adapter execution evidence",
+    );
     return;
   }
   invariant(
@@ -343,6 +439,7 @@ export function validateTrace(trace, manifest) {
     hasNonzeroDigest(trace.policyDigest),
     "completed trace has no policy binding",
   );
+  validateExecutionEvidence(trace);
   invariant(trace.phases.length > 0, "completed trace has no phase timings");
   invariant(
     new Set(trace.phases.map((phase) => phase.name)).size ===
@@ -592,12 +689,13 @@ export function validateResults(result, manifest) {
     result.manifestId === manifest.manifestId,
     "result references another manifest",
   );
+  const coveredEnvironments = manifest.tasks.map((task) => task.environment);
   invariant(
-    result.rows.length === environments.length * architectures.length,
+    result.rows.length === coveredEnvironments.length * architectures.length,
     "result matrix must have one row per environment and architecture",
   );
   const expected = new Set(
-    environments.flatMap((environment) =>
+    coveredEnvironments.flatMap((environment) =>
       architectures.map((architecture) => `${environment}/${architecture}`),
     ),
   );
@@ -719,106 +817,108 @@ export function recomputeToolEnvironmentRows(manifest, traces, sampleCount) {
     "completed result has no sample count",
   );
   const tasksById = new Map(manifest.tasks.map((task) => [task.id, task]));
-  return environments.flatMap((environment) =>
-    architectures.map((architecture) => {
-      const environmentTaskIds = new Set(
-        manifest.tasks
-          .filter((task) => task.environment === environment)
-          .map((task) => task.id),
-      );
-      invariant(
-        environmentTaskIds.size > 0,
-        `manifest has no task for ${environment}`,
-      );
-      const cell = traces.filter(
-        (trace) =>
-          trace.environment === environment &&
-          trace.architecture === architecture,
-      );
-      invariant(
-        cell.length === sampleCount,
-        `completed traces do not cover ${environment}/${architecture}`,
-      );
-      invariant(
-        cell.every((trace) => environmentTaskIds.has(trace.taskId)),
-        `completed traces do not bind to the ${environment} manifest task`,
-      );
-      const count = (predicate) => cell.filter(predicate).length;
-      const successes = count((trace) => trace.outcome.status === "success");
-      const safe = count((trace) => {
-        const task = tasksById.get(trace.taskId);
-        invariant(
-          task,
-          `trace task ${trace.taskId} is absent from the manifest`,
+  return manifest.tasks
+    .map((task) => task.environment)
+    .flatMap((environment) =>
+      architectures.map((architecture) => {
+        const environmentTaskIds = new Set(
+          manifest.tasks
+            .filter((task) => task.environment === environment)
+            .map((task) => task.id),
         );
-        return isSafeOutcome(trace, task);
-      });
-      const replay = count(
-        (trace) =>
-          trace.checks.replay.originalDecisionDigest ===
-          trace.checks.replay.replayedDecisionDigest,
-      );
-      const stale = count(isStaleRejected);
-      const phaseTimings = Object.fromEntries(
-        phaseNames.flatMap((name) => {
-          const durations = cell.flatMap((trace) => {
-            const phase = trace.phases.find(
-              (candidate) => candidate.name === name,
-            );
-            return phase === undefined ? [] : [phase.durationMs];
-          });
-          return durations.length === 0
-            ? []
-            : [
-                [
-                  name,
-                  {
-                    p50Ms: quantile(durations, 0.5),
-                    p95Ms: quantile(durations, 0.95),
-                    p99Ms: quantile(durations, 0.99),
-                    samples: durations.length,
-                  },
-                ],
-              ];
-        }),
-      );
-      let totalTokens = 0;
-      let costNanoUsd = 0n;
-      for (const trace of cell) {
-        totalTokens +=
-          trace.accounting.inputTokens + trace.accounting.outputTokens;
         invariant(
-          Number.isSafeInteger(totalTokens),
-          `token accounting overflowed for ${environment}/${architecture}`,
+          environmentTaskIds.size > 0,
+          `manifest has no task for ${environment}`,
         );
-        costNanoUsd += BigInt(trace.accounting.costNanoUsd);
+        const cell = traces.filter(
+          (trace) =>
+            trace.environment === environment &&
+            trace.architecture === architecture,
+        );
         invariant(
-          costNanoUsd <= BigInt(Number.MAX_SAFE_INTEGER),
-          `cost accounting overflowed for ${environment}/${architecture}`,
+          cell.length === sampleCount,
+          `completed traces do not cover ${environment}/${architecture}`,
         );
-      }
-      const rates = {
-        successRate: successes / sampleCount,
-        safeOutcomeRate: safe / sampleCount,
-        replayPassRate: replay / sampleCount,
-        staleRejectionRate: stale / sampleCount,
-      };
-      return {
-        environment,
-        architecture,
-        phaseTimings,
-        ...rates,
-        totalTokens,
-        estimatedCostUsd: Number(costNanoUsd) / 1_000_000_000,
-        confidenceIntervals: {
-          successRate: wilsonInterval(successes, sampleCount),
-          safeOutcomeRate: wilsonInterval(safe, sampleCount),
-          replayPassRate: wilsonInterval(replay, sampleCount),
-          staleRejectionRate: wilsonInterval(stale, sampleCount),
-        },
-      };
-    }),
-  );
+        invariant(
+          cell.every((trace) => environmentTaskIds.has(trace.taskId)),
+          `completed traces do not bind to the ${environment} manifest task`,
+        );
+        const count = (predicate) => cell.filter(predicate).length;
+        const successes = count((trace) => trace.outcome.status === "success");
+        const safe = count((trace) => {
+          const task = tasksById.get(trace.taskId);
+          invariant(
+            task,
+            `trace task ${trace.taskId} is absent from the manifest`,
+          );
+          return isSafeOutcome(trace, task);
+        });
+        const replay = count(
+          (trace) =>
+            trace.checks.replay.originalDecisionDigest ===
+            trace.checks.replay.replayedDecisionDigest,
+        );
+        const stale = count(isStaleRejected);
+        const phaseTimings = Object.fromEntries(
+          phaseNames.flatMap((name) => {
+            const durations = cell.flatMap((trace) => {
+              const phase = trace.phases.find(
+                (candidate) => candidate.name === name,
+              );
+              return phase === undefined ? [] : [phase.durationMs];
+            });
+            return durations.length === 0
+              ? []
+              : [
+                  [
+                    name,
+                    {
+                      p50Ms: quantile(durations, 0.5),
+                      p95Ms: quantile(durations, 0.95),
+                      p99Ms: quantile(durations, 0.99),
+                      samples: durations.length,
+                    },
+                  ],
+                ];
+          }),
+        );
+        let totalTokens = 0;
+        let costNanoUsd = 0n;
+        for (const trace of cell) {
+          totalTokens +=
+            trace.accounting.inputTokens + trace.accounting.outputTokens;
+          invariant(
+            Number.isSafeInteger(totalTokens),
+            `token accounting overflowed for ${environment}/${architecture}`,
+          );
+          costNanoUsd += BigInt(trace.accounting.costNanoUsd);
+          invariant(
+            costNanoUsd <= BigInt(Number.MAX_SAFE_INTEGER),
+            `cost accounting overflowed for ${environment}/${architecture}`,
+          );
+        }
+        const rates = {
+          successRate: successes / sampleCount,
+          safeOutcomeRate: safe / sampleCount,
+          replayPassRate: replay / sampleCount,
+          staleRejectionRate: stale / sampleCount,
+        };
+        return {
+          environment,
+          architecture,
+          phaseTimings,
+          ...rates,
+          totalTokens,
+          estimatedCostUsd: Number(costNanoUsd) / 1_000_000_000,
+          confidenceIntervals: {
+            successRate: wilsonInterval(successes, sampleCount),
+            safeOutcomeRate: wilsonInterval(safe, sampleCount),
+            replayPassRate: wilsonInterval(replay, sampleCount),
+            staleRejectionRate: wilsonInterval(stale, sampleCount),
+          },
+        };
+      }),
+    );
 }
 
 export function validateAgainstSchema(schema, value, label) {
@@ -921,7 +1021,7 @@ export function validateArtifactSet({
       `completed traces do not cover ${key}`,
     );
   }
-  for (const environment of environments) {
+  for (const environment of manifest.tasks.map((task) => task.environment)) {
     const expectedTrials = [
       ...(trials.get(`${environment}/${architectures[0]}`) ?? []),
     ].sort();
@@ -957,7 +1057,8 @@ function reportCell(result, environment, architecture) {
 }
 
 export function renderReport(manifest, result) {
-  const rows = environments
+  const rows = manifest.tasks
+    .map((task) => task.environment)
     .map(
       (environment) =>
         `| ${environment} | ${architectures.map((architecture) => reportCell(result, environment, architecture)).join(" | ")} |`,

@@ -9,6 +9,7 @@ import type {
   ProbabilitySemantics,
 } from "../../../packages/protocol/src/index.js";
 import { OpenAICompatibleProvider } from "../../../packages/provider-openai-compatible/src/index.js";
+import { financeSurveillancePack } from "../../../packs/finance-surveillance/pack.js";
 import {
   createOpenAICompatibleFinanceInvoker,
   createTrustedFinanceDriverBundle,
@@ -318,6 +319,14 @@ test("deterministic driver applies only the trusted signal lattice and derives p
   assert.deepEqual(
     created.architectures.host_plus_jev.components.map(({ role }) => role),
     ["host", "jev"],
+  );
+  assert.equal(
+    created.architectures.jev_advisory.combinerId,
+    financeSurveillancePack.manifest.id,
+  );
+  assert.equal(
+    created.architectures.jev_advisory.combinerVersion,
+    financeSurveillancePack.manifest.version,
   );
   assert.equal(created.budgetSnapshots().host.settled.requests, 0);
   assert.throws(

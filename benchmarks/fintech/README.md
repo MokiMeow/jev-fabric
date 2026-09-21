@@ -161,6 +161,54 @@ fixture, or provider-visible state. A thrown provider error is not publishable
 measurement evidence unless the provider can return exact usage for that
 attempt; the runner therefore aborts on such errors.
 
+## Rights-reviewed live host
+
+`scripts/live-host.mts` is the deliberately narrow production host around the
+library runner. It reads exactly one explicit JSON dataset envelope and never
+loads `.env` or calls a provider during `--dry-run`. The envelope must include
+the run preregistration and freeze timestamps, an affirmative rights review
+bound to the dataset ID and source digest, deidentification/redistribution
+attestations, reviewed pricing, all finite call/token/concurrency/attempt/
+deadline/cost budgets, and the only admitted provider pin:
+`typesafe-native`, `jev-1.13.0`, `typesafe-sdk-v0.6.0`.
+
+No rights-reviewed public dataset is committed here and this repository makes
+no completed-run claim. Supply a separately reviewed file; missing review,
+dataset, price, budget, or secret inputs are errors, not defaults.
+
+For integration testing only, `scripts/create-exploratory-dataset.mts` writes
+a small, group-disjoint synthetic envelope and makes zero provider calls:
+
+```sh
+tsx benchmarks/fintech/scripts/create-exploratory-dataset.mts --exploratory \
+  --output ./.artifacts/fintech-exploratory-v1.json
+```
+
+That fixture is synthetic exploratory evidence. It is useful for exercising
+the complete host, but it is not a substitute for a rights-reviewed dataset
+and must not be described as production accuracy.
+
+First run the no-network readiness gate:
+
+```sh
+tsx benchmarks/fintech/scripts/live-host.mts --dataset ./reviewed/fintech.json --dry-run
+```
+
+Then run only with an explicit live gate, explicitly named injected credential,
+and a new output path outside `benchmarks/fintech/fixtures`:
+
+```sh
+tsx benchmarks/fintech/scripts/live-host.mts --dataset ./reviewed/fintech.json --live --credential-env JEV_FINTECH_API_KEY --output ./retained/fintech-v3.json
+```
+
+The host validates readiness before constructing the native provider, freezes
+the validated envelope before provider calls, runs no-Jev/batched/serial arms
+through the existing runner, validates both evidence schema and semantics, and
+atomically publishes only a valid
+`COMPLETED` v3 artifact. It refuses to overwrite an artifact. Credentials are
+read only at the final live-host boundary, are neither logged nor retained, and
+are not available to the runner or artifact.
+
 Counterbalancing removes a fixed batched-first temporal bias; it does not turn a
 small run into causal evidence or an SLA. Cases may still overlap under bounded
 worker concurrency, while the two Jev arms for one case run sequentially in the

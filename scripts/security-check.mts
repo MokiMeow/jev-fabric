@@ -11,7 +11,7 @@ const ignored = new Set([
   ".superpowers",
 ]);
 const secretPatterns = [
-  /(?:api[_-]?key|authorization|bearer|password|secret|token)\s*[:=]\s*["']?(?:sk|ts|jev)_[A-Za-z0-9_-]{16,}/iu,
+  /(?:[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Bb][Ee][Aa][Rr][Ee][Rr]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn])\s*[:=]\s*["']?(?:sk|ts|jev)_[A-Za-z0-9_-]{16,}/u,
   /(?:^|[^A-Za-z0-9_-])apikey_[A-Za-z0-9_-]{32,}(?=$|[^A-Za-z0-9_-])/iu,
 ] as const;
 const absolute = /(?:[A-Za-z]:\\Users\\|\/home\/|\/Users\/)[^\s"']+/u;

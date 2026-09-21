@@ -19,20 +19,19 @@ default:
     paths:
       - .pnpm-store/
   before_script:
-    - corepack enable
-    - corepack prepare pnpm@12.4.2 --activate
+    - npm install --global --ignore-scripts pnpm@12.4.2
     - pnpm config set store-dir "$PNPM_STORE_DIR"
     - pnpm install --frozen-lockfile
 
 verify-node-22-14:
   stage: verify
-  image: node:22.14.0-bookworm-slim
+  image: node:22.14.0-bookworm
   script:
     - pnpm verify
 
 verify-node-24:
   stage: verify
-  image: node:24.11.1-bookworm-slim
+  image: node:24.11.1-bookworm
   script:
     - pnpm build
     - pnpm typecheck
@@ -40,10 +39,11 @@ verify-node-24:
 
 policy-and-docs:
   stage: policy
-  image: node:22.14.0-bookworm-slim
+  image: node:22.14.0-bookworm
   script:
     - pnpm security:check
     - pnpm changeset:check
     - pnpm package-readmes:check
+    - pnpm build
     - pnpm docs:check
     - pnpm conformance

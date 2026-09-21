@@ -432,7 +432,7 @@ function pack(
     artifactsDirectory,
   ];
   const output = ignoreLifecycle
-    ? packWithoutLifecycle(source, arguments_, environment)
+    ? packWithoutLifecycle(source, arguments_, environment, pnpm)
     : execFileSync(pnpm, arguments_, {
         cwd: source,
         encoding: "utf8",
@@ -447,26 +447,25 @@ function pack(
   return { name: manifest.name, version: manifest.version, tarball };
 }
 
-function packWithoutLifecycle(source, arguments_, environment) {
+function packWithoutLifecycle(source, arguments_, environment, pnpm) {
   const stagingRoot = mkdtempSync(
     join(tmpdir(), "jev-fabric-external-pack-source-"),
   );
   const stagedSource = join(stagingRoot, "package");
   try {
-    // npm can mis-size pnpm's content-addressed links when repacking an
-    // installed package directly. A dereferenced private copy preserves exact
-    // installed bytes without touching the dependency or running prepare.
+    // Repacking through pnpm's content-addressed links can mis-size entries.
+    // A dereferenced private copy preserves exact installed bytes without
+    // touching the dependency or running prepare.
     cpSync(source, stagedSource, {
       recursive: true,
       dereference: true,
       errorOnExist: true,
     });
-    return npm(
-      [...arguments_, "--ignore-scripts"],
-      stagedSource,
-      environment,
-      "utf8",
-    );
+    return execFileSync(pnpm, [...arguments_, "--ignore-scripts"], {
+      cwd: stagedSource,
+      encoding: "utf8",
+      env: environment,
+    });
   } finally {
     rmSync(stagingRoot, { recursive: true, force: true });
   }

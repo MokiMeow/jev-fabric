@@ -531,14 +531,16 @@ describe("CLI", () => {
       expect(
         (await loopbackRequest(address.port, "GET", common, "")).status,
       ).toBe(405);
-      await expect(
-        loopbackRequest(
-          address.port,
-          "POST",
-          { ...common, "content-length": "262145" },
-          "x".repeat(262_145),
-        ),
-      ).rejects.toMatchObject({ code: "ECONNRESET" });
+      const oversizedHeaders = [
+        "POST /mcp HTTP/1.1",
+        "Host: localhost",
+        `Authorization: Bearer ${token}`,
+        "Content-Type: application/json",
+        "Content-Length: 262145",
+        "",
+        "",
+      ].join("\r\n");
+      expect(await rawLoopbackStatus(address.port, oversizedHeaders)).toBe(413);
       const rawHeaders = [
         "POST /mcp HTTP/1.1",
         "Host: localhost",

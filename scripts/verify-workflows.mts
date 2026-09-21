@@ -171,7 +171,7 @@ const expectedSteps: Record<string, Record<string, string[]>> = {
     verify: [
       "uses:actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
       "uses:actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
-      "run:corepack enable",
+      "run:npm install --global --ignore-scripts pnpm@12.4.2",
       "run:pnpm install --frozen-lockfile",
       "run:git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main",
       "run:pnpm changeset:check",
@@ -187,7 +187,7 @@ const expectedSteps: Record<string, Record<string, string[]>> = {
     "windows-packaging": [
       "uses:actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
       "uses:actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
-      "run:corepack enable",
+      "run:npm install --global --ignore-scripts pnpm@12.4.2",
       "run:pnpm install --frozen-lockfile",
       "run:pnpm build",
       "run:pnpm pack:test",
@@ -216,7 +216,7 @@ const expectedSteps: Record<string, Record<string, string[]>> = {
     release: [
       "uses:actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
       "uses:actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
-      "run:corepack enable",
+      "run:npm install --global --ignore-scripts pnpm@12.4.2",
       "run:pnpm install --frozen-lockfile",
       "run:pnpm exec tsx scripts/verify-npm-version.mts",
       "run:pnpm changeset:check",
@@ -358,7 +358,6 @@ function expectedStepFields(
             file === "verify.yml" && name === "verify"
               ? githubExpression("matrix.node")
               : "24",
-          cache: "pnpm",
         },
       };
     case "github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd":

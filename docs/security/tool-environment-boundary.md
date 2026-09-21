@@ -18,6 +18,23 @@ paths, commands, source code, macros, credentials, or page/tool output as a
 privileged instruction. Treat all content originating outside the trusted adapter
 as advisory data, including WebMCP metadata and returned page content.
 
+Visual annotations are also untrusted data. A visual observation may carry only
+its artifact hash, bounded extractor provenance, capture time/freshness, a hash
+binding it to the exact adapter/session/workspace/state/capability projection,
+and bounded one-line annotations. Never put pixels, paths, URLs, DOM selectors,
+coordinates, tool IDs, action arguments, or approval claims in this envelope.
+
+A fixed visual extractor profile may further limit output to a trusted,
+versioned list of finding IDs and only the non-authorizing dispositions
+`visual_ambiguity`, `requires_structured_state`, and `requires_human_review`.
+Profile validation proves the reported ID was in that configured vocabulary and
+bound to a prior visual observation. In strict profile mode, the profile digest
+is also part of the independently trusted capture equality check and capture
+binding tuple, so a profile swap fails before findings are considered. None of
+this proves that an extractor's visual conclusion is true. Never add action
+IDs, target IDs, confidence values, coordinates, prompts, commands, approval
+claims, or host handles to a profile or its finding attachment.
+
 ## What Jev Fabric may do
 
 It may advise which declared candidate fits a bounded question, signal a risk,
@@ -44,6 +61,9 @@ must re-observe and reject all of the following:
 - expired, replayed, wrong-audience, or invalid tickets;
 - changed state, target, capability manifest, app version, or action descriptor;
 - stale observations, unmet preconditions, or argument-hash mismatch;
+- a visual capture that predates, outlives, or is not hash-bound to the exact
+  trusted state projection, or that does not exactly match the capture supplied
+  independently by the trusted extractor;
 - missing approval for persistent or external work; and
 - any request to use a generic command, script, network, evaluation, or shell
   interface.
@@ -62,3 +82,15 @@ untrusted-content and consequential-action hints in its
 Honor consequential actions with a user confirmation and keep browser automation
 out of this package. Never use arbitrary DevTools `Runtime.evaluate`, page
 scripts, selectors from untrusted pages, or visual coordinates as Jev candidates.
+Visual fallback can at most justify an advisory request for structured evidence
+or a human review; it must never invoke a browser or desktop action directly.
+
+Vercel's experimental [`mcp-handler` WebMCP bridge](https://github.com/vercel-labs/mcp-handler/blob/main/docs/WEBMCP.md) can forward calls with the
+signed-in user's cookies. Its tool allowlist limits page registration but does
+not restrict the underlying MCP endpoint, and its `readOnlyHint` is not an
+authorization fact. Use the stricter bridge binding only for an exact
+same-origin script URL and a host-reviewed allowlist whose entire exposed
+surface is read-only. The server must separately require same-origin
+cookie-authenticated fetches, authenticate every protocol request, validate the
+current session and arguments, and keep cancellation distinct from rollback.
+Tool output remains untrusted and is excluded from the binding.

@@ -5,3 +5,4 @@ export * from "./provider.js";
 export * from "./questions.js";
 export * from "./receipts.js";
 export * from "./tool-environments.js";
+export * from "./visual-extractor-profiles.js";

@@ -4,12 +4,40 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  canonicalAdapterModel,
   assertSafeGeneratedText,
+  bindMcpHandlerWebMcpAdvisory,
+  canonicalAdapterModel,
   generateIntegrations,
   parseAdapterModel,
   validateGeneratedIntegrations,
 } from "../dist/index.js";
+
+const builtBridgeBinding = bindMcpHandlerWebMcpAdvisory(
+  {
+    origin: "https://tools.example.test",
+    frameId: "main",
+    toolName: "lookup_record",
+    inputSchema: { type: "object", additionalProperties: false },
+    policyEpoch: "policy-1",
+    stateVersion: "state-1",
+    bridgeRevision: "mcp-handler-2.2.0",
+    endpointPath: "/api/mcp",
+    exposedTools: ["lookup_record"],
+    readOnlyToolNames: ["lookup_record"],
+    credentials: "same-origin",
+    requireSameOriginFetch: true,
+  },
+  {
+    origin: "https://tools.example.test",
+    frameId: "main",
+    toolName: "lookup_record",
+    inputSchema: { type: "object", additionalProperties: false },
+    scriptUrl: "https://tools.example.test/api/mcp?webmcp-script",
+    readOnlyHint: true,
+  },
+);
+assert.equal(builtBridgeBinding.authority, "NONE");
+assert.equal(builtBridgeBinding.execution, "NOT_SUPPORTED");
 
 const malicious = {
   ...canonicalAdapterModel,

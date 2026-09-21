@@ -1,14 +1,14 @@
+import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
 import { describe, expect, it } from "vitest";
 import {
-  NATIVE_JEV_MODEL,
   createNativeJevProvider,
   createVercelGatewayJevProvider,
+  NATIVE_JEV_MODEL,
   TypeSafeProvider,
   VERCEL_GATEWAY_JEV_MODEL,
   VERCEL_GATEWAY_JEV_PROVIDER_ID,
   VERCEL_GATEWAY_TYPESAFE_BASE_URL,
 } from "../src/index.js";
-import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
 
 const request: DecisionRequest = {
   id: "d1",
@@ -70,6 +70,77 @@ describe("TypeSafeProvider", () => {
     });
   });
 
+  it("retains only a hash of the SDK request ID without awaiting the result twice", async () => {
+    let systemOneCalls = 0;
+    let withResponseCalls = 0;
+    const result = {
+      model: "jev-1.13.0",
+      usage: { input_tokens: 1, output_tokens: 2 },
+      answers: {
+        choice_1: {
+          type: "choice",
+          choice: "a",
+          probabilities: { a: 0.8, b: 0.2 },
+          confidence: 0.9,
+        },
+      },
+    };
+    const provider = new TypeSafeProvider({
+      id: "typesafe",
+      model: "jev-1.13.0",
+      client: {
+        systemOne: () => {
+          systemOneCalls += 1;
+          return Object.assign(Promise.resolve(result), {
+            withResponse: async () => {
+              withResponseCalls += 1;
+              return { data: result, requestId: "req_live_123" };
+            },
+          });
+        },
+      },
+    });
+
+    const mapped = await provider.evaluateWithMetadata(request);
+    expect(mapped.providerRequestIdHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(JSON.stringify(mapped)).not.toContain("req_live_123");
+    expect(systemOneCalls).toBe(1);
+    expect(withResponseCalls).toBe(1);
+  });
+
+  it("fails closed on malformed SDK response provenance", async () => {
+    const result = {
+      model: "jev-1.13.0",
+      usage: { input_tokens: 1, output_tokens: 2 },
+      answers: {
+        choice_1: {
+          type: "choice",
+          choice: "a",
+          probabilities: { a: 0.8, b: 0.2 },
+          confidence: 0.9,
+        },
+      },
+    };
+    const provider = new TypeSafeProvider({
+      id: "typesafe",
+      model: "jev-1.13.0",
+      client: {
+        systemOne: () =>
+          Object.assign(Promise.resolve(result), {
+            withResponse: async () => ({
+              data: result,
+              requestId: "req_bad\nforged",
+            }),
+          }),
+      },
+    });
+
+    await expect(provider.evaluateWithMetadata(request)).rejects.toMatchObject({
+      category: "invalid_response",
+      retryable: false,
+    });
+  });
+
   it("requires an explicitly approved Jev requested/returned model and a positive deadline", async () => {
     expect(
       () =>
@@ -89,7 +160,42 @@ describe("TypeSafeProvider", () => {
     ).rejects.toMatchObject({ category: "configuration", retryable: false });
   });
 
-  it("pins Vercel Gateway identity, endpoint, model, authentication, and retry policy", async () => {
+  it("rejects malformed native entries before dispatch as an invalid request", async () => {
+    let calls = 0;
+    const provider = new TypeSafeProvider({
+      id: "typesafe",
+      model: "jev-1.13.0",
+      client: {
+        systemOne: async () => {
+          calls += 1;
+          return {};
+        },
+      },
+    });
+    const invalidRequests: readonly DecisionRequest[] = [
+      { ...request, state: true },
+      { ...request, state: null },
+      {
+        ...request,
+        questions: [
+          {
+            id: "empty_noul",
+            type: "noul",
+            instructions: null,
+            criteria: { true: null, false: null },
+          },
+        ],
+      },
+    ];
+    for (const invalid of invalidRequests)
+      await expect(provider.evaluate(invalid)).rejects.toMatchObject({
+        category: "invalid_request",
+        retryable: false,
+      });
+    expect(calls).toBe(0);
+  });
+
+  it("pins the public Vercel Gateway identity, endpoint, and model", () => {
     expect(VERCEL_GATEWAY_TYPESAFE_BASE_URL).toBe(
       "https://ai-gateway.vercel.sh/typesafe",
     );
@@ -98,43 +204,17 @@ describe("TypeSafeProvider", () => {
     expect(() => createVercelGatewayJevProvider({ apiKey: "" })).toThrow(
       /configuration/,
     );
-    let compiled: unknown;
-    let received: unknown;
     const provider = createVercelGatewayJevProvider({
       apiKey: "gateway-key",
-      client: {
-        systemOne: async (input, options) => {
-          compiled = input;
-          received = options;
-          return {
-            model: VERCEL_GATEWAY_JEV_MODEL,
-            usage: { input_tokens: 3, output_tokens: 0 },
-            answers: {
-              choice_1: {
-                type: "choice",
-                choice: "a",
-                probabilities: { a: 0.8, b: 0.2 },
-                confidence: 0.9,
-              },
-            },
-          };
-        },
-      },
     });
     expect(provider.id).toBe(VERCEL_GATEWAY_JEV_PROVIDER_ID);
-    await expect(
-      provider.evaluate(request, { deadlineMs: 123 }),
-    ).resolves.toMatchObject({
-      model: VERCEL_GATEWAY_JEV_MODEL,
-      probabilitySemantics: "native_calibrated",
-    });
-    expect(compiled).toMatchObject({ model: VERCEL_GATEWAY_JEV_MODEL });
-    expect(received).toEqual({ timeout: 123, retry: { maxRetries: 0 } });
   });
 
   it("fails closed when the Gateway response does not preserve its pinned model identity", async () => {
-    const provider = createVercelGatewayJevProvider({
-      apiKey: "gateway-key",
+    const provider = new TypeSafeProvider({
+      id: VERCEL_GATEWAY_JEV_PROVIDER_ID,
+      model: VERCEL_GATEWAY_JEV_MODEL,
+      approvedModels: [VERCEL_GATEWAY_JEV_MODEL],
       client: {
         systemOne: async () => ({
           model: NATIVE_JEV_MODEL,

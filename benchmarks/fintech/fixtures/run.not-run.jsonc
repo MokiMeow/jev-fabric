@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "3",
+  "runId": "fintech-not-run",
+  "executionState": "NOT_RUN",
+  "createdAt": "2026-09-20T00:00:00.000Z",
+  "taskContract": {
+    "id": "fintech-exception-routing-v2",
+    "frozen": true,
+    "preregisteredAt": "2026-09-20T00:00:00.000Z",
+    "primaryMetric": "held_out_route_accuracy",
+    "armOrderPolicy": "alternating_by_canonical_case_index_v1",
+    "prohibitedClaims": ["financial_authorization", "execution", "identity"]
+  },
+  "pack": {
+    "id": "fintech-exception",
+    "version": "0.2.0",
+    "questionSetHash": "sha256:dd48486ae4cf69972d839b537eae48564ea5f9df6248ca850d05f0205992c00e"
+  },
+  "baseline": {
+    "id": "always-investigate",
+    "version": "1",
+    "sourceDigest": "sha256:49d89d3561bd8bec185a43b836af5297c844bc6aded2c470325268833d34a46d"
+  },
+  "pricing": {
+    "currency": "USD",
+    "inputNanoUsdPerToken": "42",
+    "outputPricing": "FREE",
+    "sourceUrl": "https://docs.typesafe.ai/models",
+    "sourceDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "observedAt": "2026-09-20T00:00:00.000Z"
+  },
+  "dataset": {
+    "status": "NOT_SELECTED",
+    "datasetId": null,
+    "caseSetDigest": null,
+    "sourceUrl": null,
+    "license": null,
+    "redistributionAllowed": null,
+    "evidenceClass": null,
+    "containsPersonalData": null,
+    "containsRegulatedData": null,
+    "deidentified": null,
+    "contentRetention": "digests_and_labels_only",
+    "splitPolicy": "group_disjoint_preregistered",
+    "frozenAt": null,
+    "cases": []
+  },
+  "traces": [],
+  "metrics": null
+}

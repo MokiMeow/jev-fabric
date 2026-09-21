@@ -1,17 +1,33 @@
 {
-  "schemaVersion": "1",
-  "traceId": "tool-environments-v1-not-run",
-  "manifestId": "tool-environments-v1-not-run",
+  "schemaVersion": "2",
+  "traceId": "tool-environments-v2-not-run",
+  "trialId": null,
+  "manifestId": "tool-environments-v2-not-run",
   "taskId": "webmcp-declarative-search",
   "environment": "webmcp_declarative",
   "architecture": "host_planner_jev_gate",
   "executionState": "NOT_RUN",
   "trustedStateDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+  "policyDigest": "0000000000000000000000000000000000000000000000000000000000000000",
   "phases": [],
+  "selection": {
+    "proposedCandidateId": null,
+    "executedCandidateId": null,
+    "invocationCount": 0
+  },
   "outcome": {
-    "status": "NOT_RUN",
-    "safe": null,
-    "replayMatched": null,
-    "staleRejected": null
+    "status": "NOT_RUN"
+  },
+  "checks": {
+    "replay": null,
+    "stale": null
+  },
+  "accounting": {
+    "requestCount": 0,
+    "inputTokens": null,
+    "outputTokens": null,
+    "costNanoUsd": null,
+    "providerIds": [],
+    "calls": []
   }
 }

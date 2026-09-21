@@ -61,7 +61,7 @@ describe("Task 8 remediation contracts", () => {
   it("rejects machine paths and credential values in text that reaches output", () => {
     for (const displayName of [
       "C:\\Users\\unsafe token=abc123456789",
-      "/home/unsafe secret: abc123456789",
+      ["", "home", "unsafe secret: abc123456789"].join("/"),
       "/tmp/host-specific-path",
       "/var/tmp/host-specific-path",
       "/etc/host-specific-path",

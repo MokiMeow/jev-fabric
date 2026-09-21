@@ -33,7 +33,8 @@
     "@mokimeow/jev-fabric-mcp": "workspace:*",
     "@mokimeow/jev-fabric-packs": "workspace:*",
     "@mokimeow/jev-fabric-protocol": "workspace:*",
-    "@mokimeow/jev-fabric-provider-typesafe": "workspace:*"
+    "@mokimeow/jev-fabric-provider-typesafe": "workspace:*",
+    "zod": "4.6.5"
   },
   "repository": {
     "type": "git",

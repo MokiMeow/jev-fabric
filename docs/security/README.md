@@ -14,4 +14,7 @@ Jev Fabric limits semantic decision inputs and outputs but does not make an appl
 | MCP misuse | five read-only advisory tools, bounded input/output | an external host may misuse advice |
 | Provider outage | bounded retry/deadline and fail-closed pack behavior | availability depends on dependencies |
 
-Read [security boundaries](boundaries.md), [MCP limits](../reference/mcp.md), and [support guidance](../../SUPPORT.md). Do not include a key or raw incident data in a public issue.
+Read [security boundaries](boundaries.md), the specialized [finance threat
+model](finance-threat-model.md), [MCP limits](../reference/mcp.md), and [support
+guidance](../../SUPPORT.md). Do not include a key or raw incident data in a
+public issue.

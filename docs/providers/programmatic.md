@@ -32,9 +32,22 @@ return { next: result.semantic.selectedId, receipt: result.receipt };
 ```
 
 The native adapter validates typed answers, pins the requested model, and sets
-SDK retries to zero. Its `native_calibrated` receipt label is provider-declared
-semantics, not individual correctness or permission; validate locally on held
-out data before operational thresholds.
+SDK retries to zero. Before transport it compiles every state, instruction, and
+criterion through the SDK's native entry contract: text, a structured JSON
+object or array, or `null`. Top-level numeric and boolean entries are rejected
+as a non-retryable `invalid_request` with zero provider calls instead of being
+hidden behind a TypeScript cast. Its `native_calibrated` receipt label is
+provider-declared semantics, not individual correctness or permission;
+validate locally on held-out data before operational thresholds.
+
+When the official SDK exposes `x-typesafe-request-id`,
+`evaluateWithMetadata` returns a domain-separated SHA-256 digest as
+`providerRequestIdHash`. Fabric never returns or logs the raw upstream ID. The
+adapter obtains the parsed result and request ID through the SDK's single
+`withResponse()` promise; it does not issue or await a second provider call.
+Missing request IDs remain absent, while empty, oversized, control-character,
+or non-string IDs fail closed as `invalid_response`. This digest is correlation
+evidence only: it does not prove provider identity, success, latency, or billing.
 
 ## OpenAI-compatible provider
 
@@ -60,8 +73,19 @@ const provider = new OpenAICompatibleProvider({
 The adapter uses endpoint/address planning and rejects private, unpinned, and
 unsafe redirect destinations. Keep the resolver and transport in trusted server
 code; do not accept endpoint/model/header values from an agent or browser.
+Its immutable `executionPolicy` exposes the configured redirect and repair
+limits so higher-level measurement harnesses can reject hidden transport
+multiplicity; the finance harness requires both values to be zero.
 `self_reported` probability semantics do not mean calibration, correctness, or
-authority.
+authority. `evaluateWithMetadata` additionally preserves strict optional
+`usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens`
+from the same bounded response body. Missing usage remains absent; malformed
+or internally inconsistent usage fails the response instead of being guessed.
+The response model is the exact non-empty top-level `model` value returned by
+the upstream endpoint; the adapter never relabels it as the configured request
+route. Callers that require a pinned concrete version must compare that value
+exactly and fail closed on absence or drift. The ordinary `evaluate` method
+remains response-only.
 
 ## Evidence and failures
 

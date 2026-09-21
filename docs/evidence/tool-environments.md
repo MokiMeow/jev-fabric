@@ -72,6 +72,44 @@ exporting, committing, building for release, or changing protected assets—the
 benchmark must include a rejected candidate. A positive score must not bypass
 the host's confirmation or authorization rule.
 
+## Visual-observation boundary
+
+The generic visual-observation envelope is conformance-only, not a vision or
+performance feature. It source-binds a chart, browser viewport, or DCC viewport
+artifact hash and bounded extractor metadata to an exact trusted environment
+projection; any annotation remains `untrusted_data_only`. It deliberately does
+not load image bytes or provide browser, renderer, OCR, pointer, keyboard, or
+desktop control.
+
+Before a visual fallback can contribute to a retained run, test capture-binding
+rejection for changed state/capability/frame-derived context/artifact/extractor,
+stale capture rejection, and hostile annotation rejection. Measure the external
+extractor and host action phases separately. No retained result currently
+measures visual extraction accuracy, browser speed, or a Jev advantage.
+
+The optional fixed visual extractor-profile attachment is also conformance-only.
+It verifies that a bounded finding ID belongs to a trusted extractor/profile
+vocabulary and is hash-bound to an existing visual observation. Strict profile
+mode additionally binds the profile digest into the capture tuple and trusted
+capture equality. It does not measure whether the finding is visually correct,
+complete, calibrated, or useful. Before reporting visual quality, retain a
+replayable corpus with independently reviewed expected finding IDs, artifact
+digests, extractor/profile versions, abstentions, stale and profile-swap
+attacks, and per-class error denominators. Do not retain image bytes,
+proprietary scene contents, or browser user data in this repository.
+
+The text-only visual bridge is likewise conformance-only. It proves that a
+provider-facing state contains bounded extractor text and code-reviewed finding
+dispositions, not pixels, image URLs, credentials, coordinates, selectors, or
+an execution channel. Measure bridge validation in the projection/policy phase
+and measure image capture, OCR, or vision extraction as a separate phase. A
+passing bridge is not evidence of visual correctness, multimodal Jev support,
+extractor accuracy, browser performance, or a Jev latency/cost advantage.
+The bridge's 8,192-byte annotation-JSON ceiling is a conformance and resource
+bound, not a measured token count. Retained live evidence must record the
+provider-reported input tokens and cost rather than converting bytes into a
+claimed token total.
+
 ## WebMCP maturity and security
 
 WebMCP is relevant because it can expose structured web tools to an agent,
@@ -89,6 +127,24 @@ remains possible. The benchmark should separately record tool discovery and
 invocation so a faster discovery path cannot hide a slower or less safe action
 path.
 
+Vercel added an [experimental bridge](https://vercel.com/changelog/webmcp-mcp-handler) in `mcp-handler@2.2.0`, observed
+2026-09-21, that registers an allowlisted subset of server tools in WebMCP and
+proxies calls with the page's session cookies. This is implementation evidence,
+not performance evidence. The Fabric bridge contract supports only a
+same-origin, host-declared read-only surface and retains no cookie, tool output,
+or browser handle. A completed benchmark must still measure discovery,
+invocation, authentication failure, cancellation, and postcondition checking
+separately.
+
+An independent community implementation, [`jev-browser` at commit
+`8d90c51b`](https://github.com/jkudish/jev-browser/commit/8d90c51bedbe7cd07596bfaa532ded019a31d2a8),
+provides useful design evidence: it batches a bounded action Choice with goal
+and stuck Nouls, keeps stop gates in code, distinguishes proposed from executed
+actions, and retains provider usage. Its repository-level speed and cost
+figures are community reports, not Jev Fabric measurements, and are not copied
+into this benchmark. The design reinforces the need to count provider requests
+instead of treating several questions in one Jev request as several calls.
+
 ## Required retained measurements
 
 One result row exists for each environment/architecture pair. Record only
@@ -98,6 +154,7 @@ time.
 | Field | Definition |
 | --- | --- |
 | `host_discovery` | Tool enumeration or validated host-state projection. |
+| `visual_extraction` | External OCR/vision/extractor processing; absent when no visual fallback is used. |
 | `host_planning` | Host planner proposal time; absent for direct deterministic. |
 | `jev_evaluation` | Jev request/response time; absent without the Jev gate. |
 | `policy_gate` | Candidate coverage, policy, ticket, and freshness validation. |
@@ -105,29 +162,55 @@ time.
 | `verification` | Post-action invariant check and redacted receipt creation. |
 | `replay_check` | Same-projection replay comparison; no live re-execution required. |
 
-For each populated phase, report p50, p95, and p99 milliseconds, the sample
-count, cold/warm process condition, concurrency, host/browser/engine version,
+For each populated phase, retain the per-trial monotonic duration. Artifact
+schema version 2 recomputes p50, p95, and p99 with deterministic linear
+interpolation at `(n - 1) * p`; supplied aggregates are not trusted. Also record
+the cold/warm process condition, concurrency, host/browser/engine version,
 OS/CPU/GPU, test fixture digest, provider/model/prompt/policy versions, and
-network region when a live provider is used. These values are not additive
-across percentiles; compute end-to-end percentiles from per-attempt traces.
+network region when a live provider is used. Percentiles are not additive;
+compute any end-to-end distribution from per-attempt traces.
 
 Report these outcome metrics with denominators:
 
-- Success rate: completed expected bounded action divided by eligible attempts.
-- Safe-outcome rate: attempts satisfying the expected allow/reject policy
-  outcome divided by eligible attempts.
+- Success rate: trials that proposed the expected candidate and then either
+  executed it for an allow case or rejected it for a deny case, divided by all
+  retained trials. Pre-decision and provider failures remain in the denominator.
+- Safe-outcome rate: trials in which no unsafe host action occurred, divided by
+  all retained trials. A pre-invocation failure is safe but unsuccessful; an
+  unexpected execution, or any execution for a deny case, is unsafe. This is
+  derived from the manifest policy and retained execution, not a trace boolean.
 - Replay-pass rate: retained same-projection decision replays that match the
-  recorded decision divided by replay-eligible attempts.
+  recorded decision divided by all trials; every version-2 task declares the
+  replay contract. The original decision digest is recomputed from the trace,
+  then compared with the separately retained replay digest.
 - Stale-rejection rate: intentionally stale projections rejected before host
-  invocation divided by stale attempts.
-- Tokens and cost: provider-reported usage and invoiced/quoted request cost;
-  use `null` when unavailable, never a price extrapolation.
+  invocation divided by all trials; every version-2 task includes a stale
+  subcase. A distinct stale-state digest, proposal, execution, invocation count,
+  decision, and domain-bound evidence digest are retained; rejection is derived
+  only when no action was executed or invoked.
+- Tokens and cost: each provider request retains purpose, provider, resolved
+  model, usage, integer nano-USD cost, cost basis, request-contract digest,
+  redacted usage-evidence digest, and credential-free HTTPS pricing provenance.
+  Version 2 reconciles per-request fields to each trace and then recomputes the
+  aggregate. `reviewed_rate_estimate` remains an estimate; do not label it an
+  invoice. A run without the required provenance cannot be published as a
+  completed comparison.
 
-Use 95% confidence intervals. Cluster bootstrap by stable task group when
-there are repeated attempts per task; state the method, random seed,
-replicates, and independent group count. Do not publish a confidence interval
-from zero samples, and do not treat model confidence as a correctness
-probability.
+The domain-separated binding digests detect edits and cross-trial substitution
+inside the retained artifact set. They do not authenticate who created the
+artifact, whether the provider emitted the usage record, or whether an external
+price source is true. Strong public cost claims require the redacted source
+evidence and independent provenance review in addition to passing this
+validator.
+
+Version 2 requires a unique trial ID in each environment/architecture cell and
+the exact same trial-ID set in all three architecture arms. It recomputes a
+two-sided 95% Wilson interval over those paired trials for every binary rate.
+That interval quantifies repeat-trial uncertainty for the declared task only;
+it is not evidence of generalization to other tasks. A future multi-task corpus
+must use a new artifact version with group-aware resampling rather than pooling
+dependent trials. Do not publish an interval from zero samples, and never treat
+Jev Choice/Score confidence or a Noul probability as observed correctness.
 
 ## Run discipline
 
@@ -141,6 +224,13 @@ Do not mix machines, engine versions, display backends, browser channels,
 network regions, candidate sets, or safety policies inside a claimed comparison.
 If any of those change, publish a new run rather than overwriting a prior
 result.
+
+Completed aggregate rows are accepted only when they exactly equal the rows
+independently recomputed from retained traces. The validator also rejects
+duplicate trial IDs, unpaired architecture arms, candidates outside the
+manifest, a successful run that did not execute the expected safe candidate,
+unbound replay/stale checks, inconsistent provider accounting, model aliases
+for Jev calls, credentialed pricing URLs, and provider-call provenance drift.
 
 ## Current conclusion
 

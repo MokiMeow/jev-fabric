@@ -1,4 +1,5 @@
-import { TypeSafeClient, type RequestOptions } from "@typesafe-ai/sdk";
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import type {
   DecisionProvider,
   DecisionRequest,
@@ -7,16 +8,32 @@ import type {
   EvaluateOptions,
   ProviderCapabilities,
 } from "@mokimeow/jev-fabric-protocol";
-import { TypeSafeProviderError, sanitizeTypeSafeError } from "./errors.js";
+import { type RequestOptions, TypeSafeClient } from "@typesafe-ai/sdk";
+import { sanitizeTypeSafeError, TypeSafeProviderError } from "./errors.js";
+import {
+  createPinnedVercelGatewayJevClient,
+  VERCEL_GATEWAY_JEV_MODEL,
+  VERCEL_GATEWAY_JEV_PROVIDER_ID,
+} from "./gateway-client.js";
 import {
   compileTypeSafeRequest,
   mapTypeSafeResult,
   type TypeSafeMappedResult,
   type TypeSafeResult,
 } from "./mapping.js";
+import { pinnedTypeSafeFetch } from "./transport.js";
+
+export interface TypeSafeClientResponse {
+  readonly data: unknown;
+  readonly requestId: string | undefined;
+}
+
+export interface TypeSafeClientPromise extends PromiseLike<unknown> {
+  readonly withResponse?: () => Promise<TypeSafeClientResponse>;
+}
 
 export interface TypeSafeClientLike {
-  systemOne(request: unknown, options?: RequestOptions): Promise<unknown>;
+  systemOne(request: unknown, options?: RequestOptions): TypeSafeClientPromise;
 }
 export interface TypeSafeProviderOptions {
   readonly id: string;
@@ -31,13 +48,11 @@ export interface TypeSafeProviderOptions {
 /** The only native Jev model admitted by the alpha CLI integration. */
 export const NATIVE_JEV_MODEL = "jev-1.13.0" as const;
 export const NATIVE_JEV_PROVIDER_ID = "typesafe-native" as const;
-/** Official TypeSafe SDK endpoint for Vercel AI Gateway's Jev route. */
-export const VERCEL_GATEWAY_TYPESAFE_BASE_URL =
-  "https://ai-gateway.vercel.sh/typesafe" as const;
-/** Gateway model IDs are transport-specific and deliberately not aliases. */
-export const VERCEL_GATEWAY_JEV_MODEL = "typesafe-ai/jev" as const;
-export const VERCEL_GATEWAY_JEV_PROVIDER_ID =
-  "typesafe-vercel-gateway" as const;
+export {
+  VERCEL_GATEWAY_JEV_MODEL,
+  VERCEL_GATEWAY_JEV_PROVIDER_ID,
+  VERCEL_GATEWAY_TYPESAFE_BASE_URL,
+} from "./gateway-client.js";
 
 export interface NativeJevProviderOptions {
   /** Resolved by a trusted server process after CLI gates have passed. */
@@ -49,8 +64,6 @@ export interface NativeJevProviderOptions {
 export interface VercelGatewayJevProviderOptions {
   /** Resolved by trusted server startup after explicit live-use gates pass. */
   readonly apiKey: string;
-  /** Injection seam for offline tests; no network client is constructed when supplied. */
-  readonly client?: TypeSafeClientLike;
 }
 
 /**
@@ -81,26 +94,8 @@ export function createVercelGatewayJevProvider(
     id: VERCEL_GATEWAY_JEV_PROVIDER_ID,
     model: VERCEL_GATEWAY_JEV_MODEL,
     approvedModels: [VERCEL_GATEWAY_JEV_MODEL],
-    ...(options.client === undefined
-      ? { client: createVercelGatewayJevClient(options.apiKey) }
-      : { client: options.client }),
+    client: createPinnedVercelGatewayJevClient(options.apiKey),
   });
-}
-
-/** Internal transport construction; callers cannot bypass the pinned provider. */
-function createVercelGatewayJevClient(apiKey: string): TypeSafeClient {
-  if (!apiKey) throw new TypeSafeProviderError("configuration", false);
-  try {
-    return new TypeSafeClient({
-      apiKey,
-      baseURL: VERCEL_GATEWAY_TYPESAFE_BASE_URL,
-      defaultModel: VERCEL_GATEWAY_JEV_MODEL,
-      logLevel: "off",
-      retry: { maxRetries: 0 },
-    });
-  } catch (error) {
-    throw sanitizeTypeSafeError(error);
-  }
 }
 
 export class TypeSafeProvider implements DecisionProvider {
@@ -139,12 +134,18 @@ export class TypeSafeProvider implements DecisionProvider {
     request: DecisionRequest,
     options?: EvaluateOptions,
   ): Promise<TypeSafeMappedResult> {
+    if (
+      options?.deadlineMs !== undefined &&
+      (!Number.isFinite(options.deadlineMs) || options.deadlineMs <= 0)
+    )
+      throw new TypeSafeProviderError("configuration", false);
+    let compiled: ReturnType<typeof compileTypeSafeRequest>;
     try {
-      if (
-        options?.deadlineMs !== undefined &&
-        (!Number.isFinite(options.deadlineMs) || options.deadlineMs <= 0)
-      )
-        throw new TypeSafeProviderError("configuration", false);
+      compiled = compileTypeSafeRequest(request, this.#model);
+    } catch {
+      throw new TypeSafeProviderError("invalid_request", false);
+    }
+    try {
       const callOptions: RequestOptions = {
         ...(options?.signal === undefined ? {} : { signal: options.signal }),
         ...(options?.deadlineMs === undefined
@@ -153,18 +154,67 @@ export class TypeSafeProvider implements DecisionProvider {
         // Fabric owns retry/accounting; never let the SDK make hidden attempts.
         retry: { maxRetries: 0 },
       };
-      const result = await this.#client.systemOne(
-        compileTypeSafeRequest(request, this.#model),
-        callOptions,
+      const pending = this.#client.systemOne(compiled, callOptions);
+      const withResponse = pending.withResponse;
+      const envelope =
+        typeof withResponse === "function"
+          ? validateClientResponse(await withResponse.call(pending))
+          : { data: await pending, requestId: undefined };
+      const mapped = mapTypeSafeResult(
+        request,
+        this.id,
+        envelope.data as TypeSafeResult,
+        {
+          requestedModel: this.#model,
+          approvedModels: this.#approvedModels,
+        },
       );
-      return mapTypeSafeResult(request, this.id, result as TypeSafeResult, {
-        requestedModel: this.#model,
-        approvedModels: this.#approvedModels,
-      });
+      const providerRequestIdHash = hashProviderRequestId(envelope.requestId);
+      return providerRequestIdHash === undefined
+        ? mapped
+        : { ...mapped, providerRequestIdHash };
     } catch (error) {
       throw sanitizeTypeSafeError(error);
     }
   }
+}
+
+const MAX_PROVIDER_REQUEST_ID_BYTES = 1_024;
+const REQUEST_ID_HASH_DOMAIN = "jev-fabric/typesafe-request-id/v1\u0000";
+
+function validateClientResponse(value: unknown): TypeSafeClientResponse {
+  if (!value || typeof value !== "object" || !("data" in value))
+    throw new TypeError("invalid TypeSafe response envelope");
+  const requestId = (value as { readonly requestId?: unknown }).requestId;
+  if (requestId !== undefined && typeof requestId !== "string")
+    throw new TypeError("invalid TypeSafe request ID");
+  return { data: (value as { readonly data: unknown }).data, requestId };
+}
+
+function hashProviderRequestId(
+  requestId: string | undefined,
+): `sha256:${string}` | undefined {
+  if (requestId === undefined) return undefined;
+  if (
+    requestId.length === 0 ||
+    Buffer.byteLength(requestId, "utf8") > MAX_PROVIDER_REQUEST_ID_BYTES ||
+    containsControlCharacter(requestId)
+  )
+    throw new TypeError("invalid TypeSafe request ID");
+  return `sha256:${createHash("sha256")
+    .update(REQUEST_ID_HASH_DOMAIN, "utf8")
+    .update(requestId, "utf8")
+    .digest("hex")}`;
+}
+
+function containsControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint !== undefined &&
+      (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f))
+    );
+  });
 }
 
 function createClient(
@@ -176,6 +226,7 @@ function createClient(
     return new TypeSafeClient({
       apiKey,
       defaultModel: model,
+      fetch: pinnedTypeSafeFetch,
       logLevel: "off",
       retry: { maxRetries: 0 },
     });

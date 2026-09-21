@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { parseCompatibleAnswers } from "../src/response.js";
 import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
+import { describe, expect, it } from "vitest";
+import {
+  extractCompatibleResponse,
+  parseCompatibleAnswers,
+} from "../src/response.js";
 
 const request: DecisionRequest = {
   id: "request_1",
@@ -17,6 +20,22 @@ const request: DecisionRequest = {
 };
 
 describe("strict compatible response parsing", () => {
+  it("requires and preserves the exact upstream response model", () => {
+    expect(
+      extractCompatibleResponse(
+        JSON.stringify({
+          model: "resolved-model-2026-09-20",
+          choices: [{ message: { content: "{}" } }],
+        }),
+      ),
+    ).toEqual({ content: "{}", model: "resolved-model-2026-09-20" });
+    expect(() =>
+      extractCompatibleResponse(
+        JSON.stringify({ choices: [{ message: { content: "{}" } }] }),
+      ),
+    ).toThrow();
+  });
+
   it("accepts only an exact JSON answer envelope and always supplies self_reported semantics", () => {
     expect(
       parseCompatibleAnswers(

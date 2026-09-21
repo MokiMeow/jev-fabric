@@ -15,7 +15,10 @@ export interface NoulQuestion {
   readonly id: string;
   readonly type: "noul";
   readonly instructions: import("./json.js").JsonValue;
-  readonly criteria: import("./json.js").JsonValue;
+  readonly criteria: Readonly<{
+    readonly true?: import("./json.js").JsonValue;
+    readonly false?: import("./json.js").JsonValue;
+  }> | null;
 }
 
 export interface ScoreQuestion {
@@ -47,14 +50,33 @@ export const choiceQuestionSchema = z
     criteria: z.record(z.string(), jsonValueSchema.nullable()),
     options: choiceOptionsSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((question, context) => {
+    const criteria = Object.keys(question.criteria);
+    const options = new Set(question.options);
+    if (
+      criteria.length !== options.size ||
+      criteria.some((key) => !options.has(key))
+    )
+      context.addIssue({
+        code: "custom",
+        message: "choice criteria must match choice options exactly",
+        path: ["criteria"],
+      });
+  });
 
 export const noulQuestionSchema = z
   .object({
     id: portableIdentifierSchema,
     type: z.literal("noul"),
     instructions: jsonValueSchema,
-    criteria: jsonValueSchema,
+    criteria: z
+      .object({
+        true: jsonValueSchema.optional(),
+        false: jsonValueSchema.optional(),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 
@@ -63,7 +85,7 @@ export const scoreQuestionSchema = z
     id: portableIdentifierSchema,
     type: z.literal("score"),
     instructions: jsonValueSchema,
-    criteria: z.array(jsonValueSchema).min(1),
+    criteria: z.array(jsonValueSchema).min(2),
   })
   .strict();
 

@@ -24,6 +24,22 @@ describe("hand-computed probability metrics", () => {
     expect(nll(rows).value).toBeCloseTo(-Math.log(0.9));
     expect(topLabelEce(rows).value).toBeCloseTo(0.1);
   });
+
+  it("is invariant to probability object insertion order", () => {
+    const ascending = {
+      a: 0.05,
+      b: 0.05,
+      c: 0.05,
+      d: 0.05,
+      e: 0.1,
+      f: 0.1,
+      g: 0.6,
+    };
+    const descending = Object.fromEntries(Object.entries(ascending).reverse());
+    expect(categoricalBrier([{ probabilities: ascending, gold: "a" }])).toBe(
+      categoricalBrier([{ probabilities: descending, gold: "a" }]),
+    );
+  });
 });
 
 it("handles abstention boundaries, ordinal metrics, and retry-inclusive cost", () => {

@@ -108,10 +108,41 @@ if (
   webMcpBinding.execution !== "NOT_SUPPORTED"
 )
   throw new Error("installed WebMCP boundary is not advisory-only");
+const mcpHandlerBridgeBinding = adapters.bindMcpHandlerWebMcpAdvisory(
+  {
+    origin: "https://tools.example.test",
+    frameId: "main",
+    toolName: "lookup_record",
+    inputSchema: { type: "object", additionalProperties: false },
+    policyEpoch: "policy-1",
+    stateVersion: "state-1",
+    bridgeRevision: "mcp-handler-2.2.0",
+    endpointPath: "/api/mcp",
+    exposedTools: ["lookup_record"],
+    readOnlyToolNames: ["lookup_record"],
+    credentials: "same-origin",
+    requireSameOriginFetch: true,
+  },
+  {
+    origin: "https://tools.example.test",
+    frameId: "main",
+    toolName: "lookup_record",
+    inputSchema: { type: "object", additionalProperties: false },
+    scriptUrl: "https://tools.example.test/api/mcp?webmcp-script",
+    readOnlyHint: true,
+  },
+);
+if (
+  mcpHandlerBridgeBinding.authority !== "NONE" ||
+  mcpHandlerBridgeBinding.execution !== "NOT_SUPPORTED"
+)
+  throw new Error("installed mcp-handler bridge boundary is not advisory-only");
 
 const typeSafeProvider = installedModules.get("provider-typesafe");
-const gatewayProvider = typeSafeProvider.createVercelGatewayJevProvider({
-  apiKey: "offline-smoke-key",
+const gatewayProvider = new typeSafeProvider.TypeSafeProvider({
+  id: typeSafeProvider.VERCEL_GATEWAY_JEV_PROVIDER_ID,
+  model: typeSafeProvider.VERCEL_GATEWAY_JEV_MODEL,
+  approvedModels: [typeSafeProvider.VERCEL_GATEWAY_JEV_MODEL],
   client: {
     systemOne: async () => ({
       model: "typesafe-ai/jev",
@@ -141,7 +172,19 @@ const gatewayResult = await gatewayProvider.evaluate({
   ],
 });
 if (gatewayResult.model !== "typesafe-ai/jev")
-  throw new Error("installed Gateway factory did not preserve model identity");
+  throw new Error("installed Gateway mapping did not preserve model identity");
+const evaluationProvider =
+  typeSafeProvider.createVercelGatewayEvaluationJevProvider({
+    apiKey: "installed-package-construction-only",
+  });
+if (
+  evaluationProvider.id !== "typesafe-vercel-gateway-evaluate" ||
+  typeSafeProvider.VERCEL_GATEWAY_EVALUATION_URL !==
+    "https://ai-gateway.vercel.sh/v1/evaluate"
+)
+  throw new Error("installed Gateway Evaluation export drifted");
+if ("createPinnedVercelGatewayEvaluationJevProvider" in typeSafeProvider)
+  throw new Error("installed package exposed the private endpoint test seam");
 
 function run(args) {
   const result = spawnSync(process.execPath, [cli, ...args], {

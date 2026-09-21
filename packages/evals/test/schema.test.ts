@@ -76,9 +76,15 @@ describe("published JSON Schema contracts", () => {
       recursive: true,
     })) {
       const file = String(relative).replace(/\\/g, "/");
-      if (!/\.(?:json|jsonl)$/.test(file) || file.startsWith("schema/"))
-        continue;
       const base = file.split("/").at(-1) ?? "";
+      if (
+        !/\.(?:json|jsonl)$/.test(file) ||
+        /^tsconfig(?:\.[^.]+)*\.json$/u.test(base) ||
+        file.startsWith("finance/builders/") ||
+        file.startsWith("schema/") ||
+        file.includes("/schema/")
+      )
+        continue;
       const validator = validators.get(
         base === "manifest.json" ? "manifest.schema.json" : schemaFor(base),
       );

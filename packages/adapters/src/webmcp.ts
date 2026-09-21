@@ -35,6 +35,41 @@ export interface WebMcpAdvisoryBinding {
   readonly bindingFingerprint: string;
 }
 
+/**
+ * Trusted deployment facts for mcp-handler's experimental WebMCP bridge.
+ * Every exposed tool must also appear in `readOnlyToolNames`; this alpha
+ * boundary deliberately excludes side-effectful bridged tools.
+ */
+export interface TrustedMcpHandlerWebMcpProjection
+  extends TrustedWebMcpHostProjection {
+  readonly bridgeRevision: string;
+  readonly endpointPath: string;
+  readonly exposedTools: readonly string[];
+  readonly readOnlyToolNames: readonly string[];
+  readonly credentials: "same-origin";
+  readonly requireSameOriginFetch: true;
+}
+
+/** Page-observed bridge metadata. It is untrusted even when same-origin. */
+export interface UntrustedMcpHandlerWebMcpMetadata
+  extends UntrustedWebMcpPageMetadata {
+  readonly scriptUrl: unknown;
+  readonly readOnlyHint: unknown;
+}
+
+export interface McpHandlerWebMcpAdvisoryBinding extends WebMcpAdvisoryBinding {
+  readonly authority: "NONE";
+  readonly bridge: "mcp-handler-webmcp";
+  readonly bridgeRevision: string;
+  readonly endpointFingerprint: string;
+  readonly allowlistFingerprint: string;
+  readonly credentials: "same-origin";
+  readonly readOnlyOnly: true;
+  readonly requiresHostRevalidation: true;
+  readonly sameOriginCookieGate: "REQUIRED";
+  readonly bridgeBindingFingerprint: string;
+}
+
 type JsonPrimitive = null | boolean | number | string;
 type JsonValue =
   | JsonPrimitive
@@ -43,6 +78,7 @@ type JsonValue =
 
 const safeIdentifier = /^[A-Za-z0-9._-]{1,120}$/u;
 const safeToolName = /^[A-Za-z][A-Za-z0-9._-]{0,119}$/u;
+const safeEndpointPath = /^\/(?:[A-Za-z0-9._~-]+\/)*[A-Za-z0-9._~-]+\/?$/u;
 const MAX_JSON_DEPTH = 32;
 const MAX_JSON_NODES = 2_048;
 const MAX_CANONICAL_BYTES = 65_536;
@@ -325,6 +361,61 @@ function identifier(
   return value;
 }
 
+function canonicalEndpointPath(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    value.length > 240 ||
+    !safeEndpointPath.test(value) ||
+    value.split("/").some((segment) => segment === "." || segment === "..")
+  )
+    fail("mcp-handler endpoint path is unsafe");
+  return value;
+}
+
+function toolNameList(value: unknown, label: string): readonly string[] {
+  if (!Array.isArray(value)) fail(`${label} must be an array`);
+  const values = arrayValues(value);
+  if (values.length === 0 || values.length > MAX_CONTAINER_ENTRIES)
+    fail(`${label} must contain between 1 and 64 tools`);
+  const names = values.map((entry) =>
+    identifier(entry, `${label} entry`, safeToolName),
+  );
+  if (new Set(names).size !== names.length)
+    fail(`${label} must not contain duplicate tools`);
+  const sorted = [...names].sort((left, right) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+  if (JSON.stringify(names) !== JSON.stringify(sorted))
+    fail(`${label} must be sorted`);
+  return names;
+}
+
+function exactBridgeScriptUrl(
+  value: unknown,
+  origin: string,
+  endpointPath: string,
+): string {
+  if (typeof value !== "string") fail("bridge script URL must be a string");
+  const expected = `${origin}${endpointPath}?webmcp-script`;
+  if (value.length !== expected.length)
+    fail("bridge script URL must have the exact expected length");
+  let scriptUrl: URL;
+  try {
+    scriptUrl = new URL(value);
+  } catch {
+    fail("bridge script URL is not a URL");
+  }
+  if (
+    scriptUrl.href !== expected ||
+    scriptUrl.origin !== origin ||
+    scriptUrl.pathname !== endpointPath ||
+    scriptUrl.search !== "?webmcp-script" ||
+    scriptUrl.hash
+  )
+    fail("bridge script URL must be the exact same-origin mcp-handler asset");
+  return value;
+}
+
 function projection(
   input: TrustedWebMcpHostProjection,
 ): TrustedWebMcpHostProjection {
@@ -408,5 +499,137 @@ export function bindWebMcpAdvisory(
     execution: "NOT_SUPPORTED",
     ...binding,
     bindingFingerprint: fingerprint(binding),
+  };
+}
+
+/**
+ * Binds mcp-handler 2.2+'s experimental bridge without importing mcp-handler,
+ * inspecting cookies, making a network request, or exposing an execution API.
+ * The returned value is provenance only; the host still enforces cookie auth,
+ * current policy, user consent, and tool execution.
+ */
+export function bindMcpHandlerWebMcpAdvisory(
+  hostProjection: TrustedMcpHandlerWebMcpProjection,
+  untrustedPageMetadata: UntrustedMcpHandlerWebMcpMetadata,
+): McpHandlerWebMcpAdvisoryBinding {
+  if (!hostProjection || typeof hostProjection !== "object")
+    fail("trusted mcp-handler projection is required");
+  const trustedFields = dataProperties(
+    hostProjection,
+    "trusted mcp-handler projection",
+  );
+  const expectedTrustedFields = [
+    "bridgeRevision",
+    "credentials",
+    "endpointPath",
+    "exposedTools",
+    "frameId",
+    "inputSchema",
+    "origin",
+    "policyEpoch",
+    "readOnlyToolNames",
+    "requireSameOriginFetch",
+    "stateVersion",
+    "toolName",
+  ];
+  if (
+    JSON.stringify(Object.keys(trustedFields).sort()) !==
+    JSON.stringify(expectedTrustedFields)
+  )
+    fail("trusted mcp-handler projection has unexpected fields");
+
+  const baseProjection = projection({
+    origin: trustedFields.origin as string,
+    frameId: trustedFields.frameId as string,
+    toolName: trustedFields.toolName as string,
+    inputSchema: trustedFields.inputSchema as JsonValue,
+    policyEpoch: trustedFields.policyEpoch as string,
+    stateVersion: trustedFields.stateVersion as string,
+  });
+  const bridgeRevision = identifier(
+    trustedFields.bridgeRevision,
+    "bridge revision",
+  );
+  const endpointPath = canonicalEndpointPath(trustedFields.endpointPath);
+  const exposedTools = toolNameList(
+    trustedFields.exposedTools,
+    "exposed tools",
+  );
+  const readOnlyToolNames = toolNameList(
+    trustedFields.readOnlyToolNames,
+    "read-only tools",
+  );
+  if (JSON.stringify(exposedTools) !== JSON.stringify(readOnlyToolNames))
+    fail("every exposed bridge tool must be host-declared read-only");
+  if (!exposedTools.includes(baseProjection.toolName))
+    fail("selected tool is absent from the bridge allowlist");
+  if (trustedFields.credentials !== "same-origin")
+    fail("mcp-handler bridge credentials must be same-origin");
+  if (trustedFields.requireSameOriginFetch !== true)
+    fail("same-origin cookie request enforcement is required");
+
+  if (!untrustedPageMetadata || typeof untrustedPageMetadata !== "object")
+    fail("mcp-handler page metadata is required");
+  const pageFields = dataProperties(
+    untrustedPageMetadata,
+    "mcp-handler page metadata",
+  );
+  const expectedPageFields = [
+    "frameId",
+    "inputSchema",
+    "origin",
+    "readOnlyHint",
+    "scriptUrl",
+    "toolName",
+  ];
+  if (
+    JSON.stringify(Object.keys(pageFields).sort()) !==
+    JSON.stringify(expectedPageFields)
+  )
+    fail("mcp-handler page metadata contains an untrusted extra field");
+  if (pageFields.readOnlyHint !== true)
+    fail("page tool is not marked read-only");
+  const scriptUrl = exactBridgeScriptUrl(
+    pageFields.scriptUrl,
+    baseProjection.origin,
+    endpointPath,
+  );
+  const baseBinding = bindWebMcpAdvisory(baseProjection, {
+    origin: pageFields.origin,
+    frameId: pageFields.frameId,
+    toolName: pageFields.toolName,
+    inputSchema: pageFields.inputSchema,
+  });
+  const endpointFingerprint = fingerprint({
+    origin: baseProjection.origin,
+    endpointPath,
+    scriptUrl,
+  });
+  const allowlistFingerprint = fingerprint({
+    exposedTools,
+    readOnlyToolNames,
+  });
+  const bridgeBinding = {
+    baseBindingFingerprint: baseBinding.bindingFingerprint,
+    bridge: "mcp-handler-webmcp",
+    bridgeRevision,
+    endpointFingerprint,
+    allowlistFingerprint,
+    credentials: "same-origin",
+    readOnlyOnly: true,
+    sameOriginCookieGate: "REQUIRED",
+  } as const;
+  return {
+    ...baseBinding,
+    authority: "NONE",
+    bridge: "mcp-handler-webmcp",
+    bridgeRevision,
+    endpointFingerprint,
+    allowlistFingerprint,
+    credentials: "same-origin",
+    readOnlyOnly: true,
+    requiresHostRevalidation: true,
+    sameOriginCookieGate: "REQUIRED",
+    bridgeBindingFingerprint: fingerprint(bridgeBinding),
   };
 }

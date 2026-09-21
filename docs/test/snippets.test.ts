@@ -17,17 +17,34 @@ const packSmoke = resolve(root, "scripts/pack-smoke.mjs");
 const execFile = promisify(execFileCallback);
 
 function npm(arguments_: string[], cwd: string): string {
-  const npmCli = join(
-    dirname(process.execPath),
-    "node_modules",
-    "npm",
-    "bin",
-    "npm-cli.js",
-  );
-  return execFileSync(process.execPath, [npmCli, ...arguments_], {
+  const [command, commandArguments]: [string, string[]] =
+    process.platform === "win32"
+      ? [
+          process.execPath,
+          [
+            join(
+              dirname(process.execPath),
+              "node_modules",
+              "npm",
+              "bin",
+              "npm-cli.js",
+            ),
+            ...arguments_,
+          ],
+        ]
+      : ["npm", arguments_];
+  return execFileSync(command, commandArguments, {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, npm_config_registry: "http://127.0.0.1:9/" },
+    env: {
+      PATH: process.env.PATH,
+      TEMP: process.env.TEMP ?? tmpdir(),
+      TMP: process.env.TMP ?? tmpdir(),
+      ...(process.platform === "win32"
+        ? { SystemRoot: process.env.SystemRoot, ComSpec: process.env.ComSpec }
+        : {}),
+      npm_config_registry: "http://127.0.0.1:9/",
+    },
   });
 }
 
@@ -96,14 +113,30 @@ describe("public quickstart snippets", () => {
     const directory = await installPackedFixture();
     try {
       const doctor = npm(
-        ["exec", "--offline", "--no", "--", "jev-fabric", "doctor", "--json"],
+        [
+          "exec",
+          "--offline",
+          "--yes=false",
+          "--",
+          "jev-fabric",
+          "doctor",
+          "--json",
+        ],
         directory,
       );
       expect(JSON.parse(doctor) as { network: string }).toMatchObject({
         network: "not_used",
       });
       const evaluation = npm(
-        ["exec", "--offline", "--no", "--", "jev-fabric", "evaluate", "--json"],
+        [
+          "exec",
+          "--offline",
+          "--yes=false",
+          "--",
+          "jev-fabric",
+          "evaluate",
+          "--json",
+        ],
         directory,
       );
       expect(JSON.parse(evaluation) as { mode: string }).toMatchObject({

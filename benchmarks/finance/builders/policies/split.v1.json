@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1",
+  "policyId": "finance.forward-split.v1",
+  "method": "forward_chaining_time_split",
+  "minimumEmbargoDays": 30,
+  "isolation": {
+    "financial_text_triage": "issuer",
+    "visual_evidence": "issuer",
+    "market_surveillance": "scenario_family"
+  },
+  "sampling": "stable_id_sha256_rank_within_predeclared_strata",
+  "amendmentRule": "same_issuer_and_event_family_as_original",
+  "visualVariantRule": "same_issuer_and_source_accession_as_faithful_render"
+}

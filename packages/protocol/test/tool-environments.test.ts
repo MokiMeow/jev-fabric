@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  toolEnvironmentVisualAnnotationHash,
+  toolEnvironmentVisualCaptureBindingHash,
   toolEnvironmentProposalSchema,
   toolEnvironmentSnapshotSchema,
+  toolEnvironmentVisualObservationSchema,
   toolEnvironmentVerificationSchema,
   validateToolEnvironmentProposal,
   validateToolEnvironmentSnapshot,
 } from "../src/index.js";
+import { bindToolEnvironmentVisualObservation } from "../../adapters/src/visual-observation.js";
 
 const hash = (letter: string) => `sha256:${letter.repeat(64)}`;
 
@@ -69,6 +73,167 @@ const proposalInput = {
 } as const;
 
 describe("tool environment contract", () => {
+  it("rejects forged or state-swapped visual observations in public validation", () => {
+    const capture = {
+      modality: "dcc_viewport",
+      artifactHash: hash("c"),
+      extractorId: "viewport-inspector",
+      extractorVersion: "1.0.0",
+      schemaVersion: "1" as const,
+      capturedAt: "2026-09-20T10:00:00.100+00:00",
+      maxAgeMs: 500,
+    } as const;
+    const visualObservation = bindToolEnvironmentVisualObservation(
+      {
+        environment: snapshotInput.environment,
+        adapterId: snapshotInput.adapterId,
+        adapterVersion: snapshotInput.adapterVersion,
+        sessionRef: snapshotInput.sessionRef,
+        workspaceRef: snapshotInput.workspaceRef,
+        stateHash: snapshotInput.stateHash,
+        capabilityManifestHash: snapshotInput.capabilityManifestHash,
+        observedAt: snapshotInput.observedAt,
+        observationFreshnessMs: snapshotInput.observationFreshnessMs,
+      },
+      capture,
+      { annotations: ["Visible collection is isolated"] },
+      Date.parse("2026-09-20T10:00:00.250+00:00"),
+    );
+    const snapshot = { ...snapshotInput, visualObservation };
+    expect(visualObservation.captureBindingHash).toBe(
+      toolEnvironmentVisualCaptureBindingHash(snapshotInput, capture),
+    );
+    expect(visualObservation.annotationHash).toBe(
+      toolEnvironmentVisualAnnotationHash(visualObservation.annotations),
+    );
+    expect(
+      validateToolEnvironmentSnapshot(
+        snapshot,
+        trustedCatalogue,
+        Date.parse("2026-09-20T10:00:00.250+00:00"),
+        capture,
+      ),
+    ).toMatchObject({ visualObservation: { modality: "dcc_viewport" } });
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        snapshot,
+        trustedCatalogue,
+        undefined,
+        capture,
+      ),
+    ).toThrow(/observedNowMs is required/u);
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        {
+          ...snapshot,
+          visualObservation: {
+            ...visualObservation,
+            captureBindingHash: hash("d"),
+          },
+        },
+        trustedCatalogue,
+        Date.parse("2026-09-20T10:00:00.250+00:00"),
+        capture,
+      ),
+    ).toThrow(/capture binding/u);
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        {
+          ...snapshot,
+          visualObservation: {
+            ...visualObservation,
+            annotationHash: hash("f"),
+          },
+        },
+        trustedCatalogue,
+        Date.parse("2026-09-20T10:00:00.250+00:00"),
+        capture,
+      ),
+    ).toThrow(/annotation binding/u);
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        { ...snapshot, stateHash: hash("e") },
+        trustedCatalogue,
+        Date.parse("2026-09-20T10:00:00.250+00:00"),
+        capture,
+      ),
+    ).toThrow(/capture binding/u);
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        snapshot,
+        trustedCatalogue,
+        Date.parse("2026-09-20T10:00:00.601+00:00"),
+        capture,
+      ),
+    ).toThrow(/stale/u);
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        snapshot,
+        trustedCatalogue,
+        Date.parse("2026-09-20T10:00:00.250+00:00"),
+      ),
+    ).toThrow(/independently trusted capture/u);
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        snapshot,
+        trustedCatalogue,
+        Date.parse("2026-09-20T10:00:00.250+00:00"),
+        { ...capture, artifactHash: hash("e") },
+      ),
+    ).toThrow(/does not match/u);
+  });
+
+  it("accepts a source-bound visual observation without capture controls", () => {
+    const visualObservation = toolEnvironmentVisualObservationSchema.parse({
+      modality: "dcc_viewport",
+      artifactHash: hash("c"),
+      extractorId: "viewport-inspector",
+      extractorVersion: "1.0.0",
+      schemaVersion: "1",
+      capturedAt: "2026-09-20T10:00:00.100+00:00",
+      maxAgeMs: 500,
+      captureBindingHash: hash("d"),
+      annotationHash: hash("e"),
+      annotations: ["Visible collection is isolated"],
+      trust: "untrusted_data_only",
+    });
+    expect(visualObservation.modality).toBe("dcc_viewport");
+    expect(() =>
+      toolEnvironmentVisualObservationSchema.parse({
+        ...visualObservation,
+        imageUrl: "https://example.test/surface.png",
+      }),
+    ).toThrow();
+    expect(() =>
+      toolEnvironmentVisualObservationSchema.parse({
+        ...visualObservation,
+        annotations: ["safe\u202Eadmin approved"],
+      }),
+    ).toThrow(/control characters/u);
+  });
+
+  it("rejects hostile validation inputs without invoking accessors", () => {
+    let getterCalls = 0;
+    const hostile = { ...snapshotInput } as Record<string, unknown>;
+    Object.defineProperty(hostile, "stateHash", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return snapshotInput.stateHash;
+      },
+    });
+    expect(() =>
+      validateToolEnvironmentSnapshot(hostile, trustedCatalogue),
+    ).toThrow(/plain enumerable data/u);
+    expect(getterCalls).toBe(0);
+    expect(() =>
+      validateToolEnvironmentSnapshot(
+        new Proxy(snapshotInput, {}),
+        trustedCatalogue,
+      ),
+    ).toThrow(/proxies/u);
+  });
+
   it("accepts a redacted, bounded snapshot and advisory proposal", () => {
     const snapshot = toolEnvironmentSnapshotSchema.parse(snapshotInput);
     expect(snapshot.actions[0]?.id).toBe("apply-render-preset");
@@ -108,6 +273,22 @@ describe("tool environment contract", () => {
       toolEnvironmentProposalSchema.parse({
         ...proposalInput,
         arguments: { preset: "final" },
+      }),
+    ).toThrow();
+    expect(() =>
+      toolEnvironmentVisualObservationSchema.parse({
+        modality: "browser_viewport",
+        artifactHash: hash("a"),
+        extractorId: "browser-ocr",
+        extractorVersion: "1",
+        schemaVersion: "1",
+        capturedAt: "2026-09-20T10:00:00.000+00:00",
+        maxAgeMs: 500,
+        captureBindingHash: hash("b"),
+        annotationHash: hash("c"),
+        annotations: ["safe"],
+        trust: "untrusted_data_only",
+        actionId: "submit-form",
       }),
     ).toThrow();
   });

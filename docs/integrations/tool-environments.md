@@ -12,13 +12,78 @@ The projection contains opaque references, hashes, freshness metadata, and a
 finite allowlist of native operations. A proposal carries hashes for its
 arguments and evidence, never the arguments themselves.
 
+When a decision needs a chart, browser viewport, or DCC viewport observation,
+bind a compact visual observation to the same trusted snapshot. The contract
+contains only an artifact hash, capture/extractor provenance, freshness, a
+snapshot-binding hash, and bounded annotations marked `untrusted_data_only`.
+It contains no image bytes, paths, URLs, selectors, coordinates, or action
+fields. A visual extractor stays outside Fabric; use its annotations only to
+request structured evidence or human review, never as authorization.
+Validation also requires the host to pass the extractor's trusted capture
+projection separately from the snapshot. The public hashes detect mismatch;
+they do not authenticate a caller-supplied capture by themselves.
+
+## Fixed visual extractor profiles
+
+Use a `ToolEnvironmentVisualExtractorProfile` when an extractor must report a
+finite, code-reviewed vocabulary rather than free-form advisory annotations. A
+profile fixes its extractor id/version, schema version, supported visual
+modalities, and sorted finding identifiers. The only permitted dispositions are
+`visual_ambiguity`, `requires_structured_state`, and `requires_human_review`.
+They are advisory classifications, not actions, permissions, confidence scores,
+or approval signals.
+
+First validate the visual observation against its exact snapshot, trusted
+capture, and clock. For strict profile mode, use a separate profiled capture:
+its independently trusted equality projection and canonical snapshot binding
+both include the extractor profile hash. Then validate the fixed finding-ID
+attachment against that already-validated profiled observation and a separately
+trusted profile. Its binding commits to the observation's capture and
+annotation hashes, profile hash, and sorted finding IDs. Reject a profile,
+capture, observation, or finding-id swap. No profile may carry text prompts,
+pixels, file paths, URLs, DOM selectors, coordinates, host handles, action IDs,
+arguments, or executable data.
+
+This works for browser viewports and DCC viewports alike, including Blender,
+Unreal, Unity, Godot, and FreeCAD, because it describes evidence vocabulary
+only. It does not standardize rendering, screenshotting, OCR, scene inspection,
+or host invocation. For browsers, prefer a page's structured WebMCP/DOM state;
+use a visual profile only to request structured state or human review.
+
+## Text-only visual bridge
+
+Jev 1.13.0 is a text-only model: the official model documentation does not
+accept image, audio, or video input. Do not pass an image URL and describe that
+as visual understanding. Run a separately reviewed visual extractor first,
+then call `bindToolEnvironmentVisualTextBridgeState` with its bounded text and
+fixed finding IDs.
+
+The resulting state declares `inputModality: "extractor_text_only"`,
+`providerReceivesImage: false`, `advisoryOnly: true`, and
+`execution: "NOT_SUPPORTED"`. It binds the exact trusted environment snapshot,
+capture, artifact, annotation, extractor profile, finding vocabulary, and
+expiry. Annotation values containing credential-shaped data or URL schemes are
+rejected. Annotations must also be unique, NFC-normalized, and no more than
+8,192 UTF-8 bytes as encoded JSON; the bridge records that byte count. This is
+a deliberately smaller sub-budget beneath Jev's current 32k state-plus-longest-
+question limit, leaving room for the trusted envelope and focused questions.
+Revalidate retained state with
+`validateToolEnvironmentVisualTextBridgeState` immediately before provider use.
+
+This bridge proves provenance and conformance, not that the extractor correctly
+understood the image. Measure extractor quality separately from Jev routing,
+and never infer OCR, vision, latency, accuracy, or cost from a passing binding.
+See TypeSafe's current [model documentation](https://docs.typesafe.ai/models).
+
 The exported Zod schemas validate structure; they are deliberately not an
 authorization allowlist. A host must keep a code-reviewed
 `TrustedToolEnvironmentCatalogue` outside page, model, project, and request
 data. Call `validateToolEnvironmentSnapshot` to require an exact descriptor
-match, then `validateToolEnvironmentProposal` with an explicit trusted clock
-observation to bind adapter/session/workspace identity, state, capability
-manifest, freshness, and the exact catalogue action. Only then may the host
+match and, for visual snapshots, an independently trusted capture projection;
+then call `validateToolEnvironmentProposal` with the same capture and an
+explicit trusted clock observation to bind adapter/session/workspace identity,
+state, capability manifest, freshness, and the exact catalogue action. Only
+then may the host
 continue to its separate policy, approval, ticket, and native-operation gates.
 
 ## Recommended flow
@@ -77,6 +142,12 @@ their own policy and user approval. For non-WebMCP sites, pin a stable
 [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/1-3/)
 version; never use its general runtime-evaluation capability as an action
 candidate.
+
+For screenshot or viewport fallback, hash-bind the capture to the trusted
+origin/frame-derived state projection before using an annotation. If the browser
+state, frame binding, capture, extractor version, or freshness changes, reject
+the observation and rediscover structured state rather than attempting a visual
+action.
 
 ## Product-specific notes
 

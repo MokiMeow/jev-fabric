@@ -25,7 +25,7 @@ must directly supply `--live`, the pinned native provider/model, a credential
 environment name, fixed tenant/action, call/token/dollar/deadline bounds, and a
 conservative input-price ceiling. See [the live operator guide](docs/providers/typesafe-native.md). Never place a key in source, a config file, a receipt, generated host artifact, or client-side code.
 
-Server applications can also use the pinned [Vercel AI Gateway route](docs/providers/vercel-ai-gateway.md) through the same strict TypeSafe response mapping. The current free promotion ends September 25, 2026; pricing is external, mutable state and is never embedded in Fabric policy. The Gateway factory accepts an explicit server-side credential and fixes the endpoint, provider ID, and `typesafe-ai/jev` model. It is not exposed as a browser or general CLI escape hatch.
+Server applications can also use either pinned [Vercel AI Gateway route](docs/providers/vercel-ai-gateway.md): the TypeSafe-compatible endpoint or the native Evaluation endpoint. The Evaluation factory additionally requests ZDR, no prompt training, and a TypeSafe-only provider allowlist, then validates response-reported routing before returning advisory output. The current free promotion ends September 25, 2026; pricing and account eligibility are external, mutable state and are never embedded in Fabric policy. Both factories require an explicit server-side credential and expose no endpoint or model override. Neither is a browser or general CLI escape hatch.
 
 ## Choose a path
 
@@ -35,8 +35,10 @@ Server applications can also use the pinned [Vercel AI Gateway route](docs/provi
 | Use a terminal | [CLI reference](docs/reference/cli.md) | Offline doctor, evaluate, benchmark, replay, and bounded serve configuration. |
 | Connect an agent | [MCP reference](docs/reference/mcp.md) | Five read-only advisory tools; no tool executes or authorizes. |
 | Configure an agent host | [Adapters](docs/adapters/hosts.md) | Generated layouts for Codex, Claude Code, Gemini CLI, Qwen Code, and Kimi Code. |
-| Assist an instrumented website | [WebMCP recipe](docs/recipes/webmcp-browser.md) | Bind origin, frame, tool, schema, policy epoch, and page state; the host still executes. |
+| Assist an instrumented website | [WebMCP recipe](docs/recipes/webmcp-browser.md) | Bind origin, frame, tool, schema, policy epoch, page state, and an optional same-origin `mcp-handler` bridge; the host still executes. |
 | Route work in Blender, Unreal, Unity, Godot, or CAD | [Tool environments](docs/integrations/tool-environments.md) | Select only from adapter-declared native actions; revalidate and execute in the trusted plugin. |
+| Triage finance or market evidence | [Finance and fintech](docs/integrations/finance.md) | Route synthetic or licensed, time-bound evidence to observe, investigate, or escalate; no trading. |
+| Route a read-only market-research request | [Finance research routing](docs/integrations/finance-research-routing.md) | Propose one allowlisted analytics tool and bounded arguments; the trusted host revalidates and executes read-only. |
 
 ## Decision boundary
 
@@ -68,12 +70,15 @@ This is an integration-shape comparison, not a speed, cost, or quality ranking. 
 | `risk` | surface risk, authorization need, and untrusted influence | escalate |
 | `progress` | classify bounded workflow state | abstain |
 | `completion` | assess observed completion evidence | abstain |
+| `finance-research-router` | propose one bounded read-only analytics tool; never execute it | escalate |
+| `finance-surveillance` | route bounded market evidence without execution | escalate |
+| `fintech-exception` | route explicit indicators in a redacted fintech case note | escalate |
 
 Read [pack selection](docs/packs/selection.md) before using a pack. Candidate coverage, freshness, and policy are application responsibilities.
 
 ## Evidence snapshot
 
-The only committed historical provider record is [historical-v0](benchmarks/historical/v0/manifest.json): evidence class `local_exploratory`, imported 2026-09-19, zero retained cases, redacted environment, and no held-out claim. Its old ECE calculation was invalid because it used TypeSafe confidence rather than maximum distribution probability; no corrected ECE is available. The [tool-environment benchmark contract](benchmarks/tool-environments/README.md) is explicitly `NOT_RUN` and prevents null fixtures from becoming performance claims. See [Evidence](docs/evidence/README.md).
+The only committed historical provider record is [historical-v0](benchmarks/historical/v0/manifest.json): evidence class `local_exploratory`, imported 2026-09-19, zero retained cases, redacted environment, and no held-out claim. Its old ECE calculation was invalid because it used TypeSafe confidence rather than maximum distribution probability; no corrected ECE is available. The [tool-environment](benchmarks/tool-environments/README.md) and [finance](benchmarks/finance/README.md) benchmark contracts are explicitly `NOT_RUN` and prevent null fixtures from becoming performance claims. See [Evidence](docs/evidence/README.md).
 
 ## When not to use Jev Fabric
 

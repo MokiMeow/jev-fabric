@@ -4,7 +4,7 @@ import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
 
 const request: DecisionRequest = {
   id: "d1",
-  state: null,
+  state: {},
   questions: [{ id: "q1", type: "noul", instructions: "yes?", criteria: null }],
 };
 

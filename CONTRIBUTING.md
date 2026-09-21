@@ -8,7 +8,9 @@ redacted receipts, offline defaults, and explicit live-provider gates.
 
 1. Read `AGENTS.md`, `ARCHITECTURE.md`, and the applicable package tests.
 2. Keep a change narrow, add normal and fail-closed tests, and avoid secrets, personal
-   data, machine paths, or network-dependent tests.
+   data, machine paths, or network-dependent tests. Test directories are scanned too;
+   construct synthetic credential-shaped fixtures at runtime rather than committing a
+   realistic token literal.
 3. Run `pnpm verify`, `pnpm docs:check`, `pnpm examples:check`, `pnpm security:check`,
    `pnpm adapters:check`, and `pnpm conformance`.
 4. Add a Changeset for every change under `packages/` or `packs/` that will be

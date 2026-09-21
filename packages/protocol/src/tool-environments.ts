@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { types as utilTypes } from "node:util";
 import { z } from "zod";
 import { portableIdentifierSchema } from "./json.js";
 
@@ -16,10 +18,20 @@ const boundedTextSchema = z
   .min(1)
   .max(240)
   .refine(
-    (value) =>
-      !value.includes("\r") && !value.includes("\n") && !value.includes("\0"),
-    "must be one line",
+    (value) => !hasControlCharacter(value),
+    "must not contain control characters",
   );
+const hasControlCharacter = (value: string): boolean =>
+  Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return (
+      codePoint === undefined ||
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      (codePoint >= 0x202a && codePoint <= 0x202e) ||
+      (codePoint >= 0x2066 && codePoint <= 0x2069)
+    );
+  });
 const versionSchema = z.string().min(1).max(128);
 const opaqueHandleSchema = z
   .string()
@@ -184,6 +196,43 @@ export const toolEnvironmentCheckSchema = z
 export type ToolEnvironmentCheck = z.infer<typeof toolEnvironmentCheckSchema>;
 
 /**
+ * A trusted description of a captured visual surface. It deliberately omits
+ * image bytes, paths, URLs, selectors, coordinates, and control data. A
+ * separate trusted adapter binds it to one exact environment snapshot.
+ */
+export const toolEnvironmentVisualCaptureSchema = z
+  .object({
+    modality: z.enum(["chart", "browser_viewport", "dcc_viewport"]),
+    artifactHash: hashSchema,
+    extractorId: portableIdentifierSchema,
+    extractorVersion: versionSchema,
+    schemaVersion: z.literal("1"),
+    capturedAt: z.string().datetime({ offset: true }),
+    maxAgeMs: z.number().int().nonnegative().max(86_400_000),
+  })
+  .strict();
+export type ToolEnvironmentVisualCapture = z.infer<
+  typeof toolEnvironmentVisualCaptureSchema
+>;
+
+/**
+ * A source-bound visual observation. `annotations` are untrusted data only;
+ * they cannot grant authority, declare actions, or carry execution details.
+ */
+export const toolEnvironmentVisualObservationSchema =
+  toolEnvironmentVisualCaptureSchema
+    .extend({
+      captureBindingHash: hashSchema,
+      annotationHash: hashSchema,
+      annotations: z.array(boundedTextSchema).min(1).max(32),
+      trust: z.literal("untrusted_data_only"),
+    })
+    .strict();
+export type ToolEnvironmentVisualObservation = z.infer<
+  typeof toolEnvironmentVisualObservationSchema
+>;
+
+/**
  * An allowlisted native operation. This is neither a command nor an RPC
  * request: it contains no code, URI, selector, machine path, or arguments.
  */
@@ -270,6 +319,7 @@ export const toolEnvironmentSnapshotSchema = z
     dirty: z.boolean(),
     undoAvailable: z.boolean(),
     actions: z.array(toolEnvironmentActionSchema).min(1).max(64),
+    visualObservation: toolEnvironmentVisualObservationSchema.optional(),
   })
   .strict()
   .superRefine((snapshot, context) => {
@@ -286,16 +336,201 @@ export type ToolEnvironmentSnapshot = z.infer<
 >;
 
 /**
+ * Computes the only valid capture binding for a visual observation. The tuple
+ * intentionally includes the complete environment identity and freshness
+ * projection so a visually valid artifact cannot be replayed onto another
+ * browser frame, scene, document, or capability catalogue.
+ */
+export function toolEnvironmentVisualCaptureBindingHash(
+  snapshot: Pick<
+    ToolEnvironmentSnapshot,
+    | "environment"
+    | "adapterId"
+    | "adapterVersion"
+    | "sessionRef"
+    | "workspaceRef"
+    | "stateHash"
+    | "capabilityManifestHash"
+    | "observedAt"
+    | "observationFreshnessMs"
+  >,
+  capture: ToolEnvironmentVisualCapture,
+): string {
+  return `sha256:${sha256Hex(
+    JSON.stringify({
+      adapterId: snapshot.adapterId,
+      adapterVersion: snapshot.adapterVersion,
+      capabilityManifestHash: snapshot.capabilityManifestHash,
+      capture: {
+        artifactHash: capture.artifactHash,
+        capturedAt: capture.capturedAt,
+        extractorId: capture.extractorId,
+        extractorVersion: capture.extractorVersion,
+        maxAgeMs: capture.maxAgeMs,
+        modality: capture.modality,
+        schemaVersion: capture.schemaVersion,
+      },
+      environment: snapshot.environment,
+      observationFreshnessMs: snapshot.observationFreshnessMs,
+      observedAt: snapshot.observedAt,
+      sessionRef: snapshot.sessionRef,
+      stateHash: snapshot.stateHash,
+      workspaceRef: snapshot.workspaceRef,
+    }),
+  )}`;
+}
+
+/** Hashes the exact bounded annotation array without retaining visual content. */
+export function toolEnvironmentVisualAnnotationHash(
+  annotations: readonly string[],
+): string {
+  return `sha256:${sha256Hex(JSON.stringify(annotations))}`;
+}
+
+/** Uses Node's vetted SHA-256 implementation at the protocol boundary. */
+function sha256Hex(input: string): string {
+  return createHash("sha256").update(input, "utf8").digest("hex");
+}
+
+function assertVisualObservationBinding(
+  snapshot: ToolEnvironmentSnapshot,
+  observation: ToolEnvironmentVisualObservation,
+  observedNowMs?: number,
+): void {
+  const observedAt = Date.parse(snapshot.observedAt);
+  const capturedAt = Date.parse(observation.capturedAt);
+  if (capturedAt < observedAt)
+    throw new TypeError("visual capture predates the trusted snapshot");
+  if (capturedAt - observedAt > snapshot.observationFreshnessMs)
+    throw new TypeError(
+      "visual capture is outside the trusted snapshot freshness window",
+    );
+  if (
+    observation.captureBindingHash !==
+    toolEnvironmentVisualCaptureBindingHash(snapshot, observation)
+  )
+    throw new TypeError(
+      "visual capture binding does not match the trusted snapshot",
+    );
+  if (
+    observation.annotationHash !==
+    toolEnvironmentVisualAnnotationHash(observation.annotations)
+  )
+    throw new TypeError("visual annotation binding is invalid");
+  if (observedNowMs === undefined)
+    throw new TypeError(
+      "observedNowMs is required for a visual observation freshness check",
+    );
+  if (!Number.isSafeInteger(observedNowMs) || observedNowMs < 0)
+    throw new TypeError("observedNowMs must be a non-negative safe integer");
+  if (
+    observedNowMs < capturedAt ||
+    observedNowMs - capturedAt > observation.maxAgeMs
+  )
+    throw new TypeError("visual capture is stale");
+}
+
+function assertTrustedVisualCapture(
+  observation: ToolEnvironmentVisualObservation,
+  trustedCapture: ToolEnvironmentVisualCapture,
+): void {
+  const projectedObservation = {
+    modality: observation.modality,
+    artifactHash: observation.artifactHash,
+    extractorId: observation.extractorId,
+    extractorVersion: observation.extractorVersion,
+    schemaVersion: observation.schemaVersion,
+    capturedAt: observation.capturedAt,
+    maxAgeMs: observation.maxAgeMs,
+  } satisfies ToolEnvironmentVisualCapture;
+  if (JSON.stringify(projectedObservation) !== JSON.stringify(trustedCapture))
+    throw new TypeError(
+      "visual observation does not match the independently trusted capture",
+    );
+}
+
+const MAX_VALIDATION_NODES = 4_096;
+const MAX_VALIDATION_DEPTH = 16;
+
+/**
+ * Snapshots JSON-like validation input without invoking accessors or proxy
+ * traps. Zod validation happens only after this descriptor-only copy.
+ */
+function snapshotPlainData(input: unknown, label: string): unknown {
+  const budget = { nodes: 0 };
+  return copyPlainData(input, label, 0, budget);
+}
+
+function copyPlainData(
+  input: unknown,
+  label: string,
+  depth: number,
+  budget: { nodes: number },
+): unknown {
+  budget.nodes += 1;
+  if (budget.nodes > MAX_VALIDATION_NODES)
+    throw new TypeError(`${label} exceeds the validation node limit`);
+  if (depth > MAX_VALIDATION_DEPTH)
+    throw new TypeError(`${label} exceeds the validation depth limit`);
+  if (input === null || typeof input !== "object") return input;
+  if (utilTypes.isProxy(input))
+    throw new TypeError(`${label} must not contain proxies`);
+  const descriptors = Object.getOwnPropertyDescriptors(input);
+  if (Reflect.ownKeys(descriptors).some((key) => typeof key !== "string"))
+    throw new TypeError(`${label} must not contain symbols`);
+  if (Array.isArray(input)) {
+    if (Object.getPrototypeOf(input) !== Array.prototype)
+      throw new TypeError(`${label} arrays must use the default prototype`);
+    if (input.length > MAX_VALIDATION_NODES)
+      throw new TypeError(`${label} exceeds the validation array limit`);
+    const allowed = new Set(["length"]);
+    const output: unknown[] = [];
+    for (let index = 0; index < input.length; index += 1) {
+      const key = String(index);
+      allowed.add(key);
+      const descriptor = descriptors[key];
+      if (!descriptor?.enumerable || !("value" in descriptor))
+        throw new TypeError(`${label} arrays must contain plain data`);
+      output.push(copyPlainData(descriptor.value, label, depth + 1, budget));
+    }
+    if (Object.keys(descriptors).some((key) => !allowed.has(key)))
+      throw new TypeError(`${label} arrays must not contain extra properties`);
+    return output;
+  }
+  const prototype = Object.getPrototypeOf(input) as unknown;
+  if (prototype !== Object.prototype && prototype !== null)
+    throw new TypeError(`${label} must contain only plain objects`);
+  const keys = Object.keys(descriptors);
+  if (keys.length > 256)
+    throw new TypeError(`${label} exceeds the validation object-key limit`);
+  const output: Record<string, unknown> = {};
+  for (const key of keys) {
+    const descriptor = descriptors[key];
+    if (!descriptor?.enumerable || !("value" in descriptor))
+      throw new TypeError(`${label} must contain plain enumerable data`);
+    output[key] = copyPlainData(descriptor.value, label, depth + 1, budget);
+  }
+  return output;
+}
+
+/**
  * Validates a snapshot against an independently supplied, exact positive
  * catalogue. The structural schema alone is never an authorization allowlist.
  */
 export function validateToolEnvironmentSnapshot(
   input: unknown,
   trustedCatalogueInput: unknown,
+  observedNowMs?: number,
+  trustedVisualCaptureInput?: unknown,
 ): ToolEnvironmentSnapshot {
-  const snapshot = toolEnvironmentSnapshotSchema.parse(input);
+  const snapshot = toolEnvironmentSnapshotSchema.parse(
+    snapshotPlainData(input, "tool environment snapshot"),
+  );
   const catalogue = trustedToolEnvironmentCatalogueSchema.parse(
-    trustedCatalogueInput,
+    snapshotPlainData(
+      trustedCatalogueInput,
+      "trusted tool environment catalogue",
+    ),
   );
   if (
     snapshot.environment !== catalogue.environment ||
@@ -318,6 +553,33 @@ export function validateToolEnvironmentSnapshot(
     throw new TypeError(
       "tool environment snapshot action catalogue is not an exact trusted match",
     );
+  const trustedVisualCapture =
+    trustedVisualCaptureInput === undefined
+      ? undefined
+      : toolEnvironmentVisualCaptureSchema.parse(
+          snapshotPlainData(
+            trustedVisualCaptureInput,
+            "trusted visual capture",
+          ),
+        );
+  if (
+    (snapshot.visualObservation === undefined) !==
+    (trustedVisualCapture === undefined)
+  )
+    throw new TypeError(
+      "visual observations require one independently trusted capture",
+    );
+  if (snapshot.visualObservation && trustedVisualCapture) {
+    assertTrustedVisualCapture(
+      snapshot.visualObservation,
+      trustedVisualCapture,
+    );
+    assertVisualObservationBinding(
+      snapshot,
+      snapshot.visualObservation,
+      observedNowMs,
+    );
+  }
   return snapshot;
 }
 
@@ -359,14 +621,19 @@ export function validateToolEnvironmentProposal(
   snapshotInput: unknown,
   trustedCatalogueInput: unknown,
   observedNowMs: number,
+  trustedVisualCaptureInput?: unknown,
 ): ValidatedToolEnvironmentProposal {
   if (!Number.isSafeInteger(observedNowMs) || observedNowMs < 0)
     throw new TypeError("observedNowMs must be a non-negative safe integer");
   const snapshot = validateToolEnvironmentSnapshot(
     snapshotInput,
     trustedCatalogueInput,
+    observedNowMs,
+    trustedVisualCaptureInput,
   );
-  const proposal = toolEnvironmentProposalSchema.parse(proposalInput);
+  const proposal = toolEnvironmentProposalSchema.parse(
+    snapshotPlainData(proposalInput, "tool environment proposal"),
+  );
   if (
     proposal.adapterId !== snapshot.adapterId ||
     proposal.adapterVersion !== snapshot.adapterVersion ||

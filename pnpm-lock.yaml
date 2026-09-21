@@ -172,12 +172,18 @@ importers:
       '@changesets/cli':
         specifier: 3.0.3
         version: 3.0.3
+      '@mokimeow/jev-fabric-adapters':
+        specifier: workspace:*
+        version: link:packages/adapters
       '@mokimeow/jev-fabric-cli':
         specifier: workspace:*
         version: link:packages/cli
       '@mokimeow/jev-fabric-core':
         specifier: workspace:*
         version: link:packages/core
+      '@mokimeow/jev-fabric-evals':
+        specifier: workspace:*
+        version: link:packages/evals
       '@mokimeow/jev-fabric-packs':
         specifier: workspace:*
         version: link:packs
@@ -202,18 +208,24 @@ importers:
       fast-check:
         specifier: 4.10.1
         version: 4.10.1
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
       pnpm:
         specifier: 12.4.2
         version: 12.4.2
       tsdown:
         specifier: 0.23.0
-        version: 0.23.0(tsx@4.23.13)(typescript@7.0.2)
+        version: 0.23.0(tsx@4.23.13)(typescript@7.0.2)(unrun@0.3.1)
       tsx:
         specifier: 4.23.13
         version: 4.23.13
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      unrun:
+        specifier: 0.3.1
+        version: 0.3.1
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@22.18.6)(@vitest/coverage-v8@5.0.1)(vite@7.3.6(@types/node@22.18.6)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
@@ -224,8 +236,8 @@ importers:
   packages/adapters:
     dependencies:
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/cli:
     dependencies:
@@ -247,6 +259,9 @@ importers:
       '@mokimeow/jev-fabric-provider-typesafe':
         specifier: workspace:*
         version: link:../provider-typesafe
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/core:
     dependencies:
@@ -263,8 +278,8 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       ajv:
         specifier: 8.20.0
@@ -291,8 +306,8 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@modelcontextprotocol/client':
         specifier: 2.0.0
@@ -301,8 +316,8 @@ importers:
   packages/protocol:
     dependencies:
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/provider-openai-compatible:
     dependencies:
@@ -310,8 +325,8 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       zod:
-        specifier: 4.2.0
-        version: 4.2.0
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/provider-typesafe:
     dependencies:
@@ -321,6 +336,9 @@ importers:
       '@typesafe-ai/sdk':
         specifier: 0.6.0
         version: 0.6.0
+      undici:
+        specifier: 7.29.1
+        version: 7.29.1
 
   packs:
     dependencies:
@@ -1485,6 +1503,16 @@ packages:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
     engines: {node: '>=16.20.0'}
 
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   pnpm@12.4.2:
     resolution: {integrity: sha512-CK3GYTGAJ1x8ntraOdzwjJxhrU5+rzMKTzRh8QKw+QdCNFTRF/mOctR/7wYWBwZE17/8lzpqV/UJCm18NosHyQ==}
     engines: {node: '>=18.*'}
@@ -1646,6 +1674,20 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  undici@7.29.1:
+    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
+    engines: {node: '>=20.18.1'}
+
+  unrun@0.3.1:
+    resolution: {integrity: sha512-onIck/oNnCaytwths1ZVp1LK2Gq2hPoyFhiHebObuUXqR3S0uHuLLaBK8K6mRRgV7Ptip8AnNvaUsgzwWwBZuA==}
+    engines: {node: ^22.13.0 || >=24.0.0}
+    hasBin: true
+    peerDependencies:
+      synckit: ^0.11.11
+    peerDependenciesMeta:
+      synckit:
+        optional: true
+
   verkit@0.4.0:
     resolution: {integrity: sha512-sXMwN6DMHeouPfCxkxWkKAmxphWKEenHYY5H1nIBzU3PmDsmJp6kBXJdshjVdpMZuWCmL9SH7KFRx29AylpP6g==}
     engines: {node: '>=18.12.0'}
@@ -1755,8 +1797,8 @@ packages:
   yuku-parser@0.10.2:
     resolution: {integrity: sha512-CgaU0/PPjCAIEZ3WQroosOxTY3eeKldAN3h+vk8pMNz4+jl1CZzBR4pW+K/rRPF112VooCL5FdjJoiMNjDrL2A==}
 
-  zod@4.2.0:
-    resolution: {integrity: sha512-Bd5fw9wlIhtqCCxotZgdTOMwGm1a0u75wARVEY9HMs1X17trvA/lMi4+MGK5EUfYkXVTbX8UDiDKW4OgzHVUZw==}
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -2036,16 +2078,16 @@ snapshots:
       eventsource-parser: 3.1.1
       jose: 6.2.12
       pkce-challenge: 5.0.1
-      zod: 4.2.0
+      zod: 4.6.5
 
   '@modelcontextprotocol/core@2.0.0':
     dependencies:
-      zod: 4.2.0
+      zod: 4.6.5
 
   '@modelcontextprotocol/server@2.0.0':
     dependencies:
       '@modelcontextprotocol/core': 2.0.0
-      zod: 4.2.0
+      zod: 4.6.5
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
@@ -2561,6 +2603,12 @@ snapshots:
 
   pkce-challenge@5.0.1: {}
 
+  playwright-core@1.63.0: {}
+
+  playwright@1.63.0:
+    dependencies:
+      playwright-core: 1.63.0
+
   pnpm@12.4.2:
     optionalDependencies:
       '@pnpm/exe.android-arm64': 12.4.2
@@ -2694,7 +2742,7 @@ snapshots:
 
   tree-kill@1.2.2: {}
 
-  tsdown@0.23.0(tsx@4.23.13)(typescript@7.0.2):
+  tsdown@0.23.0(tsx@4.23.13)(typescript@7.0.2)(unrun@0.3.1):
     dependencies:
       cac: 7.0.0
       defu: 6.1.7
@@ -2713,6 +2761,7 @@ snapshots:
     optionalDependencies:
       tsx: 4.23.13
       typescript: 7.0.2
+      unrun: 0.3.1
     transitivePeerDependencies:
       - '@typescript/native-preview'
       - '@volar/typescript'
@@ -2755,6 +2804,12 @@ snapshots:
       quansync: 1.0.0
 
   undici-types@6.21.0: {}
+
+  undici@7.29.1: {}
+
+  unrun@0.3.1:
+    dependencies:
+      rolldown: 1.2.9
 
   verkit@0.4.0: {}
 
@@ -2845,4 +2900,4 @@ snapshots:
       '@yuku-parser/binding-win32-arm64': 0.10.2
       '@yuku-parser/binding-win32-x64': 0.10.2
 
-  zod@4.2.0: {}
+  zod@4.6.5: {}

@@ -1,9 +1,11 @@
 # Vercel AI Gateway Jev composition
 
-This offline example composes the fixed `typesafe-ai/jev` Gateway provider with
-`FabricRuntime`, an explicit budget ledger, one provider attempt, trusted
-authorization, and a deadline. Its injected `systemOne` client makes no network
-request and the placeholder credential is never used.
+This offline example simulates the response-mapping and runtime shape used by
+the fixed `typesafe-ai/jev` Gateway provider. It uses the generic provider's
+injected `systemOne` client, an explicit budget ledger, one provider attempt,
+trusted authorization, and a deadline. It makes no network request and contains
+no credential. The production Gateway factory intentionally accepts neither a
+client nor an endpoint override.
 
 Run from a built checkout:
 

@@ -4,7 +4,10 @@ import type { DecisionRequest } from "@mokimeow/jev-fabric-protocol";
 
 const request: DecisionRequest = {
   id: "decision_1",
-  state: { ticket: { subject: "Refund request" } },
+  state: {
+    ticket: { subject: "Refund request", priority: 2 },
+    advisoryOnly: true,
+  },
   questions: [
     {
       id: "route",
@@ -52,6 +55,190 @@ describe("TypeSafe mapping", () => {
         },
       },
     });
+  });
+
+  it("rejects malformed Noul criteria before provider dispatch", () => {
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "malformed-noul",
+          state: {},
+          questions: [
+            {
+              id: "urgent",
+              type: "noul",
+              instructions: "Is this urgent?",
+              criteria: { yes: "Urgent", no: "Not urgent" },
+            },
+          ],
+        } as unknown as DecisionRequest,
+        "jev-1.13.0",
+      ),
+    ).toThrow();
+  });
+
+  it("rejects API-invalid null state and empty Noul meaning", () => {
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "null-state",
+          state: null,
+          questions: [
+            {
+              id: "urgent",
+              type: "noul",
+              instructions: "Is this urgent?",
+              criteria: { true: "Immediate response", false: "Can wait" },
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ),
+    ).toThrow(/state cannot be null/u);
+
+    for (const criteria of [
+      null,
+      {},
+      { true: null },
+      { true: null, false: null },
+    ] as const)
+      expect(() =>
+        compileTypeSafeRequest(
+          {
+            id: "empty-noul",
+            state: {},
+            questions: [
+              {
+                id: "empty",
+                type: "noul",
+                instructions: null,
+                criteria,
+              },
+            ],
+          },
+          "jev-1.13.0",
+        ),
+      ).toThrow(/requires non-null instructions or criteria/u);
+
+    expect(
+      compileTypeSafeRequest(
+        {
+          id: "criteria-only-noul",
+          state: {},
+          questions: [
+            {
+              id: "greeting",
+              type: "noul",
+              instructions: null,
+              criteria: { true: "The text is a greeting", false: null },
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ).questions.greeting,
+    ).toEqual({
+      type: "noul",
+      instructions: null,
+      criteria: { true: "The text is a greeting", false: null },
+    });
+  });
+
+  it("enforces native Choice and Score cardinality limits", () => {
+    const options = Array.from(
+      { length: 256 },
+      (_, index) => `option-${index}`,
+    );
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "choice-too-wide",
+          state: {},
+          questions: [
+            {
+              id: "route",
+              type: "choice",
+              instructions: "Choose one.",
+              options,
+              criteria: Object.fromEntries(
+                options.map((option) => [option, null]),
+              ),
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ),
+    ).toThrow(/at most 255/u);
+    expect(() =>
+      compileTypeSafeRequest(
+        {
+          id: "score-too-wide",
+          state: {},
+          questions: [
+            {
+              id: "severity",
+              type: "score",
+              instructions: "Rate severity.",
+              criteria: Array.from(
+                { length: 11 },
+                (_, index) => `level-${index}`,
+              ),
+            },
+          ],
+        },
+        "jev-1.13.0",
+      ),
+    ).toThrow(/at most 10/u);
+  });
+
+  it("rejects top-level scalar entries the native SDK cannot represent", () => {
+    const validNoul = {
+      id: "urgent",
+      type: "noul" as const,
+      instructions: "Is this urgent?",
+      criteria: { true: "Urgent", false: "Not urgent" },
+    };
+    const invalidRequests: readonly DecisionRequest[] = [
+      { id: "numeric-state", state: 1, questions: [validNoul] },
+      {
+        id: "boolean-instructions",
+        state: {},
+        questions: [{ ...validNoul, instructions: true }],
+      },
+      {
+        id: "numeric-noul-criterion",
+        state: {},
+        questions: [{ ...validNoul, criteria: { true: 1, false: "No" } }],
+      },
+      {
+        id: "boolean-choice-criterion",
+        state: {},
+        questions: [
+          {
+            id: "route",
+            type: "choice",
+            instructions: "Choose one.",
+            options: ["allow", "deny"],
+            criteria: { allow: true, deny: "Deny" },
+          },
+        ],
+      },
+      {
+        id: "numeric-score-criterion",
+        state: {},
+        questions: [
+          {
+            id: "severity",
+            type: "score",
+            instructions: "Rate severity.",
+            criteria: [0, "high"],
+          },
+        ],
+      },
+    ];
+    for (const invalid of invalidRequests)
+      expect(() => compileTypeSafeRequest(invalid, "jev-1.13.0")).toThrow(
+        /must be text, a structured JSON object or array, or null/u,
+      );
   });
 
   it("preserves distributions and keeps confidence separate from selected probability", () => {

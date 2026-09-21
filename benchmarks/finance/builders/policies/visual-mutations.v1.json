@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1",
+  "policyId": "finance.visual-mutations.v1",
+  "renderer": {
+    "format": "canonical_svg",
+    "forbiddenNondeterminism": [
+      "wall_clock",
+      "random_font_fallback",
+      "external_assets"
+    ]
+  },
+  "mutations": [
+    {
+      "id": "faithful_render",
+      "route": "observe",
+      "sourceBindingRequired": true
+    },
+    {
+      "id": "missing_source_date",
+      "route": "investigate",
+      "sourceBindingRequired": true
+    },
+    {
+      "id": "missing_units",
+      "route": "investigate",
+      "sourceBindingRequired": true
+    },
+    {
+      "id": "swapped_series_legend",
+      "route": "escalate",
+      "sourceBindingRequired": true
+    },
+    {
+      "id": "truncated_zero_baseline",
+      "route": "escalate",
+      "sourceBindingRequired": true
+    }
+  ]
+}

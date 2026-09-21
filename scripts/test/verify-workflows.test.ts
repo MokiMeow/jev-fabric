@@ -55,13 +55,16 @@ describe("repository workflow contract", () => {
         ],
         [
           "verify.yml",
-          "          cache: pnpm",
-          "          cache: pnpm\n          token: safe",
+          "          node-version: $" + "{{ matrix.node }}",
+          "          node-version: $" +
+            "{{ matrix.node }}\n          cache: npm",
         ],
         [
           "verify.yml",
-          "          cache: pnpm",
-          "          cache: pnpm\n          token: $" + "{{ github.token }}",
+          "          node-version: $" + "{{ matrix.node }}",
+          "          node-version: $" +
+            "{{ matrix.node }}\n          token: $" +
+            "{{ github.token }}",
         ],
         [
           "verify.yml",

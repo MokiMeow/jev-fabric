@@ -1,14 +1,15 @@
+import { validateDecisionResponse } from "@mokimeow/jev-fabric-protocol";
 import { describe, expect, it } from "vitest";
-import { MemoryDecisionCache } from "../src/cache.js";
 import { BudgetLedger } from "../src/budget.js";
+import { MemoryDecisionCache } from "../src/cache.js";
+import { sha256Digest } from "../src/canonical.js";
 import { definePack } from "../src/pack.js";
 import {
   FabricRuntime,
-  ProviderOutageError,
   type FabricRuntimeOptions,
+  ProviderOutageError,
 } from "../src/runtime.js";
 import { DecisionScheduler } from "../src/scheduler.js";
-import { validateDecisionResponse } from "@mokimeow/jev-fabric-protocol";
 
 const limits = {
   maxStateBytes: 1024,
@@ -65,7 +66,7 @@ describe("FabricRuntime", () => {
             id: "q",
             type: "choice",
             instructions: {},
-            criteria: {},
+            criteria: { go: "Go", stay: "Stay" },
             options: ["go", "stay"],
           },
         ],
@@ -339,6 +340,226 @@ describe("FabricRuntime", () => {
     const unfunded = await make(1, ["fail", "ok"]).evaluate(input());
     expect(calls).toBe(1);
     expect(unfunded.accounting.transportAttemptCount).toBe(1);
+  });
+
+  it("passes immutable provider semantics to pack interpretation on live and cached responses", async () => {
+    const contexts: import("../src/pack.js").PackInterpretContext[] = [];
+    const implementations = pack.implementations;
+    if (!implementations) throw new Error("test pack implementations missing");
+    const contextPack = definePack(
+      { ...pack.manifest, id: "interpret-context" },
+      {
+        ...implementations,
+        bypass: () => undefined,
+        questions: () => [
+          {
+            id: "q",
+            type: "choice",
+            instructions: {},
+            criteria: { go: "Go", stay: "Stay" },
+            options: ["go", "stay"],
+          },
+        ],
+        interpret: (_answers, _candidates, context) => {
+          if (!context) throw new Error("interpret context missing");
+          contexts.push(context);
+          return {
+            status: "decision",
+            proposedOutcome: "allow",
+            metadata: {},
+          };
+        },
+      },
+    );
+    const cache = new MemoryDecisionCache<{
+      readonly response: import("@mokimeow/jev-fabric-protocol").DecisionResponse;
+    }>({ maxEntries: 2 });
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => response(request.id),
+      },
+      model: "synthetic-model",
+      cache,
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 1 }),
+      }),
+    });
+    const request = { ...input(), pack: contextPack };
+
+    await runtime.evaluate(request);
+    await runtime.evaluate(request);
+
+    expect(contexts).toHaveLength(2);
+    expect(contexts).toEqual([
+      {
+        providerId: "test",
+        model: "synthetic-model",
+        probabilitySemantics: "synthetic",
+      },
+      {
+        providerId: "test",
+        model: "synthetic-model",
+        probabilitySemantics: "synthetic",
+      },
+    ]);
+    expect(Object.isFrozen(contexts[0])).toBe(true);
+  });
+
+  it("preserves legacy state hashes when a projector has no evidence binding", async () => {
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => response(request.id),
+      },
+      model: "synthetic-model",
+      cache: new MemoryDecisionCache({ maxEntries: 2 }),
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 1 }),
+      }),
+      now: () => 0,
+    });
+
+    const result = await runtime.evaluate(input());
+
+    expect(result.receipt.stateHash).toBe(
+      sha256Digest({ purpose: "go" }, "jev-fabric/projected-state/v1"),
+    );
+  });
+
+  it("binds cache and receipts to trusted evidence without exposing that binding to the provider", async () => {
+    const live = livePack();
+    const implementations = live.implementations;
+    if (!implementations) throw new Error("test pack implementations missing");
+    const bindingPack = definePack(
+      { ...live.manifest, id: "binding-route" },
+      {
+        ...implementations,
+        projector: {
+          project: () => ({ purpose: "same-semantic-state" }),
+          bindingHash: (value) =>
+            (value as { readonly bindingHash: string }).bindingHash,
+        },
+      },
+    );
+    const seen: unknown[] = [];
+    let calls = 0;
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => {
+          calls += 1;
+          seen.push(request.state);
+          return response(request.id);
+        },
+      },
+      model: "synthetic-model",
+      cache: new MemoryDecisionCache({ maxEntries: 4 }),
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 2 }),
+      }),
+      now: () => 0,
+    });
+    const evaluate = (bindingHash: string) =>
+      runtime.evaluate({
+        ...input(),
+        pack: bindingPack,
+        state: { bindingHash },
+      });
+
+    const first = await evaluate(`sha256:${"a".repeat(64)}`);
+    const second = await evaluate(`sha256:${"b".repeat(64)}`);
+    const cached = await evaluate(`sha256:${"a".repeat(64)}`);
+
+    expect(calls).toBe(2);
+    expect(seen).toEqual([
+      { purpose: "same-semantic-state" },
+      { purpose: "same-semantic-state" },
+    ]);
+    expect(first.receipt.stateHash).not.toBe(second.receipt.stateHash);
+    expect(cached.receipt.stateHash).toBe(first.receipt.stateHash);
+    expect(cached.receipt.cache).toBe("hit");
+  });
+
+  it("rejects malformed evidence bindings before cache or provider egress", async () => {
+    const live = livePack();
+    const implementations = live.implementations;
+    if (!implementations) throw new Error("test pack implementations missing");
+    const malformedBindingPack = definePack(
+      { ...live.manifest, id: "malformed-binding-route" },
+      {
+        ...implementations,
+        projector: {
+          project: () => ({ purpose: "semantic-state" }),
+          bindingHash: () => "sha256:not-a-valid-digest",
+        },
+      },
+    );
+    let cacheReads = 0;
+    let cacheWrites = 0;
+    let providerCalls = 0;
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => {
+          providerCalls += 1;
+          return response(request.id);
+        },
+      },
+      model: "synthetic-model",
+      cache: {
+        get: async () => {
+          cacheReads += 1;
+          return undefined;
+        },
+        set: async () => {
+          cacheWrites += 1;
+        },
+        delete: async () => undefined,
+      },
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 1 }),
+      }),
+    });
+
+    await expect(
+      runtime.evaluate({
+        ...input(),
+        pack: malformedBindingPack,
+        state: { purpose: "semantic-state" },
+      }),
+    ).rejects.toThrow(/binding hash/);
+    expect(cacheReads).toBe(0);
+    expect(cacheWrites).toBe(0);
+    expect(providerCalls).toBe(0);
   });
 
   it("keeps a validated result when persistence fails and reports caller cancellation/deadline separately", async () => {

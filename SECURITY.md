@@ -7,6 +7,14 @@ create a private vulnerability report. Do not open a public issue for a suspecte
 vulnerability, and do not send credentials, live-provider keys, customer state, or a
 personal email address.
 
+Treat any credential pasted into chat, an issue, a pull request, logs, or a
+terminal transcript as compromised: revoke or rotate it before use. The local
+security gate detects labeled SDK-style values and standalone TypeSafe
+`apikey_…` credential shapes without printing the matched value, but pattern
+scanning is defense in depth rather than a substitute for a secret manager and
+provider-side revocation. The historical-evidence importer applies the same
+standalone credential-shape rejection before it writes sanitized artifacts.
+
 Include affected version(s), a minimal safe reproduction, impact, and suggested
 mitigations if known. Reports are handled on a best-effort basis by the initial
 maintainer; no response-time guarantee is made during alpha.

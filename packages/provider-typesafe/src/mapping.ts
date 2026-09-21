@@ -6,11 +6,13 @@ import {
   type Questions,
 } from "@typesafe-ai/sdk";
 import {
+  decisionRequestSchema,
   validateDecisionResponse,
   type DecisionAnswer,
   type DecisionRequest,
   type DecisionResponse,
   type DecisionUsage,
+  type JsonValue,
 } from "@mokimeow/jev-fabric-protocol";
 
 export interface TypeSafeResult {
@@ -25,6 +27,8 @@ export interface TypeSafeResult {
 export interface TypeSafeMappedResult {
   readonly response: DecisionResponse;
   readonly usage: DecisionUsage;
+  /** Domain-separated digest of the upstream request ID; the raw ID is never retained. */
+  readonly providerRequestIdHash?: `sha256:${string}`;
 }
 export interface NativeModelPolicy {
   readonly requestedModel: string;
@@ -33,16 +37,19 @@ export interface NativeModelPolicy {
 
 /** Converts protocol questions through the SDK's official primitive builders. */
 export function compileTypeSafeRequest(
-  request: DecisionRequest,
+  inputRequest: DecisionRequest,
   model: string,
 ): {
   readonly state: EntryType;
   readonly questions: Questions;
   readonly model: string;
 } {
+  const request = decisionRequestSchema.parse(inputRequest) as DecisionRequest;
   const questions: Questions = {};
   for (const question of request.questions) {
     if (question.type === "choice") {
+      if (question.options.length > 255)
+        throw new RangeError("TypeSafe Choice accepts at most 255 options");
       const keys = Object.keys(question.criteria);
       if (
         keys.length !== question.options.length ||
@@ -52,24 +59,80 @@ export function compileTypeSafeRequest(
           "choice criteria must match choice options exactly",
         );
       questions[question.id] = choice(
-        question.instructions as EntryType,
-        question.criteria as Record<string, EntryType>,
+        nativeEntry(question.instructions, `${question.id}.instructions`),
+        Object.fromEntries(
+          Object.entries(question.criteria).map(([key, value]) => [
+            key,
+            nativeEntry(value, `${question.id}.criteria.${key}`),
+          ]),
+        ),
       );
     } else if (question.type === "noul") {
+      if (
+        question.instructions === null &&
+        (question.criteria === null ||
+          !Object.values(question.criteria).some((value) => value !== null))
+      )
+        throw new RangeError(
+          "TypeSafe Noul requires non-null instructions or criteria",
+        );
       questions[question.id] = noul(
-        question.instructions as EntryType,
-        question.criteria as { true?: EntryType; false?: EntryType } | null,
+        nativeEntry(question.instructions, `${question.id}.instructions`),
+        question.criteria === null
+          ? null
+          : Object.fromEntries(
+              Object.entries(question.criteria).map(([key, value]) => [
+                key,
+                nativeEntry(value, `${question.id}.criteria.${key}`),
+              ]),
+            ),
       );
     } else {
       if (question.criteria.length < 2)
         throw new RangeError("TypeSafe score requires at least two criteria");
+      if (question.criteria.length > 10)
+        throw new RangeError("TypeSafe Score accepts at most 10 criteria");
       questions[question.id] = score(
-        question.instructions as EntryType,
-        question.criteria as readonly [EntryType, EntryType, ...EntryType[]],
+        nativeEntry(question.instructions, `${question.id}.instructions`),
+        nativeScoreCriteria(question.criteria, `${question.id}.criteria`),
       );
     }
   }
-  return { state: request.state as EntryType, questions, model };
+  return { state: nativeStateEntry(request.state), questions, model };
+}
+
+/** The live API rejects null state even though SDK 0.6.0 admits EntryType null. */
+function nativeStateEntry(value: JsonValue): EntryType {
+  if (value === null) throw new TypeError("state cannot be null for TypeSafe");
+  return nativeEntry(value, "state");
+}
+
+/** Mirrors the SDK's EntryType instead of hiding unsupported scalars in casts. */
+function nativeEntry(value: JsonValue, path: string): EntryType {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    Array.isArray(value) ||
+    typeof value === "object"
+  )
+    return value as EntryType;
+  throw new TypeError(
+    `${path} must be text, a structured JSON object or array, or null`,
+  );
+}
+
+function nativeScoreCriteria(
+  values: readonly JsonValue[],
+  path: string,
+): readonly [EntryType, EntryType, ...EntryType[]] {
+  const [first, second, ...rest] = values;
+  if (first === undefined || second === undefined)
+    throw new RangeError("TypeSafe score requires at least two criteria");
+  return [
+    nativeEntry(first, `${path}.0`),
+    nativeEntry(second, `${path}.1`),
+    ...rest.map((value, index) => nativeEntry(value, `${path}.${index + 2}`)),
+  ];
 }
 
 /** Maps direct SDK output without renormalizing malformed native distributions. */

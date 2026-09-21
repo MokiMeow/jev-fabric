@@ -1,0 +1,49 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+stages:
+  - verify
+  - policy
+
+variables:
+  PNPM_STORE_DIR: .pnpm-store
+
+default:
+  interruptible: true
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store/
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@12.4.2 --activate
+    - pnpm config set store-dir "$PNPM_STORE_DIR"
+    - pnpm install --frozen-lockfile
+
+verify-node-22-14:
+  stage: verify
+  image: node:22.14.0-bookworm-slim
+  script:
+    - pnpm verify
+
+verify-node-24:
+  stage: verify
+  image: node:24.11.1-bookworm-slim
+  script:
+    - pnpm build
+    - pnpm typecheck
+    - pnpm test
+
+policy-and-docs:
+  stage: policy
+  image: node:22.14.0-bookworm-slim
+  script:
+    - pnpm security:check
+    - pnpm changeset:check
+    - pnpm package-readmes:check
+    - pnpm docs:check
+    - pnpm conformance

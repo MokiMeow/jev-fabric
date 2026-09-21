@@ -103,10 +103,13 @@ export const fintechExceptionPack = definePack(
         "synthetic",
       ],
     },
-    evidence: { projectorId: "fintech-exception-state", revision: "1" },
+    evidence: { projectorId: "fintech-exception-state", revision: "2" },
   },
   {
-    projector: { project: projectFintechState },
+    projector: {
+      project: projectFintechState,
+      bindingHash: fintechEvidenceBindingHash,
+    },
     candidates: {
       provide: (state) =>
         exactCurrentCandidates((state as FintechState).candidates)
@@ -348,15 +351,17 @@ function projectFintechState(
     advisoryOnly: state.advisoryOnly,
     execution: state.execution,
     purpose: state.purpose,
-    caseRef: state.caseRef,
-    evidenceEnvelopeHash: `sha256:${sha256Digest(
-      snapshot,
-      "jev-fabric/fintech-exception-evidence/v1",
-    )}`,
     evidence,
     candidates,
     ...(state.staticDeny === undefined ? {} : { staticDeny: state.staticDeny }),
   };
+}
+
+function fintechEvidenceBindingHash(input: unknown): `sha256:${string}` {
+  return `sha256:${sha256Digest(
+    snapshotPlainData(input),
+    "jev-fabric/fintech-exception-evidence/v1",
+  )}`;
 }
 
 function projectEvidence(input: unknown) {
@@ -388,8 +393,6 @@ function projectEvidence(input: unknown) {
     throw new TypeError("fintech evidence must be host redacted");
   return {
     note: evidence.note,
-    noteHash: evidence.noteHash,
-    sourceHash: evidence.sourceHash,
     trust: "untrusted_data_only" as const,
     redaction: "host_redacted" as const,
   };

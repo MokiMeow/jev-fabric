@@ -59,7 +59,10 @@ malformed annotations or excerpts. The emitted state carries a code-derived
 expiry bound to `observedAt + maxAgeMs`; the runtime supplies a trusted
 evaluation-start clock to the pack before any cache lookup or provider call.
 The pack rejects expired or tampered expiry data and independently recomputes
-all excerpt, ordered-candidate, and annotation hashes. The trusted adapter and
+all excerpt, ordered-candidate, and annotation hashes. It then strips hashes,
+extractor/renderer identifiers, source spans, and evidence-envelope fingerprints
+from provider state while committing the full envelope digest to cache and
+receipt identity through a host-only projection binding. The trusted adapter and
 offline verifier validate target-bearing visual-artifact seals before those
 seals are removed from provider-visible state. Stable
 `FinanceAdvisoryBoundaryError` codes let callers distinguish look-ahead, stale,
@@ -186,7 +189,7 @@ Official Jev accepts text or JSON state, not image bytes. Use an independently
 tested OCR, document-AI, or vision component to extract bounded facts. Code
 must verify chart axes, units, timezone, source binding, crop identity, and
 cutoff before the annotations reach Jev. Preserve the image digest and
-extractor version, not the image itself, in the advisory state.
+extractor version in trusted host evidence, not in Jev-visible state.
 
 The trusted projection also carries an evaluator-only, domain-separated seal
 over instrument identity, time boundaries, signal-to-timestamp associations,
@@ -212,11 +215,14 @@ that tuple and require the case `goldRoute` to equal the compiler-owned route,
 so a case author cannot relabel a compiled deceptive-chart mutation without
 invalidating the dataset. The adapter then removes `mutationId`, `expectedRoute`,
 the target-bearing artifact digest, and the deterministic image hash before
-constructing advisory state. The pack rejects any of those fields if they
-reappear. The provider receives only the source binding, renderer identity, and
-bounded untrusted annotations. The raw image hash stays in the trusted evaluator
-for byte-level artifact verification; evaluator-owned targets and enumerable
-artifact fingerprints never enter model-visible state.
+constructing advisory state. The trusted adapter validates source, annotation,
+extractor, and renderer bindings. The pack revalidates the bounded evidence
+structure, strips all identity metadata before provider egress, and commits the
+full evidence-envelope digest host-side to runtime cache and receipt identity.
+Jev receives bounded untrusted annotations, semantic signal buckets, and
+bounded excerpt/claim text only. The raw image hash stays in the trusted
+evaluator for byte-level artifact verification; evaluator-owned targets and
+enumerable artifact fingerprints never enter model-visible state.
 
 Renderer v2 adds a deterministic `reversed_time_axis` case: source timestamps
 and values remain unchanged, while plotted coordinates and visible date ticks

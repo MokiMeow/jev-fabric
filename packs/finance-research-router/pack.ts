@@ -154,10 +154,13 @@ export const financeResearchRouterPack = definePack(
         "synthetic",
       ],
     },
-    evidence: { projectorId: "finance-research-router-state", revision: "1" },
+    evidence: { projectorId: "finance-research-router-state", revision: "2" },
   },
   {
-    projector: { project: projectResearchState },
+    projector: {
+      project: projectResearchState,
+      bindingHash: financeResearchEvidenceBindingHash,
+    },
     candidates: {
       provide: (state) =>
         exactCurrentCandidates((state as ResearchState).candidates)
@@ -667,15 +670,20 @@ function projectResearchState(
     advisoryOnly: state.advisoryOnly,
     execution: state.execution,
     purpose: state.purpose,
-    evidenceEnvelopeHash: `sha256:${sha256Digest(
-      snapshot,
-      "jev-fabric/finance-research-router-evidence/v1",
-    )}`,
     request,
     symbols,
     candidates,
     ...(state.staticDeny === undefined ? {} : { staticDeny: state.staticDeny }),
   };
+}
+
+function financeResearchEvidenceBindingHash(
+  input: unknown,
+): `sha256:${string}` {
+  return `sha256:${sha256Digest(
+    snapshotPlainData(input),
+    "jev-fabric/finance-research-router-evidence/v1",
+  )}`;
 }
 
 function projectRequest(input: unknown) {
@@ -700,7 +708,6 @@ function projectRequest(input: unknown) {
     throw new TypeError("finance research request must be host redacted");
   return {
     text: request.text,
-    textHash: request.textHash,
     trust: "untrusted_data_only" as const,
     redaction: "host_redacted" as const,
   };

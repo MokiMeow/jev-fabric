@@ -2,6 +2,7 @@ import { validateDecisionResponse } from "@mokimeow/jev-fabric-protocol";
 import { describe, expect, it } from "vitest";
 import { BudgetLedger } from "../src/budget.js";
 import { MemoryDecisionCache } from "../src/cache.js";
+import { sha256Digest } from "../src/canonical.js";
 import { definePack } from "../src/pack.js";
 import {
   FabricRuntime,
@@ -410,6 +411,155 @@ describe("FabricRuntime", () => {
       },
     ]);
     expect(Object.isFrozen(contexts[0])).toBe(true);
+  });
+
+  it("preserves legacy state hashes when a projector has no evidence binding", async () => {
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => response(request.id),
+      },
+      model: "synthetic-model",
+      cache: new MemoryDecisionCache({ maxEntries: 2 }),
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 1 }),
+      }),
+      now: () => 0,
+    });
+
+    const result = await runtime.evaluate(input());
+
+    expect(result.receipt.stateHash).toBe(
+      sha256Digest({ purpose: "go" }, "jev-fabric/projected-state/v1"),
+    );
+  });
+
+  it("binds cache and receipts to trusted evidence without exposing that binding to the provider", async () => {
+    const live = livePack();
+    const implementations = live.implementations;
+    if (!implementations) throw new Error("test pack implementations missing");
+    const bindingPack = definePack(
+      { ...live.manifest, id: "binding-route" },
+      {
+        ...implementations,
+        projector: {
+          project: () => ({ purpose: "same-semantic-state" }),
+          bindingHash: (value) =>
+            (value as { readonly bindingHash: string }).bindingHash,
+        },
+      },
+    );
+    const seen: unknown[] = [];
+    let calls = 0;
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => {
+          calls += 1;
+          seen.push(request.state);
+          return response(request.id);
+        },
+      },
+      model: "synthetic-model",
+      cache: new MemoryDecisionCache({ maxEntries: 4 }),
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 2 }),
+      }),
+      now: () => 0,
+    });
+    const evaluate = (bindingHash: string) =>
+      runtime.evaluate({
+        ...input(),
+        pack: bindingPack,
+        state: { bindingHash },
+      });
+
+    const first = await evaluate(`sha256:${"a".repeat(64)}`);
+    const second = await evaluate(`sha256:${"b".repeat(64)}`);
+    const cached = await evaluate(`sha256:${"a".repeat(64)}`);
+
+    expect(calls).toBe(2);
+    expect(seen).toEqual([
+      { purpose: "same-semantic-state" },
+      { purpose: "same-semantic-state" },
+    ]);
+    expect(first.receipt.stateHash).not.toBe(second.receipt.stateHash);
+    expect(cached.receipt.stateHash).toBe(first.receipt.stateHash);
+    expect(cached.receipt.cache).toBe("hit");
+  });
+
+  it("rejects malformed evidence bindings before cache or provider egress", async () => {
+    const live = livePack();
+    const implementations = live.implementations;
+    if (!implementations) throw new Error("test pack implementations missing");
+    const malformedBindingPack = definePack(
+      { ...live.manifest, id: "malformed-binding-route" },
+      {
+        ...implementations,
+        projector: {
+          project: () => ({ purpose: "semantic-state" }),
+          bindingHash: () => "sha256:not-a-valid-digest",
+        },
+      },
+    );
+    let cacheReads = 0;
+    let cacheWrites = 0;
+    let providerCalls = 0;
+    const runtime = new FabricRuntime({
+      provider: {
+        id: "test",
+        capabilities: {
+          questionTypes: ["choice"],
+          probabilitySemantics: ["synthetic"],
+          maxQuestions: 1,
+        },
+        evaluate: async (request) => {
+          providerCalls += 1;
+          return response(request.id);
+        },
+      },
+      model: "synthetic-model",
+      cache: {
+        get: async () => {
+          cacheReads += 1;
+          return undefined;
+        },
+        set: async () => {
+          cacheWrites += 1;
+        },
+        delete: async () => undefined,
+      },
+      scheduler: new DecisionScheduler({
+        providerConcurrency: 1,
+        tenantConcurrency: 1,
+        budget: new BudgetLedger({ requests: 1 }),
+      }),
+    });
+
+    await expect(
+      runtime.evaluate({
+        ...input(),
+        pack: malformedBindingPack,
+        state: { purpose: "semantic-state" },
+      }),
+    ).rejects.toThrow(/binding hash/);
+    expect(cacheReads).toBe(0);
+    expect(cacheWrites).toBe(0);
+    expect(providerCalls).toBe(0);
   });
 
   it("keeps a validated result when persistence fails and reports caller cancellation/deadline separately", async () => {

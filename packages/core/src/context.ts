@@ -17,6 +17,12 @@ export interface StateProjectContext {
 export interface StateProjector<Input = unknown> {
   project(input: Input, context: StateProjectContext): unknown;
   /**
+   * Optional trusted hash of host evidence intentionally omitted from the
+   * provider state. The runtime commits this value into receipt and cache
+   * identity without sending it to the provider.
+   */
+  bindingHash?(input: Input, context: StateProjectContext): unknown;
+  /**
    * Deliberate, reviewed escape hatch for a trusted in-process projection.
    * Built-in packs never enable this: callers must never use it for MCP,
    * provider credentials, or host-supplied decision state. The default public
@@ -25,6 +31,13 @@ export interface StateProjector<Input = unknown> {
    */
   readonly unsafeAllowSecretState?: { readonly justification: string };
 }
+
+export interface ProjectedStateWithBinding {
+  readonly state: JsonValue;
+  readonly bindingHash?: `sha256:${string}`;
+}
+
+const sha256BindingHash = /^sha256:[a-f0-9]{64}$/u;
 
 const protectedKeys = new Set([
   "principalid",
@@ -124,6 +137,26 @@ export function projectState<Input>(
     ...(projector.unsafeAllowSecretState === undefined
       ? {}
       : { unsafeAllowSecretState: projector.unsafeAllowSecretState }),
+  });
+}
+
+export function projectStateWithBinding<Input>(
+  projector: StateProjector<Input>,
+  input: Input,
+  limits: StateLimits,
+  context: StateProjectContext,
+): Readonly<ProjectedStateWithBinding> {
+  const state = projectState(projector, input, limits, context);
+  if (projector.bindingHash === undefined) return Object.freeze({ state });
+  const trustedContext = Object.freeze({ nowEpochMs: context.nowEpochMs });
+  const bindingHash = projector.bindingHash(input, trustedContext);
+  if (typeof bindingHash !== "string" || !sha256BindingHash.test(bindingHash))
+    throw new TypeError(
+      "trusted state projection binding hash must be canonical SHA-256",
+    );
+  return Object.freeze({
+    state,
+    bindingHash: bindingHash as `sha256:${string}`,
   });
 }
 

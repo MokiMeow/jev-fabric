@@ -31,6 +31,15 @@ happens before cache lookup; the finance pack therefore rejects an expired
 advisory state without reading or populating the cache and without dispatching
 a provider request.
 
+A projector may also implement `bindingHash(input, context)` and return one
+canonical `sha256:` digest for trusted host evidence intentionally omitted from
+provider state. `FabricRuntime` commits that digest into the receipt state hash,
+request identity, and cache key under a separate domain, but sends only the
+result of `project` to the provider. The hook is for already validated evidence
+bindings—not raw secrets or a replacement for publisher authentication. The
+hook itself is optional for compatibility. When a projector implements it, an
+absent or malformed return value fails before cache lookup or provider dispatch.
+
 Tool-environment schemas are structural validators, not authority. Use
 `validateToolEnvironmentSnapshot(input, trustedCatalogue, observedNowMs,
 trustedVisualCapture?)` and

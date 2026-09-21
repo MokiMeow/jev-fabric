@@ -130,6 +130,7 @@ const financeTextStateKeys = new Set([
   "candidates",
   "trust",
 ]);
+const financeSemanticTextStateKeys = new Set(["candidates", "trust"]);
 const financeVisualStateKeys = new Set([
   "mode",
   "extractorId",
@@ -156,7 +157,7 @@ const financeCandidateKeys = new Set([
   "freshness",
 ]);
 
-interface FinanceTextCandidate {
+interface BoundFinanceTextCandidate {
   readonly id: string;
   readonly excerptHash: string;
   readonly excerpt: string;
@@ -167,6 +168,12 @@ interface FinanceTextCandidate {
     readonly byteEnd: number;
     readonly sectionHash: string;
   };
+}
+
+interface FinanceTextCandidate {
+  readonly id: string;
+  readonly excerpt: string;
+  readonly claim?: string;
 }
 
 interface FinanceState {
@@ -182,15 +189,10 @@ interface FinanceState {
     readonly bucket?: string;
   }[];
   readonly visual?: {
-    readonly sourceBindingHash?: string;
-    readonly annotationHash?: string;
     readonly annotations?: readonly string[];
     readonly trust?: string;
   };
   readonly text?: {
-    readonly documentHash?: string;
-    readonly sourceBindingHash?: string;
-    readonly candidateBindingHash?: string;
     readonly trust?: string;
     readonly candidates?: readonly FinanceTextCandidate[];
   };
@@ -225,10 +227,13 @@ export const financeSurveillancePack = definePack(
         "synthetic",
       ],
     },
-    evidence: { projectorId: "finance-advisory-state", revision: "1" },
+    evidence: { projectorId: "finance-advisory-state", revision: "2" },
   },
   {
-    projector: { project: projectFinanceState },
+    projector: {
+      project: projectFinanceState,
+      bindingHash: financeEvidenceBindingHash,
+    },
     candidates: {
       provide: (input) =>
         exactAdvisoryCandidates((input as FinanceState).candidates)
@@ -271,33 +276,23 @@ function financeQuestionSetHash(): `sha256:${string}` {
   const claim = "Canonical finance question-contract claim.";
   const uncitedState = {
     text: {
-      mode: "bounded_excerpts",
       trust: "untrusted_data_only",
       candidates: [
         {
           id: "contract.uncited",
           excerpt,
-          excerptHash: sha256Text(excerpt),
         },
       ],
     },
   };
   const citedState = {
     text: {
-      mode: "bounded_excerpts",
       trust: "untrusted_data_only",
       candidates: [
         {
           id: "contract.cited",
           excerpt,
-          excerptHash: sha256Text(excerpt),
           claim,
-          claimHash: sha256Text(claim),
-          sourceSpan: {
-            byteStart: 0,
-            byteEnd: Buffer.byteLength(excerpt, "utf8"),
-            sectionHash: sha256Text(excerpt),
-          },
         },
       ],
     },
@@ -748,6 +743,100 @@ function financeTextCandidates(
   const record = plainRecord(state, "finance state");
   const text = dataProperty(record, "text");
   if (text === undefined) return [];
+  const textRecord = plainRecord(text, "finance semantic text state");
+  assertAllowedDataKeys(
+    textRecord,
+    financeSemanticTextStateKeys,
+    "finance semantic text state",
+  );
+  if (dataProperty(textRecord, "trust") !== "untrusted_data_only")
+    throw new TypeError("finance text state must remain untrusted data");
+  const candidates = dataProperty(textRecord, "candidates");
+  if (isProxy(candidates as object) || !Array.isArray(candidates))
+    throw new TypeError("finance text candidates must be a plain array");
+  if (
+    Object.getPrototypeOf(candidates) !== Array.prototype ||
+    candidates.length < 1 ||
+    candidates.length > 8
+  )
+    throw new TypeError("finance text candidates are not a bounded array");
+  const descriptors = Object.getOwnPropertyDescriptors(candidates);
+  const allowed = new Set(["length"]);
+  const output: FinanceTextCandidate[] = [];
+  const ids = new Set<string>();
+  let claimBytes = 0;
+  for (let index = 0; index < candidates.length; index += 1) {
+    const key = String(index);
+    allowed.add(key);
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable)
+      throw new TypeError("finance text candidates must contain plain data");
+    const candidate = plainRecord(
+      descriptor.value,
+      "finance semantic text candidate",
+    );
+    const keys = Object.keys(candidate);
+    if (
+      !keys.every(
+        (candidateKey) =>
+          candidateKey === "id" ||
+          candidateKey === "excerpt" ||
+          candidateKey === "claim",
+      )
+    )
+      throw new TypeError("finance text candidate contains unsupported fields");
+    const id = dataProperty(candidate, "id");
+    const excerpt = dataProperty(candidate, "excerpt");
+    const claim = dataProperty(candidate, "claim");
+    if (
+      keys.length !== (claim === undefined ? 2 : 3) ||
+      typeof id !== "string" ||
+      !/^[A-Za-z][A-Za-z0-9._:-]{0,63}$/u.test(id) ||
+      ids.has(id) ||
+      typeof excerpt !== "string" ||
+      excerpt.length < 1 ||
+      excerpt.length > 1_000 ||
+      hasControlCharacter(excerpt)
+    )
+      throw new TypeError("finance text candidate is invalid");
+    if (
+      claim !== undefined &&
+      (typeof claim !== "string" ||
+        claim.length < 1 ||
+        claim.length > 1_000 ||
+        hasControlCharacter(claim))
+    )
+      throw new TypeError("finance text candidate claim is invalid");
+    if (typeof claim === "string") {
+      claimBytes += Buffer.byteLength(claim, "utf8");
+      if (claimBytes > 8_192)
+        throw new TypeError("finance text claims exceed the total byte limit");
+    }
+    ids.add(id);
+    output.push({
+      id,
+      excerpt,
+      ...(typeof claim === "string" ? { claim } : {}),
+    });
+  }
+  if (Reflect.ownKeys(descriptors).some((key) => !allowed.has(String(key))))
+    throw new TypeError("finance text candidates contain extra properties");
+  const claimCandidateCount = output.filter(
+    (candidate) => candidate.claim !== undefined,
+  ).length;
+  if (claimCandidateCount !== 0 && claimCandidateCount !== output.length)
+    throw new TypeError(
+      "finance text candidate claims must exist for all or none",
+    );
+  return output;
+}
+
+function boundFinanceTextCandidates(
+  state: unknown,
+): readonly BoundFinanceTextCandidate[] {
+  const record = plainRecord(state, "finance state");
+  const text = dataProperty(record, "text");
+  if (text === undefined) return [];
   const textRecord = plainRecord(text, "finance text state");
   assertAllowedDataKeys(textRecord, financeTextStateKeys, "finance text state");
   if (dataProperty(textRecord, "mode") !== "bounded_excerpts")
@@ -765,7 +854,7 @@ function financeTextCandidates(
     throw new TypeError("finance text candidates are not a bounded array");
   const descriptors = Object.getOwnPropertyDescriptors(candidates);
   const allowed = new Set(["length"]);
-  const output: FinanceTextCandidate[] = [];
+  const output: BoundFinanceTextCandidate[] = [];
   const ids = new Set<string>();
   let claimBytes = 0;
   for (let index = 0; index < candidates.length; index += 1) {
@@ -859,7 +948,7 @@ function financeTextCandidates(
 
 function projectTextSourceSpan(
   input: unknown,
-): NonNullable<FinanceTextCandidate["sourceSpan"]> {
+): NonNullable<BoundFinanceTextCandidate["sourceSpan"]> {
   const sourceSpan = plainRecord(input, "finance text source span");
   assertAllowedDataKeys(
     sourceSpan,
@@ -897,23 +986,15 @@ function projectFinanceState(
   if (keys.some((key) => !financeStateKeys.has(key)))
     throw new TypeError("finance state contains an unsupported field");
   for (const key of keys) dataProperty(record, key);
-  const textCandidates = financeTextCandidates(normalizedInput);
+  const textCandidates = boundFinanceTextCandidates(normalizedInput);
   const textValue = dataProperty(record, "text");
   const text =
     textValue === undefined
       ? undefined
       : (() => {
           const textRecord = plainRecord(textValue, "finance text state");
-          const documentHash = requiredHash(
-            textRecord,
-            "documentHash",
-            "finance text state",
-          );
-          const sourceBindingHash = requiredHash(
-            textRecord,
-            "sourceBindingHash",
-            "finance text state",
-          );
+          requiredHash(textRecord, "documentHash", "finance text state");
+          requiredHash(textRecord, "sourceBindingHash", "finance text state");
           const excerptHash = requiredHash(
             textRecord,
             "excerptHash",
@@ -949,13 +1030,12 @@ function projectFinanceState(
           )
             throw new TypeError("finance text evidence binding is invalid");
           return {
-            mode: "bounded_excerpts" as const,
-            documentHash,
-            sourceBindingHash,
-            excerptHash,
-            candidateBindingHash,
             trust: "untrusted_data_only" as const,
-            candidates: textCandidates,
+            candidates: textCandidates.map(({ id, excerpt, claim }) => ({
+              id,
+              excerpt,
+              ...(claim === undefined ? {} : { claim }),
+            })),
           };
         })();
   const observedAt = requiredTimestamp(record, "observedAt", "finance state");
@@ -989,7 +1069,7 @@ function projectFinanceState(
             throw new TypeError(
               "finance visual mode and verified axes are required",
             );
-          const sourceBindingHash = requiredHash(
+          requiredHash(
             visualRecord,
             "sourceBindingHash",
             "finance visual state",
@@ -1039,10 +1119,6 @@ function projectFinanceState(
               "finance visual trust must be untrusted_data_only",
             );
           return {
-            sourceBindingHash,
-            annotationHash,
-            schemaVersion: "1" as const,
-            renderer: normalizedRenderer,
             annotations,
             trust,
           };
@@ -1051,12 +1127,7 @@ function projectFinanceState(
   const advisoryCandidates = projectAdvisoryCandidates(
     dataProperty(record, "candidates"),
   );
-  const evidenceEnvelopeHash = `sha256:${sha256Digest(
-    normalizedInput,
-    "jev-fabric/finance-evidence-envelope/v1",
-  )}`;
   return {
-    evidenceEnvelopeHash,
     ...(dataProperty(record, "advisoryOnly") === undefined
       ? {}
       : { advisoryOnly: dataProperty(record, "advisoryOnly") }),
@@ -1082,6 +1153,13 @@ function projectFinanceState(
       ? {}
       : { candidates: advisoryCandidates }),
   };
+}
+
+function financeEvidenceBindingHash(input: unknown): `sha256:${string}` {
+  return `sha256:${sha256Digest(
+    snapshotFinancePlainData(input),
+    "jev-fabric/finance-evidence-envelope/v1",
+  )}`;
 }
 
 function plainRecord(value: unknown, name: string): Record<string, unknown> {

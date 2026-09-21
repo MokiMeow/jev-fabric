@@ -517,7 +517,7 @@ SVGs. Quarterly ZIP URLs can be replaced, so the source ZIP must be hashed and
 size-locked before offline generation. Resolve units, periods, duplicates, and
 amendments in code; every point binds to an accession and accepted date. A
 useful first frozen slice is 60 issuer-disjoint base charts per split, at most
-two series and 4–12 points each, expanded through the six deterministic
+two series and 4–12 points each, expanded through the seven deterministic
 render/mutation variants. All variants of a base chart remain in one split.
 The [Data.gov record](https://catalog.data.gov/dataset/financial-statement-data-sets)
 currently labels the dataset for public access, but the retained manifest must
@@ -665,3 +665,25 @@ the exact SVG, and assigns `escalate` in code. Renderer v1 and v2 remain
 replayable under their frozen mutation sets. This adds evaluation coverage; it
 does not measure Jev visual accuracy or turn extracted chart text into trading
 authority.
+
+## 21 September provider-state minimization addendum
+
+The official [state guide](https://docs.typesafe.ai/concepts/state) says state
+should contain the material needed for the questions, and the Jev 1.13
+[jaggedness note](https://docs.typesafe.ai/model-jaggedness/jev-1.13) warns that
+irrelevant state can reduce accuracy. A same-day inspection found that Fabric's
+finance and fintech projectors were sending validated SHA-256 bindings and one
+full evidence-envelope digest alongside the semantic text even though no
+question consumed those values. Public deterministic digests also create
+avoidable corpus-fingerprinting surfaces.
+
+Fabric now separates the two jobs. Projectors validate the complete host
+envelope and return a canonical binding hash through a trusted runtime-only
+hook. The runtime commits that hash into cache and receipt identity, while the
+provider receives only the semantic projection. Visual state contains bounded
+annotations, finance text contains candidate ids plus excerpt/claim text, the
+research router exposes the redacted request without its hash, and fintech
+exposes the redacted note without source/note hashes or case identity. This is
+a structural input reduction, not a measured token, latency, cost, or accuracy
+improvement; those remain `NOT_RUN` until a retained live evaluation records
+provider usage.

@@ -108,8 +108,17 @@ function fixtureCases(): readonly FintechBenchmarkCase[] {
   ];
 }
 
+function fixtureCaseKey(request: DecisionRequest): string {
+  const evidence = (request.state as { evidence?: { readonly note?: unknown } })
+    .evidence;
+  assert.ok(typeof evidence?.note === "string");
+  return evidence.note.includes("duplicate settlement")
+    ? "ref:cal-duplicate"
+    : "ref:test-urgent";
+}
+
 function labelsForRequest(request: DecisionRequest) {
-  const caseRef = (request.state as { caseRef?: unknown }).caseRef;
+  const caseRef = fixtureCaseKey(request);
   const enabled =
     caseRef === "ref:cal-duplicate"
       ? new Set(["fintech-duplicate-or-reprocessed"])
@@ -146,8 +155,7 @@ class FixtureEvaluator implements FintechMeasuredEvaluator {
     providerRequestIdHash: string;
   }> {
     this.calls += 1;
-    const caseRef = (request.state as { caseRef?: unknown }).caseRef;
-    assert.ok(typeof caseRef === "string");
+    const caseRef = fixtureCaseKey(request);
     const questionCounts = this.questionCountsByCase.get(caseRef) ?? [];
     questionCounts.push(request.questions.length);
     this.questionCountsByCase.set(caseRef, questionCounts);

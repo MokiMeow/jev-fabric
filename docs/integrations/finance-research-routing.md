@@ -68,8 +68,11 @@ The host supplies:
 Projection snapshots plain data without invoking accessors or proxy traps,
 rejects cycles, symbols, extra properties, controls, stale/future state, hash
 substitution, changed tool descriptions, and execution-shaped top-level fields.
-It removes raw clock fields before provider egress but retains a domain-separated
-evidence-envelope digest.
+It validates the request hash and removes that hash, raw clock fields, request
+reference, and the domain-separated evidence-envelope digest before provider
+egress. The runtime incorporates the envelope digest through the trusted
+projection-binding side channel, so cache keys and receipts remain source-bound
+without adding an opaque corpus fingerprint to Jev input.
 
 ## Output boundary
 

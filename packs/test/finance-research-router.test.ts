@@ -208,9 +208,15 @@ describe("finance research router", () => {
   it("emits one native-compatible batch over only projected read-only state", () => {
     const implementation = financeResearchRouterPack.implementations;
     if (!implementation) throw new Error("implementation missing");
-    const projected = implementation.projector.project(state(), {
+    const input = state();
+    const projectionContext = { nowEpochMs: 0 };
+    const projected = implementation.projector.project(input, {
       nowEpochMs: 0,
     }) as Record<string, unknown>;
+    const bindingHash = implementation.projector.bindingHash?.(
+      input,
+      projectionContext,
+    );
     const provided = implementation.candidates.provide(projected);
     const questions = implementation.questions(projected, provided);
 
@@ -227,7 +233,10 @@ describe("finance research router", () => {
     ).not.toThrow();
     expect(projected).not.toHaveProperty("observedAt");
     expect(projected).not.toHaveProperty("validUntil");
-    expect(projected.evidenceEnvelopeHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(projected).not.toHaveProperty("evidenceEnvelopeHash");
+    expect(projected.request).not.toHaveProperty("textHash");
+    expect(JSON.stringify(projected)).not.toContain("sha256:");
+    expect(bindingHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(JSON.stringify(questions)).not.toContain(state().request.text);
   });
 

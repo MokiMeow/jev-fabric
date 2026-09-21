@@ -14,7 +14,7 @@ import {
   type DecisionCandidate,
 } from "./candidates.js";
 import { sha256Digest } from "./canonical.js";
-import { projectState } from "./context.js";
+import { projectStateWithBinding } from "./context.js";
 import { DeadlineExceededError, DecisionAbortedError } from "./errors.js";
 import { assertProviderCapabilities, type DecisionPack } from "./pack.js";
 import {
@@ -134,13 +134,20 @@ export class FabricRuntime {
         preflight.reasonCodes[0] ?? "STATIC_DENY",
         "bypass",
       );
-    const state = projectState(
+    const projection = projectStateWithBinding(
       implementation.projector,
       input.state,
       input.pack.manifest.limits,
       { nowEpochMs: startedAt },
     );
-    const stateHash = sha256Digest(state, "jev-fabric/projected-state/v1");
+    const state = projection.state;
+    const stateHash =
+      projection.bindingHash === undefined
+        ? sha256Digest(state, "jev-fabric/projected-state/v1")
+        : sha256Digest(
+            { bindingHash: projection.bindingHash, state },
+            "jev-fabric/bound-projected-state/v1",
+          );
     const scopeHash = sha256Digest(
       {
         tenantId: input.tenantId,

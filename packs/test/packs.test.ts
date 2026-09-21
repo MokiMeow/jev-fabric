@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   builtinPacks,
   completionPack,
+  fintechExceptionPack,
   financeSurveillancePack,
   financeSurveillanceQuestionSetHash,
   progressPack,
@@ -332,6 +333,10 @@ describe("built-in decision packs", () => {
     expect(projected.visual).not.toHaveProperty("expectedRoute");
     expect(projected.visual).not.toHaveProperty("artifactBindingHash");
     expect(projected.visual).not.toHaveProperty("imageHash");
+    expect(projected.visual).not.toHaveProperty("sourceBindingHash");
+    expect(projected.visual).not.toHaveProperty("annotationHash");
+    expect(projected.visual).not.toHaveProperty("renderer");
+    expect(JSON.stringify(projected)).not.toContain("sha256:");
 
     expect(() =>
       implementation.projector.project(
@@ -431,7 +436,19 @@ describe("built-in decision packs", () => {
         candidates: textCandidates,
       },
     };
-    const generated = implementation.questions(state, candidates);
+    const generated = implementation.questions(
+      {
+        ...state,
+        text: {
+          trust: "untrusted_data_only",
+          candidates: textCandidates.map(({ id, excerpt }) => ({
+            id,
+            excerpt,
+          })),
+        },
+      },
+      candidates,
+    );
     const claimQuestions = generated.filter((question) =>
       question.id.startsWith("finance-text-claim:"),
     );
@@ -495,30 +512,35 @@ describe("built-in decision packs", () => {
       value: unknown,
       nowEpochMs = Date.parse(fullState.observedAt),
     ) => implementation.projector.project(value, { nowEpochMs });
+    const bindingHash = (value: unknown) =>
+      implementation.projector.bindingHash?.(value, {
+        nowEpochMs: Date.parse(fullState.observedAt),
+      });
     const projected = project(fullState) as Record<string, unknown>;
     expect(projected).toMatchObject({
       advisoryOnly: true,
       execution: "NOT_SUPPORTED",
       assetClass: "equity",
       text: {
-        candidateBindingHash: state.text.candidateBindingHash,
-        candidates: state.text.candidates,
+        candidates: state.text.candidates.map(({ id, excerpt }) => ({
+          id,
+          excerpt,
+        })),
+        trust: "untrusted_data_only",
       },
     });
     expect(projected).not.toHaveProperty("sourceId");
     expect(projected).not.toHaveProperty("observedAt");
-    expect(projected.evidenceEnvelopeHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
-    const changedEnvelope = project({
+    expect(projected).not.toHaveProperty("evidenceEnvelopeHash");
+    expect(bindingHash(fullState)).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    const changedInput = {
       ...fullState,
       sourceId: "different-filing-source",
-    }) as Record<string, unknown>;
-    const { evidenceEnvelopeHash, ...semanticProjection } = projected;
-    const {
-      evidenceEnvelopeHash: changedEvidenceEnvelopeHash,
-      ...changedSemanticProjection
-    } = changedEnvelope;
-    expect(changedEvidenceEnvelopeHash).not.toBe(evidenceEnvelopeHash);
-    expect(changedSemanticProjection).toEqual(semanticProjection);
+    };
+    const changedProjection = project(changedInput) as Record<string, unknown>;
+    expect(bindingHash(changedInput)).not.toBe(bindingHash(fullState));
+    expect(changedProjection).toEqual(projected);
+    expect(JSON.stringify(projected)).not.toContain("sha256:");
     expect(() =>
       project({
         ...fullState,
@@ -942,7 +964,10 @@ describe("built-in decision packs", () => {
         candidates: citedCandidates,
       },
     };
-    const citedQuestions = implementation.questions(citedState, candidates);
+    const citedQuestions = implementation.questions(
+      project(citedState),
+      candidates,
+    );
     expect(
       citedQuestions
         .filter((question) =>
@@ -968,8 +993,12 @@ describe("built-in decision packs", () => {
     expect(JSON.stringify(citationQuestions)).not.toContain(proposedClaims[0]);
     expect(project(citedState)).toMatchObject({
       text: {
-        candidates: citedCandidates,
-        candidateBindingHash: citedState.text.candidateBindingHash,
+        candidates: citedCandidates.map(({ id, excerpt, claim }) => ({
+          id,
+          excerpt,
+          claim,
+        })),
+        trust: "untrusted_data_only",
       },
     });
     expect(() =>
@@ -1209,6 +1238,63 @@ describe("built-in decision packs", () => {
         textCitations: [{ nativeConfidence: null }, { nativeConfidence: null }],
       },
     });
+  });
+
+  it("keeps fintech evidence hashes and case identity out of provider state", () => {
+    const implementation = fintechExceptionPack.implementations;
+    if (!implementation) throw new Error("fintech implementation missing");
+    const note = "Routine reconciliation completed with no stated exception.";
+    const state = {
+      contractVersion: "1",
+      advisoryOnly: true,
+      execution: "NOT_SUPPORTED",
+      purpose: "exception_triage_only",
+      caseRef: "ref:normal",
+      observedAt: "1970-01-01T00:00:00.000Z",
+      validUntil: "1970-01-02T00:00:00.000Z",
+      maxAgeMs: 86_400_000,
+      evidence: {
+        note,
+        noteHash: sha256(note),
+        sourceHash: `sha256:${"1".repeat(64)}`,
+        trust: "untrusted_data_only",
+        redaction: "host_redacted",
+      },
+      candidates: [
+        {
+          id: "observe",
+          description: "Record the bounded exception observation only",
+          available: true,
+          freshness: "current",
+        },
+        {
+          id: "investigate",
+          description: "Route to bounded operations investigation",
+          available: true,
+          freshness: "current",
+        },
+        {
+          id: "escalate",
+          description: "Escalate to an authorized human reviewer",
+          available: true,
+          freshness: "current",
+        },
+      ],
+    } as const;
+    const context = { nowEpochMs: 0 };
+    const projected = implementation.projector.project(
+      state,
+      context,
+    ) as Record<string, unknown>;
+
+    expect(projected).not.toHaveProperty("caseRef");
+    expect(projected).not.toHaveProperty("evidenceEnvelopeHash");
+    expect(projected.evidence).not.toHaveProperty("noteHash");
+    expect(projected.evidence).not.toHaveProperty("sourceHash");
+    expect(JSON.stringify(projected)).not.toContain("sha256:");
+    expect(implementation.projector.bindingHash?.(state, context)).toMatch(
+      /^sha256:[a-f0-9]{64}$/u,
+    );
   });
 
   it("interprets every fixed-option selection independently of candidate ids", async () => {

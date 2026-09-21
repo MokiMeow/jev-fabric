@@ -416,6 +416,12 @@ test("provider-visible visual state excludes evaluator-owned target labels", asy
   assert.equal(serialized.includes("artifactBindingHash"), false);
   assert.equal(serialized.includes("imageHash"), false);
   assert.equal(serialized.includes(hostSideImageHash), false);
+  assert.equal(serialized.includes("evidenceEnvelopeHash"), false);
+  assert.equal(serialized.includes("sourceBindingHash"), false);
+  assert.equal(serialized.includes("annotationHash"), false);
+  assert.equal(serialized.includes("renderer"), false);
+  assert.equal(serialized.includes("extractorId"), false);
+  assert.equal(serialized.includes("sha256:"), false);
   assert.equal(serialized.includes("projectionBindingHash"), false);
   assert.equal(serialized.includes("counterfactual"), false);
   assert.equal(serialized.includes("wrong_instrument"), false);

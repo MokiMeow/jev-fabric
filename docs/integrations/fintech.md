@@ -70,13 +70,15 @@ Before provider egress, the projector rejects stale, future-dated, or
 hash-mismatched input, unknown structured fields such as amount or
 authorization, proxies, accessors, cycles, symbols, non-plain objects, control
 characters, bidirectional controls, candidate substitution, and malformed
-timestamps. The provider receives the exact host-supplied note and its hashes;
-the literal `host_redacted` label does not prove semantic redaction. The pack
-does not separately project payment, identity, account, amount, credential, or
-execution fields, but residual values written inside the note would still
-cross the provider boundary. Run a trusted DLP/redaction check before Fabric—or
-use only opaque tokens and deterministic buckets—when provider policy forbids
-such data.
+timestamps. The provider receives the exact host-supplied note and its trust and
+redaction labels, but not its note hash, source hash, case reference, or evidence
+envelope digest. The runtime commits the envelope digest into cache and receipt
+identity through a host-only projection binding. The literal `host_redacted`
+label does not prove semantic redaction. The pack does not separately project
+payment, identity, account, amount, credential, or execution fields, but
+residual values written inside the note would still cross the provider boundary.
+Run a trusted DLP/redaction check before Fabric—or use only opaque tokens and
+deterministic buckets—when provider policy forbids such data.
 
 ## Deployment rules
 

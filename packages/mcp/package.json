@@ -25,7 +25,7 @@
     "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build"
   },
   "dependencies": {
-    "@modelcontextprotocol/core": "2.0.0",
+    "@modelcontextprotocol/core": "2.1.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@mokimeow/jev-fabric-core": "workspace:*",
     "@mokimeow/jev-fabric-protocol": "workspace:*",

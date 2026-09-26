@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/core": "2.0.0",
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.1.0",
     "@mokimeow/jev-fabric-core": "workspace:*",
     "@mokimeow/jev-fabric-protocol": "workspace:*",
     "@mokimeow/jev-fabric-packs": "workspace:*",

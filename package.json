@@ -43,7 +43,7 @@
     "@mokimeow/jev-fabric-protocol": "workspace:*",
     "@mokimeow/jev-fabric-provider-openai-compatible": "workspace:*",
     "@mokimeow/jev-fabric-provider-typesafe": "workspace:*",
-    "@types/node": "22.18.6",
+    "@types/node": "26.6.2",
     "@vitest/coverage-v8": "5.0.1",
     "ajv": "8.20.0",
     "fast-check": "4.10.1",
